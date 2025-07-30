@@ -65,7 +65,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "https://syriaaswaq.com",
-    "https://watan-store-app.herokuapp.com",  # لو تحتاج السماح للباك إند نفسه أيضاً
+    "https://watan-store-app.herokuapp.com", 
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -136,8 +136,6 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
-CORS_ALLOW_ALL_ORIGINS = True
 
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
