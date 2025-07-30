@@ -33,7 +33,7 @@ SECRET_KEY = 'django-insecure-$kzzc)c921j4$se4@)(drilrn-x14tt=3)5gd0jlc5!%^ppjm_
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['watan-store-app-2742b6ac556c.herokuapp.com', 'localhost', '127.0.0.1']
 
 
 # Application definition
