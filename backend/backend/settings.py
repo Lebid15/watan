@@ -156,3 +156,5 @@ from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     'x-api-token',  # ⬅️ اسم الهيدر المخصص للتوكن الثابت
 ]
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
