@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'accounts',
     'store',
+    'django_extensions',
 ]
 
 MIDDLEWARE = [
@@ -69,10 +70,14 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    "https://syriaaswaq.com",
-    "https://watan-store-app.herokuapp.com", 
-]
+CORS_ALLOW_ALL_ORIGINS = True
+
+
+# CORS_ALLOWED_ORIGINS = [
+#     "https://syriaaswaq.com",
+#     "https://watan-store-app.herokuapp.com", 
+#     "http://syriaaswaq.com",
+# ]
 
 ROOT_URLCONF = 'backend.urls'
 

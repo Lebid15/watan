@@ -13,7 +13,15 @@ from rest_framework.decorators import authentication_classes
 from decimal import Decimal
 
 # عرض المنتجات
+# @api_view(['GET'])
+# def product_list(request):
+#     products = Product.objects.filter(is_active=True).order_by('-id')
+#     serializer = ProductSerializer(products, many=True)
+#     return Response(serializer.data)
+
 @api_view(['GET'])
+@authentication_classes([APITokenAuthentication])
+@permission_classes([IsAuthenticated])
 def product_list(request):
     products = Product.objects.filter(is_active=True).order_by('-id')
     serializer = ProductSerializer(products, many=True)
