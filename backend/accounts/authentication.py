@@ -4,7 +4,7 @@ from .models import CustomUser
 
 class APITokenAuthentication(BaseAuthentication):
     def authenticate(self, request):
-        token = request.headers.get('X-API-TOKEN')
+        token = request.META.get('HTTP_X_API_TOKEN')
         if not token:
             return None
 
