@@ -36,6 +36,8 @@ DEBUG = True
 ALLOWED_HOSTS = [
     "watan-store-app-2742b6ac556c.herokuapp.com",
     "watan-store-app.herokuapp.com",
+    "syriaaswaq.com",
+    "www.syriaaswaq.com",
     "localhost",
     "127.0.0.1",
 ]
