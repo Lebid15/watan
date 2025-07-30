@@ -43,8 +43,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',
     'corsheaders',
+    'rest_framework',
     'core',
     'accounts',
     'store',
@@ -59,6 +59,11 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "https://syriaaswaq.com",
+    "https://watan-store-app.herokuapp.com",  # لو تحتاج السماح للباك إند نفسه أيضاً
 ]
 
 ROOT_URLCONF = 'backend.urls'
