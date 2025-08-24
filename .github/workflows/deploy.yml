@@ -195,6 +195,30 @@ jobs:
           # Exec into backend container and run migrations (dist build already inside image)
           ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD exec -T backend node dist/data-source.js migration:run || $COMPOSE_CMD exec -T backend npx ts-node src/data-source.ts migration:run"
 
+      - name: Wait for backend health (post-migrations)
+        run: |
+          set -euo pipefail
+          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
+            COMPOSE_CMD="docker compose"
+          else
+            COMPOSE_CMD="docker-compose"
+          fi
+          echo "Waiting for backend health endpoint inside container..."
+          attempts=25
+          sleep_secs=5
+          ok=0
+          for i in $(seq 1 $attempts); do
+            if ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD exec -T backend wget -q -O - http://localhost:3000/api/health | grep -q '{'"; then
+              echo "Backend healthy after $i attempts"; ok=1; break; fi
+            echo "Attempt $i/$attempts: not healthy yet";
+            sleep $sleep_secs;
+          done
+          if [ $ok -ne 1 ]; then
+            echo "Backend did not become healthy in time. Showing last logs:";
+            ssh ${VPS_USER}@${VPS_HOST} "docker logs --tail=120 watan-backend" || true
+            exit 1
+          fi
+
       - name: Show containers
         run: |
           ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && (docker compose ps 2>/dev/null || docker-compose ps)"
@@ -224,3 +248,26 @@ jobs:
         with:
           name: deploy-logs
           path: logs.txt
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          set -euo pipefail
+          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
+            COMPOSE_CMD="docker compose"
+          else
+            COMPOSE_CMD="docker-compose"
+          fi
+          {
+            echo "## Deployment Summary";
+            echo "Timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ')";
+            echo "";
+            echo "### Service States";
+            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD ps" || true
+            echo "";
+            echo "### Backend Health (inside container)";
+            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend wget -q -O - http://localhost:3000/api/health || true";
+            echo "";
+            echo "### Pending Migrations?";
+            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend node dist/data-source.js migration:show || true";
+          } >> $GITHUB_STEP_SUMMARY
