@@ -62,10 +62,25 @@ export class AddTenantColumnsIfMissing20250823T2300 implements MigrationInterfac
 
     // تعبئة tenantId في الطلبات استناداً إلى users
     await queryRunner.query(`
-      UPDATE "product_orders" o
-      SET "tenantId" = u."tenantId"
-      FROM "users" u
-      WHERE o."userId" = u."id" AND o."tenantId" IS NULL;
+      DO $$
+      DECLARE has_userid boolean; BEGIN
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='product_orders' AND column_name='userId'
+        ) INTO has_userid;
+        IF has_userid THEN
+          BEGIN
+            UPDATE "product_orders" o
+            SET "tenantId" = u."tenantId"
+            FROM "users" u
+            WHERE o."userId" = u."id" AND o."tenantId" IS NULL;
+          EXCEPTION WHEN others THEN
+            RAISE NOTICE 'AddTenantColumnsIfMissing: skip fill tenantId (update failed)';
+          END;
+        ELSE
+          RAISE NOTICE 'AddTenantColumnsIfMissing: skip fill tenantId (product_orders.userId missing)';
+        END IF;
+      END$$;
     `);
 
     // جعل العمود NOT NULL إذا لم تعد هناك قيم NULL
