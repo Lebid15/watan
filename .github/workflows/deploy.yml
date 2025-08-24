@@ -143,10 +143,10 @@ jobs:
             done
             echo "Containers after cleanup:" && docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "^watan-" || echo "No watan-* containers remain"
           '
-        - name: (Optional) Prune old images (non-blocking)
-          continue-on-error: true
-          run: |
-            ssh ${VPS_USER}@${VPS_HOST} 'docker image prune -f >/dev/null 2>&1 || true'
+      - name: (Optional) Prune old images (non-blocking)
+        continue-on-error: true
+        run: |
+          ssh ${VPS_USER}@${VPS_HOST} 'docker image prune -f >/dev/null 2>&1 || true'
 
       - name: Docker compose build & up
         run: |
