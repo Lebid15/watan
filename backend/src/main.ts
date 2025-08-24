@@ -326,8 +326,13 @@ async function bootstrap() {
       package_costs: packageCostsHas?.c === 1,
       order_dispatch_logs: dispatchLogsHas?.c === 1,
     });
-    // تعبئة tenantId في الطلبات إن وجد المستخدم
-    await dataSource.query(`UPDATE "product_orders" o SET "tenantId" = u."tenantId" FROM "users" u WHERE o."userId" = u."id" AND o."tenantId" IS NULL;`);
+    // تعبئة tenantId في الطلبات إن وجد المستخدم (تحقق أولاً من وجود العمود userId لتفادي الأخطاء)
+    const [ordersUserIdCol] = await dataSource.query(`SELECT count(*)::int AS c FROM information_schema.columns WHERE table_name='product_orders' AND column_name='userId'`);
+    if (ordersUserIdCol?.c === 1) {
+      await dataSource.query(`UPDATE "product_orders" o SET "tenantId" = u."tenantId" FROM "users" u WHERE o."userId" = u."id" AND o."tenantId" IS NULL;`);
+    } else {
+      console.warn('⚠️ [Preflight] Skipped filling product_orders.tenantId (userId column missing)');
+    }
     // تعبئة tenantId للـ product_packages من product
     await dataSource.query(`UPDATE "product_packages" pp SET "tenantId" = p."tenantId" FROM "product" p WHERE pp."product_id" = p."id" AND pp."tenantId" IS NULL;`);
     // محاولة تعبئة tenantId للـ product من packages (عكسيًا) إذا كان المنتج مفقود tenantId

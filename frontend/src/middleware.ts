@@ -64,7 +64,8 @@ export function middleware(req: NextRequest) {
   const token = cookies.get('access_token')?.value || '';
   const role = (cookies.get('role')?.value || '').toLowerCase();
 
-  const publicPaths = new Set(['/login','/register','/password-reset','/verify-email']);
+  // مسارات عامة لا تتطلب تسجيل دخول (أضفنا /nginx-healthz لمسار فحص Nginx فقط)
+  const publicPaths = new Set(['/login','/register','/password-reset','/verify-email','/nginx-healthz']);
   if (publicPaths.has(path)) return response ?? NextResponse.next();
 
   if (!token) {

@@ -4,19 +4,29 @@ export class AddTenantId1754901234567 implements MigrationInterface {
   name = 'AddTenantId1754901234567'
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // 1) إضافة العمود كـ NULLable
+    // 1) إضافة العمود كـ NULLable (آمن)
     await queryRunner.query(`
       ALTER TABLE "product_orders"
       ADD COLUMN IF NOT EXISTS "tenantId" uuid NULL
     `);
 
-    // 2) تعبئة العمود من جدول users (يفترض وجود userId foreign key)
-    await queryRunner.query(`
-      UPDATE "product_orders" o
-      SET "tenantId" = u."tenantId"
-      FROM "users" u
-      WHERE o."userId" = u."id" AND o."tenantId" IS NULL
-    `);
+    // 2) تعبئة العمود فقط إذا كان userId موجودًا فعلاً لتجنب الخطأ الحالي
+    await queryRunner.query(`DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'product_orders' AND column_name = 'userId'
+      ) THEN
+        EXECUTE $$
+          UPDATE "product_orders" o
+          SET "tenantId" = u."tenantId"
+          FROM "users" u
+          WHERE o."userId" = u."id" AND o."tenantId" IS NULL
+        $$;
+      ELSE
+        RAISE NOTICE '[AddTenantId] Skipped backfill: product_orders.userId column missing.';
+      END IF;
+    END$$;`);
 
     // (اختياري) تحقق من الصفوف التي ما زالت NULL:
     // SELECT count(*) FROM "product_orders" WHERE "tenantId" IS NULL;
