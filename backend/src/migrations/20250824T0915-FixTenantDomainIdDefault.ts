@@ -5,21 +5,36 @@ export class FixTenantDomainIdDefault20250824T0915 implements MigrationInterface
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-DO $$
-DECLARE v text; 
-BEGIN
+  DO $$
+  DECLARE v text; has_table bool;
   BEGIN
-    CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- for gen_random_uuid
-  EXCEPTION WHEN others THEN END;
+    BEGIN
+      CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- for gen_random_uuid
+    EXCEPTION WHEN others THEN END;
 
-  SELECT column_default INTO v
-  FROM information_schema.columns
-  WHERE table_name='tenant_domain' AND column_name='id';
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name='tenant_domain'
+    ) INTO has_table;
 
-  IF v IS NULL OR length(trim(coalesce(v,'')))=0 THEN
-    EXECUTE 'ALTER TABLE "tenant_domain" ALTER COLUMN "id" SET DEFAULT gen_random_uuid()';
-  END IF;
-END $$;`);
+    IF NOT has_table THEN
+      EXECUTE 'CREATE TABLE "tenant_domain" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "domain" varchar(120) NOT NULL,
+        "tenantId" uuid NULL,
+        "createdAt" timestamptz NOT NULL DEFAULT now()
+      )';
+      RAISE NOTICE 'Rescue: created tenant_domain table.';
+    END IF;
+
+    SELECT column_default INTO v
+    FROM information_schema.columns
+    WHERE table_name='tenant_domain' AND column_name='id';
+
+    IF v IS NULL OR length(trim(coalesce(v,'')))=0 THEN
+      EXECUTE 'ALTER TABLE "tenant_domain" ALTER COLUMN "id" SET DEFAULT gen_random_uuid()';
+    END IF;
+  END $$;
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
