@@ -1,0 +1,1 @@
+export { default } from '@/app/integrations/[id]/page';
