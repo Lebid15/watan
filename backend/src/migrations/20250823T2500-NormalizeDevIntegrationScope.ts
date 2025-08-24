@@ -13,13 +13,37 @@ export class NormalizeDevIntegrationScope20250823T2500 implements MigrationInter
       DO $$
       DECLARE
         affected int;
+        has_col bool;
       BEGIN
-        UPDATE integrations
-        SET scope = 'dev'
-        WHERE "tenantId" = '00000000-0000-0000-0000-000000000000'
-          AND scope <> 'dev';
-        GET DIAGNOSTICS affected = ROW_COUNT;
-        RAISE NOTICE '[NormalizeDevIntegrationScope] updated % rows to scope=dev', affected;
+        SELECT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='integrations' AND column_name='tenantId'
+        ) INTO has_col;
+
+        -- إسعاف: إنشاء العمود إن كان مفقوداً (حالات نشر سابقة بلا tenantId)
+        IF NOT has_col THEN
+          BEGIN
+            ALTER TABLE "integrations" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'NormalizeDevIntegrationScope: Added missing tenantId column to integrations.';
+          EXCEPTION WHEN others THEN
+            RAISE NOTICE 'NormalizeDevIntegrationScope: failed adding tenantId (will skip update).';
+          END;
+          -- أعد فحص وجود العمود بعد محاولة الإضافة
+          SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='integrations' AND column_name='tenantId'
+          ) INTO has_col;
+        END IF;
+
+        IF has_col THEN
+          UPDATE integrations
+          SET scope = 'dev'
+          WHERE "tenantId" = '00000000-0000-0000-0000-000000000000'
+            AND scope <> 'dev';
+          GET DIAGNOSTICS affected = ROW_COUNT;
+          RAISE NOTICE '[NormalizeDevIntegrationScope] updated % rows to scope=dev', affected;
+        ELSE
+          RAISE NOTICE 'NormalizeDevIntegrationScope: Skipping scope normalization; tenantId column still absent.';
+        END IF;
       END$$;
     `);
   }
