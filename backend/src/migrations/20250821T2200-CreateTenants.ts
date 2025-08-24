@@ -4,6 +4,28 @@ export class CreateTenants20250821T2200 implements MigrationInterface {
     name = 'CreateTenants20250821T2200'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
+                                // Rescue: إنشاء جدول users الأساسي لو كان مفقودًا لمنع فشل ALTER
+                                await queryRunner.query(`
+                                    DO $$
+                                    BEGIN
+                                        IF NOT EXISTS (
+                                            SELECT 1 FROM information_schema.tables WHERE table_name = 'users'
+                                        ) THEN
+                                            CREATE TABLE "users" (
+                                                "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                                                "email" varchar(255) UNIQUE NOT NULL,
+                                                "username" varchar(120) NULL,
+                                                "password" varchar(255) NULL,
+                                                "role" varchar(50) NULL,
+                                                "isActive" boolean NOT NULL DEFAULT true,
+                                                "balance" numeric(12,2) NOT NULL DEFAULT 0,
+                                                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                                                "updatedAt" timestamptz NOT NULL DEFAULT now()
+                                            );
+                                            RAISE NOTICE 'Rescue created users baseline in CreateTenants migration.';
+                                        END IF;
+                                    END$$;
+                                `);
                 // ✅ إنشاء جدول tenants (إذا لم يوجد)
                 await queryRunner.query(`
                         CREATE TABLE IF NOT EXISTS "tenants" (
