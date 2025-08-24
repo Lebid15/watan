@@ -23,7 +23,12 @@ if (isProd) {
   let needSsl = true;
   try {
     const u = new URL(dbUrl);
-    if (['localhost', '127.0.0.1'].includes(u.hostname)) needSsl = false;
+    const params = new URLSearchParams(u.search);
+    const sslMode = params.get('sslmode');
+    const explicitDisable = ['disable', 'off', 'false', '0'].includes((sslMode || '').toLowerCase());
+    if (['localhost', '127.0.0.1'].includes(u.hostname) || explicitDisable || process.env.DB_DISABLE_SSL === 'true') {
+      needSsl = false;
+    }
   } catch (_) {}
   baseConn = {
     type: 'postgres',

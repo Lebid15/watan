@@ -119,6 +119,15 @@ jobs:
           scp -o StrictHostKeyChecking=no .deploy_tmp/.env "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/.env"
           rm -rf .deploy_tmp
 
+      - name: Run backend migrations (production)
+        run: |
+          set -euo pipefail
+          # Use node image to run migrations against remote code before building images (faster feedback)
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR}/backend && \
+            export NODE_ENV=production && \
+            export $(grep -E '^(DATABASE_URL|REDIS_URL|JWT_SECRET|PUBLIC_TENANT_BASE_DOMAIN)=' ${DEPLOY_DIR}/.env | xargs) && \
+            if [ -f dist/data-source.js ]; then node dist/data-source.js migration:run; else npx ts-node src/data-source.ts migration:run; fi"
+
       - name: Pre-compose diagnostics
         run: |
           set -euxo pipefail
