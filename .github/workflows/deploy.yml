@@ -47,15 +47,18 @@ jobs:
         run: |
           rsync -az --delete --exclude '.git' ./ ${VPS_USER}@${VPS_HOST}:${DEPLOY_DIR}
 
-      - name: Create/overwrite .env on VPS
+      - name: Create .env locally
+        shell: bash
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           PUBLIC_TENANT_BASE_DOMAIN: ${{ secrets.PUBLIC_TENANT_BASE_DOMAIN }}
         run: |
-          PTBD=${PUBLIC_TENANT_BASE_DOMAIN:-syrz1.com}
-          ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${DEPLOY_DIR} && cat > ${DEPLOY_DIR}/.env <<'EOF'
+          set -e
+          PTBD="${PUBLIC_TENANT_BASE_DOMAIN:-syrz1.com}"
+          mkdir -p .deploy_tmp
+          cat > .deploy_tmp/.env <<EOF
 DATABASE_URL=${DATABASE_URL}
 REDIS_URL=${REDIS_URL}
 JWT_SECRET=${JWT_SECRET}
@@ -67,7 +70,19 @@ INITIAL_ROOT_EMAIL=owner@example.com
 INITIAL_ROOT_PASSWORD=ChangeMe123!
 BOOTSTRAP_ENABLED=true
 NEXT_PUBLIC_API_URL=http://api.syrz1.com/api
-EOF"
+EOF
+
+      - name: Upload .env to VPS
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_DIR: /root/watan
+        run: |
+          set -e
+          ssh "$VPS_USER@$VPS_HOST" "mkdir -p \"$DEPLOY_DIR\""
+          scp -o StrictHostKeyChecking=no .deploy_tmp/.env "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/.env"
+          rm -rf .deploy_tmp
 
       - name: Docker compose build & up
         run: |
