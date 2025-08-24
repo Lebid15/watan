@@ -77,9 +77,26 @@ log "Done fast deploy $CURRENT_COMMIT"
 "@
 
 $sshCmd = "ssh -o BatchMode=yes $SSH_TARGET bash -s"
+
+# Prefer local bash if available (Git Bash), else use native PowerShell piping.
 try {
-  $out = & bash -c "printf '%s' "$remote" | $sshCmd" 2>&1
-  if($LASTEXITCODE -eq 0){ Section 'Fast Deployment SUCCESS'; Color Green $out } else { Section 'Fast Deployment FAILED'; Color Red $out; exit 1 }
+  if (Get-Command bash -ErrorAction SilentlyContinue) {
+    # Use bash to ensure exact byte output (safer for quoting)
+    $out = & bash -lc "printf '%s' '$remote' | $sshCmd" 2>&1
+  } else {
+    # PowerShell fallback
+    $out = $remote | & ssh -o BatchMode=yes $SSH_TARGET bash -s 2>&1
+  }
+  if ($LASTEXITCODE -eq 0) {
+    Section 'Fast Deployment SUCCESS'
+    Color Green $out
+  } else {
+    Section 'Fast Deployment FAILED'
+    Color Red $out
+    exit 1
+  }
 } catch {
-  Section 'Fast Deployment FAILED'; Color Red $_.Exception.Message; exit 1
+  Section 'Fast Deployment FAILED'
+  Color Red $_.Exception.Message
+  exit 1
 }
