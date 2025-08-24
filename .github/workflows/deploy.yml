@@ -1,0 +1,87 @@
+name: Deploy to syr1-vps
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      DEPLOY_DIR: /root/watan
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Add VPS host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Rsync project to VPS
+        run: |
+          rsync -az --delete --exclude '.git' ./ ${VPS_USER}@${VPS_HOST}:${DEPLOY_DIR}
+
+      - name: Create/overwrite .env on VPS
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PUBLIC_TENANT_BASE_DOMAIN: ${{ secrets.PUBLIC_TENANT_BASE_DOMAIN || 'syrz1.com' }}
+        run: |
+          ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${DEPLOY_DIR} && cat > ${DEPLOY_DIR}/.env <<'EOF'
+DATABASE_URL=${DATABASE_URL}
+REDIS_URL=${REDIS_URL}
+JWT_SECRET=${JWT_SECRET}
+PUBLIC_TENANT_BASE_DOMAIN=${PUBLIC_TENANT_BASE_DOMAIN}
+AUTO_MIGRATIONS=true
+HOST=0.0.0.0
+PORT=3000
+INITIAL_ROOT_EMAIL=owner@example.com
+INITIAL_ROOT_PASSWORD=ChangeMe123!
+BOOTSTRAP_ENABLED=true
+NEXT_PUBLIC_API_URL=http://api.syrz1.com/api
+EOF"
+
+      - name: Docker compose build & up
+        run: |
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose build --pull && docker compose up -d"
+
+      - name: Show containers
+        run: |
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose ps"
+
+      - name: Health check frontend & backend
+        run: |
+          echo '--- Frontend (syrz1.com) ---'
+          ssh ${VPS_USER}@${VPS_HOST} "curl -I -s http://syrz1.com | head -n 15" || true
+          echo '\n--- Backend (api.syrz1.com/api/health) ---'
+          ssh ${VPS_USER}@${VPS_HOST} "curl -i -s http://api.syrz1.com/api/health" || true
+
+      - name: Collect logs (last 30 lines per service)
+        run: |
+          set -e
+          > logs.txt
+          for svc in backend frontend worker nginx; do
+            echo "===== $svc =====" | tee -a logs.txt
+            ssh ${VPS_USER}@${VPS_HOST} "docker logs --tail=30 watan-$svc" 2>&1 | tee -a logs.txt || echo "(failed to fetch $svc logs)" | tee -a logs.txt
+            echo "" >> logs.txt
+          done
+          echo "### Deployment Log Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          sed 's/^/    /' logs.txt >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload raw logs artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-logs
+          path: logs.txt
