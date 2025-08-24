@@ -14,34 +14,69 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER }}
       DEPLOY_DIR: /root/watan
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # 0) تشخيص: تأكد أن المفتاح وصل من GitHub (لا نطبع المحتوى)
+      - name: Check SSH key length (no print)
+        shell: bash
+        env:
+          K: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          echo "SSH key length: ${#K} bytes"
 
+      # 1) تحقق من وجود الأسرار الأساسية وطولها
+      - name: Validate required secrets (early)
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -e
+          missing=0
+          for v in VPS_HOST VPS_USER; do
+            if [ -z "${!v}" ]; then echo "Missing env $v"; missing=1; fi
+          done
+            
+          for v in DATABASE_URL REDIS_URL JWT_SECRET VPS_SSH_KEY; do
+            eval val="\${$v}"
+            if [ -z "$val" ]; then echo "Missing secret $v"; missing=1; fi
+          done
+          if [ $missing -ne 0 ]; then exit 1; fi
+          echo "Lengths -> DB: $(printf %s "${DATABASE_URL}" | wc -c) REDIS: $(printf %s "${REDIS_URL}" | wc -c) JWT: $(printf %s "${JWT_SECRET}" | wc -c) KEY: $(printf %s "${VPS_SSH_KEY}" | wc -c)"
+
+      # 2) Checkout الكود (يدعم submodules عند الحاجة)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      # 3) Sanity git
+      - name: Sanity git
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git --version
+          git rev-parse HEAD
+          git status --short || true
+
+      # 4) تحميل مفتاح SSH
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
 
+      # 5) إضافة المضيف و اختبار الاتصال
       - name: Add VPS host to known_hosts
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Validate required secrets
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      - name: Verify SSH connectivity
+        shell: bash
         run: |
-          missing=0
-          for v in VPS_HOST VPS_USER; do
-            if [ -z "${!v}" ]; then echo "Missing env $v"; missing=1; fi
-          done
-          for v in DATABASE_URL REDIS_URL JWT_SECRET; do
-            eval val="\${$v}"
-            if [ -z "$val" ]; then echo "Missing secret $v"; missing=1; fi
-          done
-          if [ $missing -ne 0 ]; then exit 1; fi
+          set -euxo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=10 "$VPS_USER@$VPS_HOST" 'echo SSH_OK'
 
       - name: Upload project to VPS (tar over SSH)
         run: |
