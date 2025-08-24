@@ -6,8 +6,8 @@ services:
     container_name: watan-backend
     restart: unless-stopped
     healthcheck:
-  # Nest global prefix is /api, so health endpoint is /api/health
-  test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000/api/health"]
+      # Nest global prefix is /api, so health endpoint is /api/health
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -15,16 +15,13 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      # External services (provide real values in .env file or via deploy secrets):
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
-      # Example extra envs (uncomment / set as needed):
-  JWT_SECRET: ${JWT_SECRET}
-  PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
+      JWT_SECRET: ${JWT_SECRET}
+      PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
     expose:
       - '3000'
     volumes:
-      # Bind source for easier hot-fix (remove in strict prod if you prefer immutable image)
       - ./backend:/app
       - backend_node_modules:/app/node_modules
       - backend_logs:/app/logs
@@ -33,7 +30,6 @@ services:
     build:
       context: ./frontend
       args:
-        # Build-time public API URL (internal proxy through nginx uses api.syrz1.com)
         NEXT_PUBLIC_API_URL: http://api.syrz1.com/api
     container_name: watan-frontend
     restart: unless-stopped
@@ -79,8 +75,8 @@ services:
       PORT: 3000
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
-  JWT_SECRET: ${JWT_SECRET}
-  PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
+      JWT_SECRET: ${JWT_SECRET}
+      PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
     depends_on:
       - backend
     volumes:
@@ -106,6 +102,6 @@ volumes:
 # 2) docker compose build --pull
 # 3) docker compose up -d
 # 4) Point DNS (Cloudflare) A/CNAME records:
-#      syrz1.com, www.syrz1.com -> VPS IP (hits frontend via nginx)
-#      api.syrz1.com -> VPS IP (hits backend via nginx)
+#      syrz1.com, www.syrz1.com -> VPS IP (frontend via nginx)
+#      api.syrz1.com -> VPS IP (backend via nginx)
 # Cloudflare Full mode terminates HTTPS; nginx here listens only on :80.

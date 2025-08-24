@@ -2,7 +2,7 @@ name: Deploy to syr1-vps
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -27,6 +27,17 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
 
+      - name: Fail early if required secrets missing
+        run: |
+          missing=0
+          for v in VPS_HOST VPS_USER; do
+            if [ -z "${!v}" ]; then echo "Missing env $v"; missing=1; fi
+          done
+          for v in DATABASE_URL REDIS_URL JWT_SECRET; do
+            if [ -z "${{ secrets[ v ] }}" ]; then echo "Missing secret $v"; missing=1; fi
+          done || true
+          [ $missing -eq 0 ] || { echo 'Required secrets missing'; exit 1; }
+
       - name: Rsync project to VPS
         run: |
           rsync -az --delete --exclude '.git' ./ ${VPS_USER}@${VPS_HOST}:${DEPLOY_DIR}
@@ -36,8 +47,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          PUBLIC_TENANT_BASE_DOMAIN: ${{ secrets.PUBLIC_TENANT_BASE_DOMAIN || 'syrz1.com' }}
+          PUBLIC_TENANT_BASE_DOMAIN: ${{ secrets.PUBLIC_TENANT_BASE_DOMAIN }}
         run: |
+          : ${PUBLIC_TENANT_BASE_DOMAIN:=syrz1.com}
           ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${DEPLOY_DIR} && cat > ${DEPLOY_DIR}/.env <<'EOF'
 DATABASE_URL=${DATABASE_URL}
 REDIS_URL=${REDIS_URL}
@@ -70,7 +82,7 @@ EOF"
       - name: Collect logs (last 30 lines per service)
         run: |
           set -e
-          > logs.txt
+            > logs.txt
           for svc in backend frontend worker nginx; do
             echo "===== $svc =====" | tee -a logs.txt
             ssh ${VPS_USER}@${VPS_HOST} "docker logs --tail=30 watan-$svc" 2>&1 | tee -a logs.txt || echo "(failed to fetch $svc logs)" | tee -a logs.txt
