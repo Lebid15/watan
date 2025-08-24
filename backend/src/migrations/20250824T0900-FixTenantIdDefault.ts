@@ -4,27 +4,36 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class FixTenantIdDefault20250824T0900 implements MigrationInterface {
   name = 'FixTenantIdDefault20250824T0900';
 
-  public async up(queryRunner: QueryRunner): Promise<void> {
+    public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-DO $$
-DECLARE v text; 
-BEGIN
-  -- Ensure required extension for gen_random_uuid (pgcrypto) exists (ignore errors if lacks permission)
+  DO $$
+  DECLARE v text; has_table bool;
   BEGIN
-    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-  EXCEPTION WHEN others THEN
-    -- ignore
-  END;
+    BEGIN
+      CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+    EXCEPTION WHEN others THEN END;
 
-  SELECT column_default INTO v
-  FROM information_schema.columns
-  WHERE table_name='tenant' AND column_name='id';
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables WHERE table_name='tenant'
+    ) INTO has_table;
 
-  -- If no default (or an empty / NULL expression), set one.
-  IF v IS NULL OR length(trim(coalesce(v,''))) = 0 THEN
-    EXECUTE 'ALTER TABLE "tenant" ALTER COLUMN "id" SET DEFAULT gen_random_uuid()';
-  END IF;
-END $$;
+    IF NOT has_table THEN
+      EXECUTE 'CREATE TABLE "tenant" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "name" varchar(120) NOT NULL,
+        "createdAt" timestamptz NOT NULL DEFAULT now()
+      )';
+      RAISE NOTICE 'Rescue: created tenant table.';
+    END IF;
+
+    SELECT column_default INTO v
+    FROM information_schema.columns
+    WHERE table_name='tenant' AND column_name='id';
+
+    IF v IS NULL OR length(trim(coalesce(v,''))) = 0 THEN
+      EXECUTE 'ALTER TABLE "tenant" ALTER COLUMN "id" SET DEFAULT gen_random_uuid()';
+    END IF;
+  END $$;
     `);
   }
 
