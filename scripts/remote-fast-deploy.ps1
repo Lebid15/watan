@@ -36,21 +36,21 @@ $BACKEND_CONTAINER = $env:BACKEND_CONTAINER; if([string]::IsNullOrWhiteSpace($BA
 
 Section "Fast Remote Deploy"; Color Green "Target: $SSH_TARGET  Dir: $REMOTE_DIR  Services: $SERVICES"
 
-# Remote bash script assembled as single string
-$remote = @"
+# Remote bash script assembled with placeholders (single-quoted here-string to avoid PowerShell parsing)
+$remote = @'
 set -euo pipefail
-REMOTE_DIR='$REMOTE_DIR'
-SERVICES='$SERVICES'
-BRANCH='$BRANCH'
-NO_BUILD='$NO_BUILD'
-NO_MIGRATIONS='$NO_MIGRATIONS'
-AUTO_SKIP_UNCHANGED='$AUTO_SKIP_UNCHANGED'
-BACKEND_PATHS='$BACKEND_PATHS'
-MIGRATION_CMD="$MIGRATION_CMD"
-HEALTH_PATH='$HEALTH_PATH'
-BACKEND_SERVICE='$BACKEND_SERVICE'
-BACKEND_CONTAINER='$BACKEND_CONTAINER'
-log(){ printf '\n[%s] %s\n' "$(date -u '+%H:%M:%S')" "$*"; }
+REMOTE_DIR="__REMOTE_DIR__"
+SERVICES="__SERVICES__"
+BRANCH="__BRANCH__"
+NO_BUILD="__NO_BUILD__"
+NO_MIGRATIONS="__NO_MIGRATIONS__"
+AUTO_SKIP_UNCHANGED="__AUTO_SKIP_UNCHANGED__"
+BACKEND_PATHS="__BACKEND_PATHS__"
+MIGRATION_CMD="__MIGRATION_CMD__"
+HEALTH_PATH="__HEALTH_PATH__"
+BACKEND_SERVICE="__BACKEND_SERVICE__"
+BACKEND_CONTAINER="__BACKEND_CONTAINER__"
+log(){ printf "\n[%s] %s\n" "$(date -u '+%H:%M:%S')" "$*"; }
 fail(){ echo "[FATAL] $*" >&2; exit 90; }
 cd "$REMOTE_DIR" 2>/dev/null || fail "Remote dir $REMOTE_DIR not found"
 [ -d .git ] || fail "Not a git repo"
@@ -74,7 +74,26 @@ if [ "$NO_MIGRATIONS" != 1 ]; then log '5) migrations'; if ! docker compose exec
 log '6) health'; if docker compose exec -T "$BACKEND_SERVICE" wget -q -O - "http://localhost:3000$HEALTH_PATH" >/dev/null; then echo '[OK] health'; else echo '[ERROR] health failed'; docker logs --tail=80 "$BACKEND_CONTAINER" || true; exit 40; fi
 log '7) mark commit'; mkdir -p .deploy; echo "$CURRENT_COMMIT" > "$LAST_FILE"
 log "Done fast deploy $CURRENT_COMMIT"
-"@
+'@
+
+# Substitute placeholders safely
+$replacements = @{
+  '__REMOTE_DIR__'       = $REMOTE_DIR
+  '__SERVICES__'         = $SERVICES
+  '__BRANCH__'           = $BRANCH
+  '__NO_BUILD__'         = $NO_BUILD
+  '__NO_MIGRATIONS__'    = $NO_MIGRATIONS
+  '__AUTO_SKIP_UNCHANGED__' = $AUTO_SKIP_UNCHANGED
+  '__BACKEND_PATHS__'    = $BACKEND_PATHS
+  '__MIGRATION_CMD__'    = $MIGRATION_CMD
+  '__HEALTH_PATH__'      = $HEALTH_PATH
+  '__BACKEND_SERVICE__'  = $BACKEND_SERVICE
+  '__BACKEND_CONTAINER__'= $BACKEND_CONTAINER
+}
+foreach($k in $replacements.Keys){
+  $escaped = [Regex]::Escape($k)
+  $remote = [Regex]::Replace($remote, $escaped, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) ($replacements[$k] -replace '"','\"') })
+}
 
 $sshCmd = "ssh -o BatchMode=yes $SSH_TARGET bash -s"
 
