@@ -36,6 +36,21 @@ $BACKEND_CONTAINER = $env:BACKEND_CONTAINER; if([string]::IsNullOrWhiteSpace($BA
 
 Section "Fast Remote Deploy"; Color Green "Target: $SSH_TARGET  Dir: $REMOTE_DIR  Services: $SERVICES"
 
+# Early connectivity sanity check
+try {
+  $test = & ssh -o BatchMode=yes -o ConnectTimeout=5 $SSH_TARGET echo ok 2>&1
+  if ($LASTEXITCODE -ne 0 -or -not ($test -match 'ok')) {
+    Section 'Fast Deployment FAILED'
+    Color Red "لا يمكن الوصول إلى $SSH_TARGET عبر SSH. حدد العنوان مباشرة مثلاً:"
+    Color Yellow "مثال:  $env:SSH_TARGET='root@YOUR_SERVER_IP'; .\\scripts\\remote-fast-deploy.ps1"
+    Color Yellow "أو اضف alias في %USERPROFILE%\\.ssh\\config مثل:\nHost syr1-vps\n  HostName 1.2.3.4\n  User root\n  IdentityFile ~/.ssh/watan_deploy_ed25519"
+    return
+  }
+} catch {
+  Section 'Fast Deployment FAILED'
+  Color Red "فشل اختبار SSH المبكر: $_"; return
+}
+
 # Remote bash script assembled with placeholders (single-quoted here-string to avoid PowerShell parsing)
 $remote = @'
 set -euo pipefail
