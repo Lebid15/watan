@@ -119,6 +119,26 @@ jobs:
           scp -o StrictHostKeyChecking=no .deploy_tmp/.env "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/.env"
           rm -rf .deploy_tmp
 
+      - name: Normalize DATABASE_URL host if pointing to localhost
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh $VPS_USER@$VPS_HOST 'bash -euo pipefail <<EOF
+          if [ -f "$DEPLOY_DIR/.env" ]; then
+            current=$(grep -E "^DATABASE_URL=" "$DEPLOY_DIR/.env" | cut -d= -f2- || true)
+            if echo "$current" | grep -Eq "@localhost(:|/)|@127\.0\.0\.1(:|/)"; then
+              echo "Rewriting DATABASE_URL host from localhost to postgres";
+              norm=$(echo "$current" | sed -E "s#(://[^@]*@)(localhost|127\\.0\\.0\\.1)(:|/)#\\1postgres\\3#")
+              sed -i "s#^DATABASE_URL=.*#DATABASE_URL=$norm#" "$DEPLOY_DIR/.env"
+            else
+              echo "DATABASE_URL host does not need normalization";
+            fi
+            grep -E "^DATABASE_URL=" "$DEPLOY_DIR/.env"
+          else
+            echo ".env not found to normalize";
+          fi
+EOF'
+
       - name: Pre-compose diagnostics
         run: |
           set -euxo pipefail
