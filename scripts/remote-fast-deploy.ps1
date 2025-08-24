@@ -36,19 +36,24 @@ $BACKEND_CONTAINER = $env:BACKEND_CONTAINER; if([string]::IsNullOrWhiteSpace($BA
 
 Section "Fast Remote Deploy"; Color Green "Target: $SSH_TARGET  Dir: $REMOTE_DIR  Services: $SERVICES"
 
-# Early connectivity sanity check
+$DEBUG = $env:DEBUG; if([string]::IsNullOrWhiteSpace($DEBUG)){ $DEBUG = '0' }
+
+# Early connectivity sanity check (ASCII messages to avoid mojibake)
 try {
-  $test = & ssh -o BatchMode=yes -o ConnectTimeout=5 $SSH_TARGET echo ok 2>&1
-  if ($LASTEXITCODE -ne 0 -or -not ($test -match 'ok')) {
+  $test = & ssh -o BatchMode=yes -o ConnectTimeout=5 $SSH_TARGET echo __ssh_ok__ 2>&1
+  if ($DEBUG -eq '1') { Color Yellow "[DEBUG] SSH probe output: $test" }
+  if ($LASTEXITCODE -ne 0 -or -not ($test -match '__ssh_ok__')) {
     Section 'Fast Deployment FAILED'
-    Color Red "لا يمكن الوصول إلى $SSH_TARGET عبر SSH. حدد العنوان مباشرة مثلاً:"
-    Color Yellow "مثال:  $env:SSH_TARGET='root@YOUR_SERVER_IP'; .\\scripts\\remote-fast-deploy.ps1"
-    Color Yellow "أو اضف alias في %USERPROFILE%\\.ssh\\config مثل:\nHost syr1-vps\n  HostName 1.2.3.4\n  User root\n  IdentityFile ~/.ssh/watan_deploy_ed25519"
+    Color Red "SSH connect failed for $SSH_TARGET"
+    Color Yellow "Tip: set explicit target:  $env:SSH_TARGET='root@SERVER_IP'; .\\scripts\\remote-fast-deploy.ps1"
+    Color Yellow "Or add an alias to %USERPROFILE%\\.ssh\\config:"
+    Color Yellow "Host syr1-vps`n  HostName 1.2.3.4`n  User root`n  IdentityFile ~/.ssh/watan_deploy_ed25519"
+    Color Yellow "Raw error: $test"
     return
   }
 } catch {
   Section 'Fast Deployment FAILED'
-  Color Red "فشل اختبار SSH المبكر: $_"; return
+  Color Red "Early SSH test exception: $_"; return
 }
 
 # Remote bash script assembled with placeholders (single-quoted here-string to avoid PowerShell parsing)
@@ -66,6 +71,8 @@ HEALTH_PATH="__HEALTH_PATH__"
 BACKEND_SERVICE="__BACKEND_SERVICE__"
 BACKEND_CONTAINER="__BACKEND_CONTAINER__"
 log(){ printf "\n[%s] %s\n" "$(date -u '+%H:%M:%S')" "$*"; }
+if [ "__DEBUG__" = "1" ]; then set -x; fi
+$replacements['__DEBUG__'] = $DEBUG
 fail(){ echo "[FATAL] $*" >&2; exit 90; }
 cd "$REMOTE_DIR" 2>/dev/null || fail "Remote dir $REMOTE_DIR not found"
 [ -d .git ] || fail "Not a git repo"
