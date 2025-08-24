@@ -49,7 +49,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
 
       # 3) Sanity git
       - name: Sanity git
@@ -120,9 +119,21 @@ jobs:
           scp -o StrictHostKeyChecking=no .deploy_tmp/.env "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/.env"
           rm -rf .deploy_tmp
 
+      - name: Pre-compose diagnostics
+        run: |
+          set -euxo pipefail
+          ssh ${VPS_USER}@${VPS_HOST} "docker --version || true"
+          ssh ${VPS_USER}@${VPS_HOST} "docker compose version || true"
+          ssh ${VPS_USER}@${VPS_HOST} "ls -al ${DEPLOY_DIR} || true"
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && head -n 50 docker-compose.yml || sed -n '1,80p' docker-compose.yml"
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && grep -n 'image:' docker-compose.yml || true"
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose config --quiet" || echo 'compose config had issues'
+
       - name: Docker compose build & up
         run: |
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose build --pull && docker compose up -d"
+          set -euo pipefail
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose build --pull"
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose up -d"
 
       - name: Show containers
         run: |
