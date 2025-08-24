@@ -132,10 +132,16 @@ jobs:
       - name: Docker compose build & up
         run: |
           set -euo pipefail
-          COMPOSE_CMD="docker compose"
-          if ssh ${VPS_USER}@${VPS_HOST} "command -v docker-compose >/dev/null 2>&1"; then
+          # Prefer Docker Compose v2 plugin; fallback to legacy docker-compose only if plugin absent
+          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
+            COMPOSE_CMD="docker compose"
+          elif ssh ${VPS_USER}@${VPS_HOST} "command -v docker-compose >/dev/null 2>&1"; then
             COMPOSE_CMD="docker-compose"
+          else
+            echo "No docker compose command found" >&2; exit 1
           fi
+          # Clean previous stack to avoid legacy volume merge bug (KeyError: 'ContainerConfig')
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD down --remove-orphans || true"
           ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD build --pull"
           ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD up -d"
 
