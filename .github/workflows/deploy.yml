@@ -58,7 +58,7 @@ jobs:
           set -e
           PTBD="${PUBLIC_TENANT_BASE_DOMAIN:-syrz1.com}"
           mkdir -p .deploy_tmp
-          cat > .deploy_tmp/.env <<EOF
+          cat > .deploy_tmp/.env <<'ENVEOF'
 DATABASE_URL=${DATABASE_URL}
 REDIS_URL=${REDIS_URL}
 JWT_SECRET=${JWT_SECRET}
@@ -70,7 +70,7 @@ INITIAL_ROOT_EMAIL=owner@example.com
 INITIAL_ROOT_PASSWORD=ChangeMe123!
 BOOTSTRAP_ENABLED=true
 NEXT_PUBLIC_API_URL=http://api.syrz1.com/api
-EOF
+ENVEOF
 
       - name: Upload .env to VPS
         shell: bash
