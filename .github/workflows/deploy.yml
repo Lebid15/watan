@@ -183,11 +183,15 @@ jobs:
           if [ "$port" = "$raw" ] || [ -z "$port" ]; then port=5432; fi
           echo "DB host: $host port: $port"
           if [ "$host" = "localhost" ] || [ "$host" = "127.0.0.1" ]; then
-            echo "ERROR: DATABASE_URL points to $host which is NOT reachable from inside Docker containers unless Postgres runs as another service."
-            echo "Fix options: 1) Use real external host/IP 2) Add postgres service to docker-compose 3) Use host.docker.internal with extra_hosts on Linux."
-            exit 1
+            if grep -qE '^  postgres:' docker-compose.yml; then
+              echo "Localhost detected but internal postgres service exists (docker-compose). Proceeding without external TCP test."
+              exit 0
+            else
+              echo "ERROR: DATABASE_URL points to $host with no internal postgres service defined.";
+              exit 1
+            fi
           fi
-          echo "Testing TCP connectivity..."
+          echo "Testing TCP connectivity to $host:$port from VPS host..."
           ssh ${VPS_USER}@${VPS_HOST} "bash -c 'timeout 5 bash -c </dev/tcp/$host/$port'" 2>/dev/null && echo "Port reachable" || { echo "Cannot reach $host:$port (firewall/DNS?)."; exit 1; }
 
       - name: Run backend migrations in container
