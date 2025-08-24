@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
     healthcheck:
       # Nest global prefix is /api, so health endpoint is /api/health
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
