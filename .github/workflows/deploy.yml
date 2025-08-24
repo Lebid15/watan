@@ -58,19 +58,19 @@ jobs:
           set -e
           PTBD="${PUBLIC_TENANT_BASE_DOMAIN:-syrz1.com}"
           mkdir -p .deploy_tmp
-          cat > .deploy_tmp/.env <<'ENVEOF'
-DATABASE_URL=${DATABASE_URL}
-REDIS_URL=${REDIS_URL}
-JWT_SECRET=${JWT_SECRET}
-PUBLIC_TENANT_BASE_DOMAIN=${PTBD}
-AUTO_MIGRATIONS=true
-HOST=0.0.0.0
-PORT=3000
-INITIAL_ROOT_EMAIL=owner@example.com
-INITIAL_ROOT_PASSWORD=ChangeMe123!
-BOOTSTRAP_ENABLED=true
-NEXT_PUBLIC_API_URL=http://api.syrz1.com/api
-ENVEOF
+          {
+            echo "DATABASE_URL=${DATABASE_URL}"
+            echo "REDIS_URL=${REDIS_URL}"
+            echo "JWT_SECRET=${JWT_SECRET}"
+            echo "PUBLIC_TENANT_BASE_DOMAIN=${PTBD}"
+            echo "AUTO_MIGRATIONS=true"
+            echo "HOST=0.0.0.0"
+            echo "PORT=3000"
+            echo "INITIAL_ROOT_EMAIL=owner@example.com"
+            echo "INITIAL_ROOT_PASSWORD=ChangeMe123!"
+            echo "BOOTSTRAP_ENABLED=true"
+            echo "NEXT_PUBLIC_API_URL=http://api.syrz1.com/api"
+          } > .deploy_tmp/.env
 
       - name: Upload .env to VPS
         shell: bash
