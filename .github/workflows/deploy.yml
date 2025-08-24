@@ -135,7 +135,7 @@ jobs:
           # Remove containers that may persist from failed previous runs causing name conflicts
           ssh ${VPS_USER}@${VPS_HOST} '
             echo "Existing containers before cleanup:" && docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "^watan-" || true
-            for c in watan-backend watan-frontend watan-worker watan-nginx; do
+            for c in watan-backend watan-frontend watan-worker watan-nginx watan-postgres; do
               if docker ps -a --format "{{.Names}}" | grep -q "^$c$"; then
                 echo "Removing lingering container $c";
                 docker rm -f "$c" || true;
