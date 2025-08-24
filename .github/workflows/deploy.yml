@@ -132,8 +132,12 @@ jobs:
       - name: Docker compose build & up
         run: |
           set -euo pipefail
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose build --pull"
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose up -d"
+          COMPOSE_CMD="docker compose"
+          if ssh ${VPS_USER}@${VPS_HOST} "command -v docker-compose >/dev/null 2>&1"; then
+            COMPOSE_CMD="docker-compose"
+          fi
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD build --pull"
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD up -d"
 
       - name: Show containers
         run: |
