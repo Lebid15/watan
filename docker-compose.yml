@@ -34,7 +34,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL}
+      # Explicit internal DB URL (fallback if .env not loaded)
+      DATABASE_URL: postgres://watan:changeme@postgres:5432/watan?sslmode=disable
       REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET}
       PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
@@ -91,7 +92,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: postgres://watan:changeme@postgres:5432/watan?sslmode=disable
       REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET}
       PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
