@@ -1,0 +1,101 @@
+import { MigrationInterface, QueryRunner } from 'typeorm';
+
+/**
+ * Baseline creation of product_orders table.
+ * لاحقًا جميع الـ migrations الحالية تستخدم ALTER TABLE IF NOT EXISTS لإضافة أعمدة/فهارس.
+ * إذا كان الجدول مفقود (الحالة الحالية في الإنتاج) تفشل أول migration تحاول إضافة أعمدة.
+ * هذا الـ baseline يُنشئ الجدول بكامل الأعمدة المستخدمة حاليًا حتى لا تفشل باقي الـ migrations.
+ */
+export class CreateProductOrders1723000000000 implements MigrationInterface {
+  name = 'CreateProductOrders1723000000000';
+
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    // Ensure uuid extension (safe if exists)
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
+
+    // Create table if missing
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.tables WHERE table_name = 'product_orders'
+        ) THEN
+          CREATE TABLE "product_orders" (
+            -- Using uuid_generate_v4() consistent with other tables
+            "id" uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+            "tenantId" uuid NULL,
+            "orderNo" int NULL,
+            "productId" uuid NULL,
+            "packageId" uuid NULL,
+            "quantity" int NOT NULL DEFAULT 1,
+            "sellPriceCurrency" varchar(10) NOT NULL DEFAULT 'USD',
+            "sellPriceAmount" numeric(10,2) NOT NULL DEFAULT 0,
+            "price" numeric(10,2) NOT NULL DEFAULT 0,
+            "costCurrency" varchar(10) NOT NULL DEFAULT 'USD',
+            "costAmount" numeric(10,2) NOT NULL DEFAULT 0,
+            "profitAmount" numeric(10,2) NOT NULL DEFAULT 0,
+            "status" varchar NOT NULL DEFAULT 'pending',
+            "userId" uuid NULL,
+            "userIdentifier" varchar NULL,
+            "extraField" varchar NULL,
+            "providerId" varchar NULL,
+            "externalOrderId" varchar NULL,
+            "externalStatus" varchar NOT NULL DEFAULT 'not_sent',
+            "attempts" int NOT NULL DEFAULT 0,
+            "lastMessage" varchar(250) NULL,
+            "manualNote" text NULL,
+            "notes" jsonb NOT NULL DEFAULT '[]',
+            "pinCode" varchar(120) NULL,
+            "sentAt" timestamptz NULL,
+            "lastSyncAt" timestamptz NULL,
+            "completedAt" timestamptz NULL,
+            "fxUsdTryAtApproval" numeric(12,6) NULL,
+            "sellTryAtApproval" numeric(12,2) NULL,
+            "costTryAtApproval" numeric(12,2) NULL,
+            "profitTryAtApproval" numeric(12,2) NULL,
+            "profitUsdAtApproval" numeric(12,2) NULL,
+            "approvedAt" timestamptz NULL,
+            "approvedLocalDate" date NULL,
+            "approvedLocalMonth" char(7) NULL,
+            "fxCapturedAt" timestamptz NULL,
+            "fxSource" varchar(50) NULL,
+            "fxLocked" boolean NOT NULL DEFAULT false,
+            "createdAt" timestamptz NOT NULL DEFAULT now(),
+            "providerMessage" text NULL,
+            "notesCount" int NOT NULL DEFAULT 0
+          );
+          RAISE NOTICE 'Created table product_orders (baseline)';
+        END IF;
+      END$$;
+    `);
+
+    // Sequence for orderNo (if not exists) + default
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'product_orders_orderNo_seq') THEN
+          CREATE SEQUENCE product_orders_orderNo_seq;
+        END IF;
+        -- Ensure default only if column exists & has no default
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns WHERE table_name='product_orders' AND column_name='orderNo'
+        ) THEN
+          EXECUTE 'ALTER TABLE "product_orders" ALTER COLUMN "orderNo" SET DEFAULT nextval(''product_orders_orderNo_seq'')';
+        END IF;
+      END$$;
+    `);
+
+    // Basic indexes & unique composite (orderNo unique per tenant when not null)
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_orders_tenant" ON "product_orders" ("tenantId")`);
+  await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_orders_order_no" ON "product_orders" ("orderNo")`);
+    await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "uq_orders_tenant_order_no" ON "product_orders" ("tenantId","orderNo") WHERE "orderNo" IS NOT NULL`);
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_orders_created_at" ON "product_orders" ("createdAt")`);
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_orders_fxLocked" ON "product_orders" ("fxLocked")`);
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_orders_approvedLocalDate" ON "product_orders" ("approvedLocalDate")`);
+  }
+
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP TABLE IF EXISTS "product_orders"`);
+    await queryRunner.query(`DROP SEQUENCE IF EXISTS product_orders_orderNo_seq`);
+  }
+}
