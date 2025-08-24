@@ -1,6 +1,25 @@
 version: '3.9'
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: watan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: watan
+      POSTGRES_USER: watan
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    expose:
+      - '5432'
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "watan"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build: ./backend
     container_name: watan-backend
@@ -23,6 +42,9 @@ services:
       - '3000'
     volumes:
       - backend_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
@@ -75,6 +97,7 @@ services:
       PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
     depends_on:
       - backend
+      - postgres
     volumes:
       - backend_logs:/app/logs
     healthcheck:
@@ -85,12 +108,15 @@ services:
       start_period: 10s
 
 volumes:
+  pg_data:
   backend_logs:
   frontend_logs:
   nginx_logs:
 
 ## Usage:
 # 1) Create a .env file (DATABASE_URL, REDIS_URL, JWT_SECRET, etc.)
+#    Example internal DB URL now that Postgres service is added:
+#    DATABASE_URL=postgres://watan:changeme@postgres:5432/watan?sslmode=disable
 # 2) docker compose build --pull
 # 3) docker compose up -d
 # 4) Point DNS (Cloudflare) A/CNAME records:
