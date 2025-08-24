@@ -43,9 +43,10 @@ jobs:
           done
           if [ $missing -ne 0 ]; then exit 1; fi
 
-      - name: Rsync project to VPS
+      - name: Upload project to VPS (tar over SSH)
         run: |
-          rsync -az --delete --exclude '.git' ./ ${VPS_USER}@${VPS_HOST}:${DEPLOY_DIR}
+          ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${DEPLOY_DIR}"
+          tar cz --exclude='.git' . | ssh ${VPS_USER}@${VPS_HOST} "tar xz -C ${DEPLOY_DIR}"
 
       - name: Create .env locally
         shell: bash
