@@ -123,11 +123,11 @@ jobs:
         run: |
           set -euxo pipefail
           ssh ${VPS_USER}@${VPS_HOST} "docker --version || true"
-          ssh ${VPS_USER}@${VPS_HOST} "docker compose version || true"
+          ssh ${VPS_USER}@${VPS_HOST} "docker compose version 2>/dev/null || docker-compose --version || true"
           ssh ${VPS_USER}@${VPS_HOST} "ls -al ${DEPLOY_DIR} || true"
           ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && head -n 50 docker-compose.yml || sed -n '1,80p' docker-compose.yml"
           ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && grep -n 'image:' docker-compose.yml || true"
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose config --quiet" || echo 'compose config had issues'
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && (docker compose config --quiet 2>/dev/null || docker-compose config --quiet)" || echo 'compose config had issues'
 
       - name: Docker compose build & up
         run: |
@@ -147,7 +147,7 @@ jobs:
 
       - name: Show containers
         run: |
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && docker compose ps"
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && (docker compose ps 2>/dev/null || docker-compose ps)"
 
       - name: Health check frontend & backend
         run: |
