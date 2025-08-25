@@ -50,6 +50,8 @@ async function bootstrap() {
       'https://watan-frontend.onrender.com',
       'http://ahmad.localhost:3000',
       'http://saeed.localhost:3000',
+      'https://syrz1.com',
+      'https://www.syrz1.com',
       // نمط عام للنطاقات الفرعية المحلية
       /^http:\/\/[a-zA-Z0-9-]+\.localhost:3000$/,
     ],
