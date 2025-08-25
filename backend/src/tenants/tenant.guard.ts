@@ -22,19 +22,18 @@ const PUBLIC_PATHS: RegExp[] = [
 
 // Routes that still require auth/roles (handled at controller) but do NOT require a tenant context.
 // We short‑circuit tenant checks here so developer / instance_owner can manage global dev providers.
+// Support both with and without the global prefix (/api) because req.path in Nest can exclude the prefix
+// (Express gives originalUrl='/api/...', path may be '/admin/...'). So we allow optional (api/)? group.
 const NO_TENANT_REQUIRED_PATHS: RegExp[] = [
-  /^\/api\/admin\/providers\/dev(\/|$)/, // list/create/diag/update/delete dev providers
-  /^\/api\/admin\/providers\/[^/]+\/catalog-import(\/|$)/, // import catalog for dev provider (global scope)
-  /^\/api\/admin\/providers\/import-jobs\/[^/]+$/, // check async import job status
-  // Global catalog (developer scope) listing endpoints — read-only, still protected by JwtAuth + Roles(dev/instance_owner)
-  /^\/api\/admin\/catalog\/products(\/|$)/, // list products, also covers /products/:id/packages because narrower regex added below
-  /^\/api\/admin\/catalog\/products\/[^/]+\/packages$/,
-  // Global tenant management (developers / instance_owner need to bootstrap tenants without impersonation)
-  /^\/api\/admin\/tenants(\/|$)/,
-  // Global stats (developer / instance owner overview)
-  /^\/api\/admin\/stats(\/|$)/,
-  // Developer error monitoring
-  /^\/api\/dev\/errors(\/|$)/,
+  /^\/(api\/)?admin\/providers\/dev(\/?|$)/,
+  /^\/(api\/)?admin\/providers\/[^/]+\/catalog-import(\/|$)/,
+  /^\/(api\/)?admin\/providers\/import-jobs\/[^/]+$/,
+  /^\/(api\/)?admin\/catalog\/products(\/?|$)/,
+  /^\/(api\/)?admin\/catalog\/products\/[^/]+\/packages$/,
+  /^\/(api\/)?admin\/tenants(\/?|$)/,
+  /^\/(api\/)?admin\/stats(\/?|$)/,
+  /^\/(api\/)?dev\/errors(\/?|$)/,
+  /^\/(api\/)?admin\/upload(\/?|$)/,
 ];
 
 @Injectable()
@@ -43,7 +42,15 @@ export class TenantGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const req: any = context.switchToHttp().getRequest();
-    const path = req.path || req.url || '';
+  const path = req.path || req.url || '';
+  const original = req.originalUrl || '';
+    // DEBUG (مؤقت): اطبع المسار وقرار التخطّي
+    if (process.env.DEBUG_TENANT_GUARD === '1') {
+      const pub = PUBLIC_PATHS.some(r => r.test(path));
+      const noTenant = NO_TENANT_REQUIRED_PATHS.some(r => r.test(path));
+      // eslint-disable-next-line no-console
+  console.log('[TenantGuard][DEBUG] path=%s original=%s pub=%s noTenant=%s', path, original, pub, noTenant);
+    }
 
   if (PUBLIC_PATHS.some(r => r.test(path))) return true;
 
@@ -59,8 +66,8 @@ export class TenantGuard implements CanActivate {
 
     if (!user) throw new UnauthorizedException('Auth required');
 
-    // Developer/instance_owner may have user.tenantId null, but once accessing tenant route ensure impersonation (tenantId present in token)
-    if ((user.role === 'developer' || user.role === 'instance_owner')) {
+  // المطور فقط يُسمح له بالوصول بعد الانتحال في سياق تينانت
+  if (user.role === 'developer') {
       if (!user.tenantId || user.tenantId !== tenant.id) {
         // Not impersonated properly
         throw new ForbiddenException('Impersonation required for tenant access');

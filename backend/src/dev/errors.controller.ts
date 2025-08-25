@@ -7,7 +7,7 @@ import { Req } from '@nestjs/common';
 
 @Controller('dev/errors')
 @UseGuards(JwtAuthGuard)
-@Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+@Roles(UserRole.DEVELOPER)
 export class ErrorsController {
   constructor(private readonly errors: ErrorsService) {}
 

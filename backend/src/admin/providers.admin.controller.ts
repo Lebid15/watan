@@ -43,7 +43,7 @@ export class ProvidersAdminController {
 
   /** إنشاء مزوّد مطوّر (scope=dev) */
   @Post('dev')
-  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
   async createDevProvider(@Req() _req: any, @Body() dto: CreateIntegrationDto) {
     try {
       console.log('[DEV-PROVIDER][CREATE] incoming dto=', dto);
@@ -68,7 +68,7 @@ export class ProvidersAdminController {
 
   /** قائمة مزوّدي المطوّر فقط */
   @Get('dev')
-  @Roles(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
   async listDevProviders(@Req() req: any) {
     const items = await this.integrations.list(null, 'dev');
     return { ok: true, items };
@@ -76,7 +76,7 @@ export class ProvidersAdminController {
 
   /** تشخيص: عرض أعمدة جدول integrations للتأكد من نشر العمود scope وغيره */
   @Get('dev/diag')
-  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+  @Roles(UserRole.DEVELOPER)
   async diagIntegrations() {
     try {
       const cols = await this.dataSource.query(`SELECT column_name, data_type FROM information_schema.columns WHERE table_name='integrations' ORDER BY column_name`);
@@ -88,7 +88,7 @@ export class ProvidersAdminController {
 
   /** تعديل مزوّد مطوّر */
   @Patch('dev/:id')
-  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
   async updateDevProvider(
     @Param('id') id: string,
     @Body() dto: UpdateIntegrationDto,
@@ -105,7 +105,7 @@ export class ProvidersAdminController {
 
   /** حذف مزوّد مطوّر */
   @Delete('dev/:id')
-  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
   async deleteDevProvider(@Param('id') id: string) {
     // get قد يتطلب tenantId — dev → null
   const item = await this.integrations.get(id, null);
@@ -118,14 +118,14 @@ export class ProvidersAdminController {
 
   /** الاستيراد من مزوّد مطوّر محدد */
   @Post(':providerId/catalog-import')
-  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
   async importProviderCatalog(@Req() req: any, @Param('providerId') providerId: string) {
     const role = req.user?.role;
     const tenantId: string | null = req.tenant?.id ?? req.user?.tenantId ?? null;
   console.log(`[CatalogImport][Controller] START providerId=${providerId} role=${role} tenantId=${tenantId || 'null'}`);
 
     // المطوّر / مالك المنصة: يستورد إلى نطاق dev (بدون tenantId)
-    if (role === 'developer' || role === 'instance_owner') {
+  if (role === 'developer') {
       const integ = await this.integrations.get(providerId, null);
       if (!integ || (integ as any).scope !== 'dev') {
         throw new BadRequestException('Provider must be scope=dev');
@@ -136,7 +136,7 @@ export class ProvidersAdminController {
     }
 
     // مسؤول التينانت: يستورد نسخة من مزوّد المطوّر إلى تينانته
-    if (role === 'admin') {
+  if (role === 'admin') {
       if (!tenantId) throw new BadRequestException('Tenant context missing');
       // نحاول أولاً جلبه كمزوّد مطوّر
       let integ: any;
@@ -159,7 +159,7 @@ export class ProvidersAdminController {
 
   /** قائمة مزوّدي المستأجر للفحص */
   @Get('tenant')
-  @Roles(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
   async listTenantProviders(@Req() req: any) {
     const tenantId = this.getTenantId(req);
     const items = await this.integrations.list(tenantId, 'tenant');
@@ -169,7 +169,7 @@ export class ProvidersAdminController {
   /** تشغيل الاستيراد بالخلفية وإرجاع jobId فوري (مبدئي بسيط داخل الذاكرة) */
   private static pendingJobs: Record<string, any> = {};
   @Post(':providerId/catalog-import/async')
-  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
   async importProviderCatalogAsync(@Req() req: any, @Param('providerId') providerId: string) {
     const role = req.user?.role;
     const tenantId: string | null = req.tenant?.id ?? req.user?.tenantId ?? null;
@@ -188,7 +188,7 @@ export class ProvidersAdminController {
 
   /** فحص حالة job async */
   @Get('import-jobs/:jobId')
-  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
   async getImportJob(@Param('jobId') jobId: string) {
     const j = ProvidersAdminController.pendingJobs[jobId];
     if (!j) return { ok: false, error: 'job not found' };

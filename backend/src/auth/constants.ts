@@ -1,4 +1,4 @@
 // src/auth/constants.ts
 export const jwtConstants = {
-  secret: 'WatanSuperSecret2025!',
+  secret: process.env.JWT_SECRET || 'WatanSuperSecret2025!',
 };

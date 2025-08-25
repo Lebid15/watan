@@ -35,7 +35,10 @@ export class AuthService {
       console.log('[AUTH] lookup as OWNER (tenantId IS NULL) -> found?', !!user);
     }
 
-    if (!user) return null;
+    if (!user) {
+      console.warn('[AUTH] login failed: user not found for identifier=', emailOrUsername, 'tenantIdCtx=', tenantId);
+      return null;
+    }
 
     let isMatch = false;
     const hash = user.password;
@@ -53,7 +56,10 @@ export class AuthService {
       }
     }
     console.log('[AUTH] password match?', isMatch, 'algo=', hash.startsWith('$argon2') ? 'argon2' : 'bcrypt', 'role=', user.role, 'tenantId=', user.tenantId ?? null);
-    if (!isMatch) return null;
+    if (!isMatch) {
+      console.warn('[AUTH] login failed: bad password for user id', user.id, 'identifier=', emailOrUsername, 'tenantIdCtx=', tenantId);
+      return null;
+    }
 
     const { password: _omitted, ...result } = user;
     return result as any;

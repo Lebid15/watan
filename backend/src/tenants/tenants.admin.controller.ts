@@ -10,7 +10,7 @@ import { PatchDomainDto } from './dto/patch-domain.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+@Roles(UserRole.ADMIN, UserRole.DEVELOPER)
 // لا نضع "api/" هنا لأننا نستخدم setGlobalPrefix('api') في main.ts
 @Controller('admin/tenants')
 export class TenantsAdminController {

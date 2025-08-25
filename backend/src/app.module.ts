@@ -27,6 +27,7 @@ import { RateLimiterRegistry, RateLimitGuard } from './common/rate-limit.guard';
 import { ErrorsModule } from './dev/errors.module';
 import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './dev/all-exceptions.filter';
+import { SchemaGuardService } from './infrastructure/schema/schema-guard.service';
 
 @Module({
   imports: [
@@ -105,8 +106,9 @@ import { AllExceptionsFilter } from './dev/all-exceptions.filter';
   providers: [
     { provide: APP_GUARD, useClass: TenantGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
-    RateLimiterRegistry,
+  RateLimiterRegistry,
     RateLimitGuard,
+  SchemaGuardService,
   ],
 })
 export class AppModule implements NestModule {

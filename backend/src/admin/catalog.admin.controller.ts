@@ -32,7 +32,7 @@ function normalizePkgName(input: any): string {
 
 @Controller('admin/catalog')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+@Roles(UserRole.DEVELOPER, UserRole.ADMIN)
 export class CatalogAdminController {
   constructor(
     @InjectRepository(CatalogProduct)  private readonly productsRepo:   Repository<CatalogProduct>,

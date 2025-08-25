@@ -21,7 +21,7 @@ function getCloud() {
 
 @Controller('admin/upload')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.DEVELOPER, UserRole.ADMIN)
 export class UploadController {
   @Post()
   @UseInterceptors(

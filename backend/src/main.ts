@@ -24,6 +24,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { DataSource } from 'typeorm';
 import { User } from './user/user.entity';
+import { SchemaGuardService } from './infrastructure/schema/schema-guard.service';
 import * as bcrypt from 'bcrypt';
 
 async function bootstrap() {
@@ -452,6 +453,14 @@ async function bootstrap() {
   // يمكنك حذف متغيرات INITIAL_DEV_EMAIL و INITIAL_DEV_PASSWORD و RESET_DEV_ON_DEPLOY من البيئة.
 
   await app.listen(port, host);
+
+  // Run schema guard AFTER migrations & bootstrap listen so it doesn't block startup.
+  try {
+    const guard = app.get(SchemaGuardService);
+    await guard.verify();
+  } catch (e: any) {
+    console.warn('⚠️ [SchemaGuard] Could not run verification:', e?.message || e);
+  }
 
   // ✅ اختبار اتصال DB بعد الاستماع
   try {

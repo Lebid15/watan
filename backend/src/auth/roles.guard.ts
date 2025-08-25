@@ -19,12 +19,10 @@ export class RolesGuard implements CanActivate {
       return false; // إذا كان المستخدم أو الدور مفقودين
     }
 
-    // السماح للمطوّر ومالك النسخة بعدم وجود tenantId
-    const globalRoles = [UserRole.DEVELOPER, UserRole.INSTANCE_OWNER];
-    if (!user.tenantId && !globalRoles.includes(user.role)) {
-      return false; // المستخدمون العاديون يحتاجون tenantId
-    }
-
-    return requiredRoles.includes(user.role);
+  // السماح فقط للمطور بعدم وجود tenantId
+  const roleLower = String(user.role).toLowerCase();
+  if (!user.tenantId && roleLower !== UserRole.DEVELOPER) return false;
+  const needed = requiredRoles.map(r => String(r).toLowerCase());
+  return needed.includes(roleLower);
   }
 }
