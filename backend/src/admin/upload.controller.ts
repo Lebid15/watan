@@ -43,16 +43,43 @@ export class UploadController {
     try {
       const cloudinary = getCloud();
       const result = await new Promise<{ secure_url: string }>((resolve, reject) => {
+        // Debug معلومات عن الملف
+        // eslint-disable-next-line no-console
+        console.log('[Admin Upload][DEBUG] incoming file', {
+          originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+            bufferLen: file.buffer?.length,
+        });
         const stream = cloudinary.uploader.upload_stream(
           {
             folder: 'watan',
             resource_type: 'image',
           },
           (err, res) => {
+            // eslint-disable-next-line no-console
+            console.log('[Admin Upload][DEBUG] cloudinary callback', {
+              hasErr: !!err,
+              errType: err && typeof err,
+              errKeys: err && Object.keys(err || {}),
+              errMessage: err?.message,
+              resHasError: !!(res as any)?.error,
+              resError: (res as any)?.error,
+            });
             if (err) return reject(err);
+            if ((res as any)?.error) return reject((res as any).error);
+            if (!res) return reject(new Error('Empty Cloudinary response'));
             resolve(res as any);
           },
         );
+        stream.on('error', (e) => {
+          // eslint-disable-next-line no-console
+          console.error('[Admin Upload][DEBUG] stream error event', {
+            message: (e as any)?.message,
+            name: (e as any)?.name,
+          });
+          reject(e);
+        });
         stream.end(file.buffer);
       });
 
@@ -63,8 +90,12 @@ export class UploadController {
         message: err?.message,
         name: err?.name,
         http_code: err?.http_code,
+        stack: err?.stack?.split('\n').slice(0, 3).join(' | '),
+        raw: err,
       });
-      throw new InternalServerErrorException('فشل رفع الملف، تحقق من إعدادات Cloudinary.');
+      throw new InternalServerErrorException(
+        'فشل رفع الملف، تحقق من إعدادات Cloudinary (قد تكون المفاتيح خاطئة أو انقطع الاتصال).',
+      );
     }
   }
 }

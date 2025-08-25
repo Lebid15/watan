@@ -20,6 +20,7 @@ import { ProductPackage } from '../products/product-package.entity';
 
 // العملات (Tenant-scoped)
 import { Currency } from '../currencies/currency.entity';
+import { WebhooksService } from '../webhooks/webhooks.service';
 
 function normalizePkgName(input: any): string {
   const raw = (input ?? '').toString();
@@ -39,7 +40,8 @@ export class CatalogAdminController {
     @InjectRepository(CatalogPackage)  private readonly packagesRepo:   Repository<CatalogPackage>,
     @InjectRepository(Product)         private readonly shopProducts:   Repository<Product>,
     @InjectRepository(ProductPackage)  private readonly shopPackages:   Repository<ProductPackage>,
-    @InjectRepository(Currency)        private readonly currencyRepo:   Repository<Currency>,
+  @InjectRepository(Currency)        private readonly currencyRepo:   Repository<Currency>,
+  private readonly webhooks: WebhooksService,
   ) {}
 
   /* =======================
@@ -127,8 +129,8 @@ export class CatalogAdminController {
       );
     }
     // لو متجر بلا صورة وكتالوج عنده صورة → انسخها
-    if (!shopProduct.imageUrl && (catalogProduct as any).imageUrl) {
-      shopProduct.imageUrl = (catalogProduct as any).imageUrl;
+    if (!(shopProduct as any).catalogImageUrl && (catalogProduct as any).imageUrl) {
+      (shopProduct as any).catalogImageUrl = (catalogProduct as any).imageUrl; // copy into catalog reference field
       await this.shopProducts.save(shopProduct);
     }
 
@@ -214,8 +216,8 @@ export class CatalogAdminController {
           } as Partial<Product>)
         );
       }
-      if (!sp.imageUrl && (cp as any).imageUrl) {
-        sp.imageUrl = (cp as any).imageUrl;
+      if (!(sp as any).catalogImageUrl && (cp as any).imageUrl) {
+        (sp as any).catalogImageUrl = (cp as any).imageUrl;
         await this.shopProducts.save(sp);
       }
       productsTouched++;
@@ -288,18 +290,34 @@ export class CatalogAdminController {
     const p = await this.productsRepo.findOne({ where: { id } });
     if (!p) throw new NotFoundException('Catalog product not found');
 
-    (p as any).imageUrl = body?.imageUrl ?? null;
-    await this.productsRepo.save(p);
+  const previousUrl = (p as any).imageUrl ?? null;
+  (p as any).imageUrl = body?.imageUrl ?? null;
+  await this.productsRepo.save(p);
 
   if (body?.propagate && tenantId) {
       const sp = await this.shopProducts.findOne({ where: { tenantId, name: p.name } });
-      if (sp && !sp.imageUrl && (p as any).imageUrl) {
-        sp.imageUrl = (p as any).imageUrl;
+      if (sp && !(sp as any).catalogImageUrl && (p as any).imageUrl) {
+        (sp as any).catalogImageUrl = (p as any).imageUrl;
         await this.shopProducts.save(sp);
       }
     }
 
-    return { ok: true, id, imageUrl: (p as any).imageUrl ?? null };
+    // If changed, emit webhook + internal audit-style log via webhook
+    if (previousUrl !== (p as any).imageUrl) {
+      const url = process.env.WEBHOOK_CATALOG_IMAGE_CHANGED_URL;
+      if (url) {
+        this.webhooks.postJson(url, {
+          event: 'catalog.product.image.changed',
+          catalogProductId: id,
+          newImageUrl: (p as any).imageUrl ?? null,
+          previousImageUrl: previousUrl,
+          propagated: !!body?.propagate,
+          tenantId: tenantId || null,
+          at: new Date().toISOString(),
+        }).catch(() => {});
+      }
+    }
+    return { ok: true, id, imageUrl: (p as any).imageUrl ?? null, changed: previousUrl !== (p as any).imageUrl };
   }
 
   /* ===========================================

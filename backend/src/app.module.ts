@@ -20,8 +20,10 @@ import { AuditModule } from './audit/audit.module';
 
 import { Tenant } from './tenants/tenant.entity';
 import { TenantDomain } from './tenants/tenant-domain.entity';
+import { ProductImageMetricsSnapshot } from './products/product-image-metrics-snapshot.entity';
 import { TenantContextMiddleware } from './tenants/tenant-context.middleware';
 import { HealthController } from './health/health.controller';
+import { MetricsController } from './health/metrics.controller';
 import { TenantGuard } from './tenants/tenant.guard';
 import { RateLimiterRegistry, RateLimitGuard } from './common/rate-limit.guard';
 import { ErrorsModule } from './dev/errors.module';
@@ -43,6 +45,19 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
+        const isTest = process.env.NODE_ENV === 'test' || process.env.TEST_DB_SQLITE === 'true';
+        if (isTest) {
+          return {
+            type: 'sqlite',
+            database: ':memory:',
+            autoLoadEntities: true,
+            synchronize: true,
+            dropSchema: true,
+            migrationsRun: false,
+            logging: true,
+          } as any;
+        }
+
         let databaseUrl = config.get<string>('DATABASE_URL');
         if (!databaseUrl) {
           // Fallback: construct from discrete vars for local dev ergonomics
@@ -87,7 +102,8 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
         };
       },
     }),
-    ScheduleModule.forRoot(),
+  // Disable scheduler module when testing
+  ...(process.env.NODE_ENV === 'test' ? [] : [ScheduleModule.forRoot()]),
     UserModule,
     AuthModule,
   PasskeysModule,
@@ -100,9 +116,9 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
     TenantsModule,
     AuditModule,
   ErrorsModule,
-    TypeOrmModule.forFeature([Tenant, TenantDomain]),
+  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot]),
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, MetricsController],
   providers: [
     { provide: APP_GUARD, useClass: TenantGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

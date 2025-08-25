@@ -10,13 +10,16 @@ import { SiteSettingsAdminController } from './site-settings.admin.controller';
 import { CatalogAdminController } from './catalog.admin.controller';
 import { ProvidersAdminController } from './providers.admin.controller';
 import { StatsAdminController } from './stats.admin.controller';
+import { ProductsAdminController } from './products.admin.controller';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 
 import { UserModule } from '../user/user.module';
 import { ProductsModule } from '../products/products.module';
+import { AuditModule } from '../audit/audit.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { WebhooksModule } from '../webhooks/webhooks.module';
 
 import { ProductOrder } from '../products/product-order.entity';
 import { Currency } from '../currencies/currency.entity';
@@ -35,8 +38,10 @@ import { StatsAdminService } from './stats.admin.service';
 @Module({
   imports: [
     UserModule,
-    ProductsModule,
+  ProductsModule,
+  AuditModule,
     IntegrationsModule,
+  WebhooksModule,
     HttpModule,
     TypeOrmModule.forFeature([
       ProductOrder,
@@ -57,7 +62,8 @@ import { StatsAdminService } from './stats.admin.service';
     SiteSettingsAdminController,
     CatalogAdminController,
     ProvidersAdminController,
-    StatsAdminController, // ✅ أضفنا الكنترولر الجديد
+  StatsAdminController, // ✅ أضفنا الكنترولر الجديد
+  ProductsAdminController,
   ],
   providers: [
     JwtAuthGuard,

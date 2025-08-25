@@ -25,6 +25,12 @@ import { IntegrationsModule } from '../integrations/integrations.module';
 
 import { OrdersMonitorService } from './orders-monitor.service';
 import { AccountingPeriodsService } from '../accounting/accounting-periods.service';
+import { ProductImageMetricsService } from './product-image-metrics.service';
+import { ProductImageMetricsScheduler } from './product-image-metrics.scheduler';
+import { ProductImageMetricsSnapshot } from './product-image-metrics-snapshot.entity';
+import { WebhooksModule } from '../webhooks/webhooks.module';
+import { ThumbnailService } from './thumbnail.service';
+import { ThumbnailScheduler } from './thumbnail.scheduler';
 
 @Module({
   imports: [
@@ -41,10 +47,12 @@ import { AccountingPeriodsService } from '../accounting/accounting-periods.servi
 
       PackageRouting,
       PackageCost,
-      PackageMapping,
+  PackageMapping,
+  ProductImageMetricsSnapshot,
     ]),
-    NotificationsModule,
+  NotificationsModule,
     IntegrationsModule,
+  WebhooksModule,
   ],
   controllers: [
     ProductsController,
@@ -55,7 +63,16 @@ import { AccountingPeriodsService } from '../accounting/accounting-periods.servi
     ProductsService,
     OrdersMonitorService,
     AccountingPeriodsService,
+  ProductImageMetricsService,
+  ProductImageMetricsScheduler,
+  ThumbnailService,
+  ThumbnailScheduler,
   ],
-  exports: [ProductsService, AccountingPeriodsService],
+  exports: [
+    ProductsService,
+    AccountingPeriodsService,
+    ProductImageMetricsService,
+    ThumbnailService, // exported for AdminModule (ProductsAdminController)
+  ],
 })
 export class ProductsModule {}

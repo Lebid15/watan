@@ -44,13 +44,13 @@ export class Notification {
   @Column({ type: 'text' })
   message: string;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb', nullable: true })
   meta: Record<string, any> | null;
 
   @Column({ default: false })
   isRead: boolean;
 
-  @Column({ type: 'timestamp with time zone', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamp with time zone', nullable: true })
   readAt: Date | null;
 
   @Column({ type: 'varchar', length: 300, nullable: true })

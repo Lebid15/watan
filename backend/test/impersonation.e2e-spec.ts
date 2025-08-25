@@ -4,6 +4,7 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import request from 'supertest';
+import * as crypto from 'crypto';
 import { AppModule } from '../src/app.module';
 
 // This test assumes a developer user exists or will be created via bootstrap endpoint.
@@ -28,8 +29,11 @@ describe('Impersonation (e2e)', () => {
     const existing = await dataSource.getRepository('users').findOne({ where: { email: devEmail } as any });
     if (!existing) {
       const hash = await bcrypt.hash(devPass, 10);
-      await dataSource.query(`INSERT INTO users (id, email, password, role, "tenantId", "balance", "overdraftLimit", "isActive")
-        VALUES (gen_random_uuid(), $1, $2, 'developer', NULL, 0, 0, true)`, [devEmail, hash]);
+      const newId = crypto.randomUUID();
+      await dataSource.query(
+        `INSERT INTO users (id, email, password, role, "tenantId", "balance", "overdraftLimit", "isActive") VALUES ($1, $2, $3, 'developer', NULL, 0, 0, true)`,
+        [newId, devEmail, hash]
+      );
     }
   });
 

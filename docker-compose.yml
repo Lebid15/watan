@@ -10,7 +10,7 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     expose:
-      - '5432'
+      - "5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "watan"]
       interval: 20s
@@ -32,14 +32,20 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      # (أزيل سر bootstrap بعد إنشاء المستخدم المطوّر)
+      # (أزل سرّ bootstrap بعد إنشاء المستخدم المطوّر)
       DATABASE_URL: postgres://watan:changeme@postgres:5432/watan?sslmode=disable
       REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET}
       PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
       DEBUG_TENANT_GUARD: "1"
+      # Cloudinary (أضف القيم في ملف .env بجذر المشروع)
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      # بديل مختصر؛ استخدم إمّا هذا أو المفاتيح الثلاثة بالأعلى (واجعل القيم متطابقة):
+      CLOUDINARY_URL: ${CLOUDINARY_URL}
     expose:
-      - '3000'
+      - "3000"
     volumes:
       - backend_logs:/app/logs
     depends_on:
@@ -65,7 +71,7 @@ services:
       PORT: 3001
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     expose:
-      - '3001'
+      - "3001"
     depends_on:
       - backend
     volumes:

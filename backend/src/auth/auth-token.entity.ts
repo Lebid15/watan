@@ -14,8 +14,8 @@ export class AuthToken {
   // sha256 hex
   @Column({ type: 'varchar', length: 64 }) tokenHash: string;
 
-  @Column({ type: 'timestamptz' }) expiresAt: Date;
-  @Column({ type: 'timestamptz', nullable: true }) usedAt?: Date | null;
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz' }) expiresAt: Date;
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true }) usedAt?: Date | null;
 
-  @CreateDateColumn() createdAt: Date;
+  @CreateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : undefined }) createdAt: Date;
 }

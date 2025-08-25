@@ -25,6 +25,7 @@
     "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d ./src/data-source.ts",
     "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d ./src/data-source.ts",
     "reset-db": "npm run clean && npm run build && npm run migration:run"
+  ,"metrics:product-images": "ts-node -r tsconfig-paths/register ./src/scripts/product-image-metrics.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.6",
@@ -60,7 +61,8 @@
     "run": "^1.5.0",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1",
-    "typeorm": "^0.3.25"
+  "typeorm": "^0.3.25",
+  "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -89,8 +91,9 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.20.0"
+  "typescript": "^5.9.2",
+  "typescript-eslint": "^8.20.0",
+  "sqlite3": "^5.1.7"
   },
   "jest": {
     "moduleFileExtensions": [

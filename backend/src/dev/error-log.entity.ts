@@ -46,7 +46,7 @@ export class ErrorLog {
   @Column({ type: 'varchar', length: 400, nullable: true })
   userAgent?: string | null;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb', nullable: true })
   context?: any | null; // sanitized extra data
 
   @Column({ type: 'varchar', length: 64 })
@@ -55,18 +55,18 @@ export class ErrorLog {
   @Column({ type: 'int', default: 1 })
   occurrenceCount: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : undefined })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : undefined })
   updatedAt: Date;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   firstOccurredAt?: Date | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   lastOccurredAt?: Date | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   resolvedAt?: Date | null;
 }

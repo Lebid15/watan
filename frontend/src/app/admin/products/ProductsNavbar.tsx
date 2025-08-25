@@ -17,6 +17,7 @@ export default function ProductsNavbar() {
     { name: 'تفعيل الكتالوج', href: '/admin/products/catalog-setup' },
     { name: 'الأكواد الرقمية', href: '/admin/products/codes' },
     { name: 'توجيه الباقات', href: '/admin/products/package-routing' },
+    { name: 'تحليل الصور', href: '/admin/products/image-adoption' },
   ];
 
   const isActive = (href: string) => {

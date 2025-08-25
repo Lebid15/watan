@@ -90,5 +90,11 @@ export class User {
   updatedAt: Date;
 
   @Column({ type: 'boolean', default: false }) emailVerified: boolean;
-  @Column({ type: 'timestamptz', nullable: true }) emailVerifiedAt?: Date | null;
+  // Use generic datetime when running with in-memory sqlite for tests
+  @Column({
+    // Fallback to 'datetime' for sqlite tests
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz',
+    nullable: true,
+  })
+  emailVerifiedAt?: Date | null;
 }

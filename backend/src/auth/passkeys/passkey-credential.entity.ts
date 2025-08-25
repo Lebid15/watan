@@ -17,11 +17,17 @@ export class PasskeyCredential {
 
   @Column({ type: 'varchar', length: 200, unique: true }) credentialId: string; // base64url
 
-  @Column({ type: 'bytea' }) publicKey: Buffer;
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'blob' : 'bytea' }) publicKey: Buffer;
 
   @Column({ type: 'bigint', default: 0 }) counter: number;
 
-  @Column({ type: 'text', array: true, nullable: true }) transports?: string[] | null;
+  @Column({
+    // arrays unsupported in sqlite, fall back to simple-json
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'text',
+    array: process.env.TEST_DB_SQLITE === 'true' ? false : true,
+    nullable: true,
+  })
+  transports?: string[] | null;
 
   @Column({ type: 'varchar', length: 30, nullable: true }) deviceType?: string | null; // singleDevice | multiDevice
 
@@ -29,5 +35,10 @@ export class PasskeyCredential {
 
   @CreateDateColumn({ name: 'created_at' }) createdAt: Date;
 
-  @Column({ type: 'timestamptz', name: 'last_used_at', nullable: true }) lastUsedAt?: Date | null;
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz',
+    name: 'last_used_at',
+    nullable: true,
+  })
+  lastUsedAt?: Date | null;
 }

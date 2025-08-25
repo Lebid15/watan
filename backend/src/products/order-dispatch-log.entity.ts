@@ -37,7 +37,7 @@ export class OrderDispatchLog {
   message?: string | null;
 
   /** لقطة من الطلب/الرد (مختصرة وبدون أسرار) */
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb', nullable: true })
   payloadSnapshot?: any;
 
   @CreateDateColumn()

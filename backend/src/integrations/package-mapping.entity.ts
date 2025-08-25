@@ -19,7 +19,7 @@ export class PackageMapping {
   @Column()
   provider_package_id: string; // ID الباقة عند المزود
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb', nullable: true })
   meta?: {
     oyun?: string;
     kupur?: string;

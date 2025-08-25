@@ -83,6 +83,14 @@ export class ProductsController {
     return products.map((product) => ({
       ...product,
       packagesCount: product.packages?.length ?? 0,
+      // expose image meta consistently
+  imageUrl: product.imageUrl, // effective (computed; legacy column dropped)
+      imageSource: product.imageSource,
+      useCatalogImage: product.useCatalogImage,
+      hasCustomImage: product.hasCustomImage,
+      customImageUrl: product.customImageUrl,
+  catalogAltText: (product as any).catalogAltText ?? null,
+  customAltText: (product as any).customAltText ?? null,
     }));
   }
 
@@ -93,7 +101,16 @@ export class ProductsController {
     console.log('[PRODUCTS] findOne tenantId=', tenantId, 'productId=', id);
     const product = await this.productsService.findOneWithPackages(tenantId, id);
     if (!product) throw new NotFoundException('معرف المنتج غير صالح');
-    return product;
+    return {
+      ...product,
+  imageUrl: product.imageUrl, // effective (computed; legacy column dropped)
+      imageSource: product.imageSource,
+      useCatalogImage: product.useCatalogImage,
+      hasCustomImage: product.hasCustomImage,
+      customImageUrl: product.customImageUrl,
+  catalogAltText: (product as any).catalogAltText ?? null,
+  customAltText: (product as any).customAltText ?? null,
+    };
   }
 
   @Post()

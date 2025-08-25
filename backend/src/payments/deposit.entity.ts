@@ -68,9 +68,14 @@ export class Deposit {
   note?: string | null;
 
   /** حالة الطلب */
-  @Column({ type: 'enum', enum: DepositStatus, default: DepositStatus.PENDING })
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'varchar' : 'enum',
+    enum: process.env.TEST_DB_SQLITE === 'true' ? undefined : DepositStatus,
+    default: DepositStatus.PENDING,
+    length: process.env.TEST_DB_SQLITE === 'true' ? 20 : undefined,
+  })
   status: DepositStatus;
 
-  @CreateDateColumn({ type: 'timestamp with time zone' })
+  @CreateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamp with time zone' })
   createdAt: Date;
 }

@@ -51,15 +51,15 @@ export class CodeItem {
   @Column({ type: 'uuid', nullable: true })
   orderId?: string;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamp', nullable: true })
   reservedAt?: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamp', nullable: true })
   usedAt?: Date;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : undefined })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : undefined })
   updatedAt: Date;
 }

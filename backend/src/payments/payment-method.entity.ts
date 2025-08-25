@@ -30,7 +30,11 @@ export class PaymentMethod {
   name: string;
 
   /** النوع (يحدد الحقول داخل config) */
-  @Column({ type: 'enum', enum: PaymentMethodType })
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'varchar' : 'enum',
+    enum: process.env.TEST_DB_SQLITE === 'true' ? undefined : PaymentMethodType,
+    length: process.env.TEST_DB_SQLITE === 'true' ? 30 : undefined,
+  })
   type: PaymentMethodType;
 
   /** رابط صورة/لوغو */
@@ -48,12 +52,16 @@ export class PaymentMethod {
   /**
    * الحقول الديناميكية الخاصة بكل نوع
    */
-  @Column({ type: 'jsonb', default: {} })
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb',
+    default: process.env.TEST_DB_SQLITE === 'true' ? undefined : {},
+    nullable: process.env.TEST_DB_SQLITE === 'true',
+  })
   config: Record<string, any>;
 
-  @CreateDateColumn({ type: 'timestamp with time zone' })
+  @CreateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamp with time zone' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamp with time zone' })
+  @UpdateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamp with time zone' })
   updatedAt: Date;
 }

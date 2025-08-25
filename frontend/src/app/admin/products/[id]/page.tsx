@@ -17,6 +17,12 @@ interface Product {
   name: string;
   description?: string;
   imageUrl?: string;          // ⬅️ الحقل الصحيح الذي يعيده/يحفظه السيرفر
+  customImageUrl?: string | null; // صورة مخصصة (قد تكون null)
+  useCatalogImage?: boolean;      // هل يعتمد صورة الكتالوج؟
+  imageSource?: 'catalog' | 'custom' | null; // مصدر الصورة المحسوبة من السيرفر (للشارات)
+  hasCustomImage?: boolean;      // هل توجد صورة مخصصة مخزّنة؟
+  catalogAltText?: string | null;
+  customAltText?: string | null;
   isActive: boolean;
   packages?: ProductPackage[];
 }
@@ -49,6 +55,9 @@ export default function AdminProductDetailsPage() {
   const [editDesc, setEditDesc] = useState("");
   const [editImage, setEditImage] = useState<File | null>(null);
   const [editActive, setEditActive] = useState(true);
+  const [editUseCatalog, setEditUseCatalog] = useState<boolean>(false);
+  const [editCatalogAlt, setEditCatalogAlt] = useState<string>("");
+  const [editCustomAlt, setEditCustomAlt] = useState<string>("");
 
   const [pkgName, setPkgName] = useState("");
   const [pkgDesc, setPkgDesc] = useState("");
@@ -71,6 +80,9 @@ export default function AdminProductDetailsPage() {
       setEditName(data.name);
       setEditDesc(data.description || "");
       setEditActive(data.isActive);
+  setEditUseCatalog(Boolean(data.useCatalogImage));
+  setEditCatalogAlt(data.catalogAltText || "");
+  setEditCustomAlt(data.customAltText || "");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -87,10 +99,19 @@ export default function AdminProductDetailsPage() {
       const token = localStorage.getItem("token") || "";
       if (!token) throw new Error("الرجاء تسجيل الدخول كمسؤول.");
 
-      // استخدم imageUrl وليس image
-      let imageUrl = product?.imageUrl;
+      // منطق تحديد الصورة:
+      // 1) إذا قام المستخدم برفع صورة جديدة => نرفعها ونعتبرها customImageUrl ونوقف useCatalogImage
+      // 2) إذا حدد useCatalogImage مع عدم وجود رفع جديد نرسل فقط useCatalogImage
+      // 3) إذا ألغى useCatalogImage بدون رفع جديد لكن لديه customImageUrl سابق لا نغيّر الرابط
+      let imageUrl = product?.imageUrl; // الحقل الفعّال الحالي (قد يكون كتالوج أو مخصص)
+      let customImageUrl = product?.customImageUrl ?? null;
+
+      let useCatalogImage = editUseCatalog;
       if (editImage) {
-        imageUrl = await uploadToCloudinary(editImage, token, apiBase);
+        const uploaded = await uploadToCloudinary(editImage, token, apiBase);
+        customImageUrl = uploaded;
+        imageUrl = uploaded; // سيكون الفعّال الآن مخصص
+        useCatalogImage = false; // الرفع الجديد يلغي الاعتماد على الكتالوج
       }
 
       const updateRes = await fetch(`${API_ROUTES.products.base}/${id}`, {
@@ -102,7 +123,12 @@ export default function AdminProductDetailsPage() {
         body: JSON.stringify({
           name: editName,
           description: editDesc,
-          imageUrl,               // ⬅️ إرسال الحقل الصحيح
+          // نرسل الحقول الداعمة للميزة الجديدة
+          imageUrl,               // الحقل الفعّال (للتوافق مع الواجهات الحالية في السيرفر إن احتاج)
+          customImageUrl,         // مسار أو رابط الصورة المخصصة إن وجدت
+          useCatalogImage,        // التبديل
+          catalogAltText: editCatalogAlt || null,
+          customAltText: editCustomAlt || null,
           isActive: editActive,
         }),
       });
@@ -177,12 +203,31 @@ export default function AdminProductDetailsPage() {
   if (error) return <p className="p-4 text-danger">{error}</p>;
   if (!product) return <p className="p-4 text-text-secondary">المنتج غير موجود</p>;
 
-  // اختيار رابط الصورة الصحيح للعرض
-  const imgSrc =
-    product.imageUrl
-      ? (product.imageUrl.startsWith("http") ? product.imageUrl :
-         product.imageUrl.startsWith("/") ? `${apiHost}${product.imageUrl}` : `${apiHost}/${product.imageUrl}`)
-      : null;
+  // اختيار رابط الصورة الصحيح للعرض (imageUrl الفعّال قد يأتي نسبي أو مطلق)
+  const imgSrc = product.imageUrl
+    ? (product.imageUrl.startsWith('http')
+        ? product.imageUrl
+        : product.imageUrl.startsWith('/')
+          ? `${apiHost}${product.imageUrl}`
+          : `${apiHost}/${product.imageUrl}`)
+    : null;
+
+  // شارة مصدر الصورة
+  const imageSource: 'catalog' | 'custom' | 'none' = product.imageSource
+    ? product.imageSource
+    : product.imageUrl
+      ? (product.useCatalogImage ? 'catalog' : 'custom')
+      : 'none';
+  const sourceLabelMap: Record<typeof imageSource, string> = {
+    catalog: 'Catalog',
+    custom: 'Custom',
+    none: 'None'
+  } as const;
+  const badgeColor = imageSource === 'catalog'
+    ? 'bg-blue-600'
+    : imageSource === 'custom'
+      ? 'bg-emerald-600'
+      : 'bg-gray-400';
 
   return (
     <div className="p-6 bg-bg-surface rounded shadow max-w-3xl mx-auto text-text-primary border border-border">
@@ -216,12 +261,57 @@ export default function AdminProductDetailsPage() {
         onChange={(e) => setEditDesc(e.target.value)}
         placeholder="الوصف"
       />
-      <input
-        type="file"
-        accept="image/*"
-        onChange={(e) => e.target.files && setEditImage(e.target.files[0])}
-        className="mb-2 text-text-secondary"
-      />
+      <div className="grid md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-[12px] text-text-secondary mb-1">نص بديل (كتالوج)</label>
+          <input
+            className="w-full border border-border p-2 rounded bg-bg-surface-alt text-text-primary"
+            value={editCatalogAlt}
+            onChange={(e) => setEditCatalogAlt(e.target.value)}
+            placeholder="مثال: بطاقة هدايا متجر X"
+          />
+        </div>
+        <div>
+          <label className="block text-[12px] text-text-secondary mb-1">نص بديل (مخصص)</label>
+          <input
+            className="w-full border border-border p-2 rounded bg-bg-surface-alt text-text-primary"
+            value={editCustomAlt}
+            onChange={(e) => setEditCustomAlt(e.target.value)}
+            placeholder="وصف دقيق للصورة المخصصة"
+          />
+        </div>
+      </div>
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${badgeColor}`}>
+            {sourceLabelMap[imageSource]}
+          </span>
+          {imageSource !== 'none' && (
+            <span className="text-[11px] text-text-secondary">(المصدر الحالي)</span>
+          )}
+        </div>
+        <label className="flex items-center gap-2 text-text-secondary">
+          <input
+            type="checkbox"
+            checked={editUseCatalog}
+            onChange={(e) => setEditUseCatalog(e.target.checked)}
+          />
+          استخدم صورة الكتالوج
+        </label>
+        <div>
+          <label className="block text-[12px] text-text-secondary mb-1">صورة مخصصة (تجاوز)</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => e.target.files && setEditImage(e.target.files[0])}
+            className="text-text-secondary max-w-xs"
+            disabled={editUseCatalog}
+          />
+          {editUseCatalog && (
+            <div className="text-[11px] mt-1 text-text-secondary">إلغاء التحديد لتفعيل الرفع المخصص</div>
+          )}
+        </div>
+      </div>
       <label className="flex items-center gap-2 mb-4 text-text-secondary">
         <input
           type="checkbox"
@@ -231,13 +321,23 @@ export default function AdminProductDetailsPage() {
         فعال؟
       </label>
 
-      {imgSrc && (
-        <img
-          src={imgSrc}
-          alt={product.name}
-          className="w-16 h-16 object-cover mb-6 rounded border border-border"
-        />
-      )}
+      <div className="mb-6">
+        {imgSrc ? (
+          <div className="relative inline-block">
+            <img
+              src={imgSrc}
+              alt={product.name}
+              className="w-20 h-20 object-cover rounded border border-border shadow"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png'; }}
+            />
+            <span className={`absolute -top-2 -right-2 ${badgeColor} text-white text-[10px] px-1.5 py-0.5 rounded-full shadow`}>{sourceLabelMap[imageSource]}</span>
+          </div>
+        ) : (
+          <div className="w-20 h-20 rounded border border-dashed border-border flex items-center justify-center text-text-secondary text-xs">
+            لا توجد صورة
+          </div>
+        )}
+      </div>
 
       <h2 className="text-xl font-semibold mb-2">الباقات</h2>
       {product.packages && product.packages.length > 0 ? (

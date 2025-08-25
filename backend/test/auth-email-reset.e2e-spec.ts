@@ -57,14 +57,20 @@ describe('Auth Email & Password Reset (e2e)', () => {
     if (!devUserId) return; // skip if bootstrap/login failed
     const rawToken = 'emailtok_' + crypto.randomBytes(8).toString('hex');
     const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    await dataSource.query(`INSERT INTO auth_tokens (id, "userId", "tenantId", type, "tokenHash", "expiresAt") VALUES (gen_random_uuid(), $1, NULL, 'email_verify', $2, NOW() + interval '1 hour')`, [devUserId, hash]);
+    const id = crypto.randomUUID();
+    // Use JS computed expiry (1 hour) for cross-database compatibility
+    const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+    await dataSource.query(
+      `INSERT INTO auth_tokens (id, "userId", "tenantId", type, "tokenHash", "expiresAt") VALUES ($1, $2, NULL, 'email_verify', $3, $4)`,
+      [id, devUserId, hash, expiresAt]
+    );
     const res = await request(http)
       .post('/api/auth/verify-email')
       .send({ token: rawToken })
       .expect(r => [200,201,400].includes(r.status));
     if ([200,201].includes(res.status)) {
-      const verifyRow = await dataSource.query('SELECT "emailVerified" FROM users WHERE id = $1', [devUserId]);
-      if (verifyRow.length) expect(verifyRow[0].emailVerified).toBe(true);
+  const verifyRow = await dataSource.query('SELECT "emailVerified" FROM users WHERE id = $1', [devUserId]);
+  if (verifyRow.length) expect(Boolean(verifyRow[0].emailVerified)).toBe(true);
     }
   });
 
@@ -80,8 +86,12 @@ describe('Auth Email & Password Reset (e2e)', () => {
     if (existing.length) {
       resetUserId = existing[0].id;
     } else {
-      const inserted = await dataSource.query(`INSERT INTO users (id, email, password, role, "tenantId", "balance", "overdraftLimit", "isActive") VALUES (gen_random_uuid(), $1, $2, 'user', NULL, 0, 0, true) RETURNING id`, [resetEmail, hash]);
-      resetUserId = inserted[0].id;
+      const newId = crypto.randomUUID();
+      await dataSource.query(
+        `INSERT INTO users (id, email, password, role, "tenantId", "balance", "overdraftLimit", "isActive") VALUES ($1, $2, $3, 'user', NULL, 0, 0, true)`,
+        [newId, resetEmail, hash]
+      );
+      resetUserId = newId;
     }
   });
 
@@ -94,27 +104,32 @@ describe('Auth Email & Password Reset (e2e)', () => {
   });
 
   it('request password reset (always ok)', async () => {
-  const beforeReq = await dataSource.query(`SELECT count(*) FROM audit_logs WHERE "eventType"='password_reset_request'`);
+  const beforeReq = await dataSource.query(`SELECT count(*) as cnt FROM audit_logs WHERE "eventType"='password_reset_request'`);
     await request(http)
       .post('/api/auth/request-password-reset')
       .send({ emailOrUsername: resetEmail })
       .expect(r => [200,201].includes(r.status));
-  const afterReq = await dataSource.query(`SELECT count(*) FROM audit_logs WHERE "eventType"='password_reset_request'`);
-  expect(Number(afterReq[0].count)).toBeGreaterThanOrEqual(Number(beforeReq[0].count));
+  const afterReq = await dataSource.query(`SELECT count(*) as cnt FROM audit_logs WHERE "eventType"='password_reset_request'`);
+  expect(Number(afterReq[0].cnt)).toBeGreaterThanOrEqual(Number(beforeReq[0].cnt));
   });
 
   it('perform password reset using inserted token', async () => {
     const rawToken = 'pwdreset_' + crypto.randomBytes(8).toString('hex');
     const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    await dataSource.query(`INSERT INTO auth_tokens (id, "userId", "tenantId", type, "tokenHash", "expiresAt") VALUES (gen_random_uuid(), $1, NULL, 'password_reset', $2, NOW() + interval '1 hour')`, [resetUserId, hash]);
-  const beforeSuccess = await dataSource.query(`SELECT count(*) FROM audit_logs WHERE "eventType"='password_reset_success' AND "actorUserId"=$1`, [resetUserId]);
+    const id = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+    await dataSource.query(
+      `INSERT INTO auth_tokens (id, "userId", "tenantId", type, "tokenHash", "expiresAt") VALUES ($1, $2, NULL, 'password_reset', $3, $4)`,
+      [id, resetUserId, hash, expiresAt]
+    );
+  const beforeSuccess = await dataSource.query(`SELECT count(*) as cnt FROM audit_logs WHERE "eventType"='password_reset_success' AND "actorUserId"=$1`, [resetUserId]);
     await request(http)
       .post('/api/auth/reset-password')
       .send({ token: rawToken, newPassword })
       .expect(r => [200,201,400].includes(r.status));
-  const afterSuccess = await dataSource.query(`SELECT count(*) FROM audit_logs WHERE "eventType"='password_reset_success' AND "actorUserId"=$1`, [resetUserId]);
+  const afterSuccess = await dataSource.query(`SELECT count(*) as cnt FROM audit_logs WHERE "eventType"='password_reset_success' AND "actorUserId"=$1`, [resetUserId]);
   // May or may not increment if status not success; ensure not decreased
-  expect(Number(afterSuccess[0].count)).toBeGreaterThanOrEqual(Number(beforeSuccess[0].count));
+  expect(Number(afterSuccess[0].cnt)).toBeGreaterThanOrEqual(Number(beforeSuccess[0].cnt));
   });
 
   it('login with new password (should succeed)', async () => {

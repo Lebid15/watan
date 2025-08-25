@@ -18,6 +18,7 @@ import { AccountingPeriodsService } from '../accounting/accounting-periods.servi
 import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { CodeItem } from '../codes/entities/code-item.entity';
+import { isFeatureEnabled } from '../common/feature-flags';
 
 
 type OrderView = {
@@ -215,7 +216,9 @@ export class ProductsService {
   async updateImage(tenantId: string, id: string, imageUrl: string): Promise<Product> {
     const product = await this.productsRepo.findOne({ where: { id, tenantId } as any });
     if (!product) throw new NotFoundException('Product not found');
-    product.imageUrl = imageUrl;
+    // Store into customImageUrl and disable catalog usage
+    (product as any).customImageUrl = imageUrl;
+    (product as any).useCatalogImage = false;
     return this.productsRepo.save(product);
   }
 
@@ -226,25 +229,28 @@ export class ProductsService {
     });
 
     const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
-
-    return products.map((product) => ({
-      ...product,
-      packages: (product.packages || []).map((pkg) => ({
-        ...pkg,
-        basePrice: pkg.basePrice ?? pkg.capital ?? 0,
-        prices: allPriceGroups.map((group) => {
-          const existingPrice = (pkg.prices || []).find(
-            (price) => price.priceGroup?.id === group.id,
-          );
-          return {
-            id: existingPrice?.id ?? null,
-            groupId: group.id,
-            groupName: group.name,
-            price: existingPrice?.price ?? 0,
-          };
-        }),
-      })),
-    }));
+    return products.map((product) => {
+      const mapped = this.mapEffectiveImage(product as any);
+      return {
+        ...product,
+        ...mapped,
+        packages: (product.packages || []).map((pkg) => ({
+          ...pkg,
+            basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+            prices: allPriceGroups.map((group) => {
+              const existingPrice = (pkg.prices || []).find(
+                (price) => price.priceGroup?.id === group.id,
+              );
+              return {
+                id: existingPrice?.id ?? null,
+                groupId: group.id,
+                groupName: group.name,
+                price: existingPrice?.price ?? 0,
+              };
+            }),
+        })),
+      };
+    });
   }
 
   async findOneWithPackages(tenantId: string, id: string): Promise<any> {
@@ -255,9 +261,10 @@ export class ProductsService {
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
 
     const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
-
+    const mapped = this.mapEffectiveImage(product as any);
     return {
       ...product,
+      ...mapped,
       packages: (product.packages || []).map((pkg) => ({
         ...pkg,
         basePrice: pkg.basePrice ?? pkg.capital ?? 0,
@@ -1249,11 +1256,21 @@ export class ProductsService {
   }
 
   private mapProductForUser(product: Product, rate: number, priceGroupId: string | null) {
+    const img = this.mapEffectiveImage(product as any);
     const base = {
       id: product.id,
       name: product.name,
       description: (product as any)['description'] ?? null,
-      imageUrl: product.imageUrl ?? null,
+      imageUrl: img.imageUrl, // effective
+      imageSource: img.imageSource,
+      useCatalogImage: img.useCatalogImage,
+      hasCustomImage: img.hasCustomImage,
+      customImageUrl: img.customImageUrl,
+  catalogAltText: (product as any).catalogAltText ?? null,
+  customAltText: (product as any).customAltText ?? null,
+  thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
+  thumbMediumUrl: (product as any).thumbMediumUrl ?? null,
+  thumbLargeUrl: (product as any).thumbLargeUrl ?? null,
     };
 
     return {
@@ -1296,7 +1313,7 @@ export class ProductsService {
 
     return {
       currencyCode: code,
-      items: products.map((p) => this.mapProductForUser(p, rate, priceGroupId)),
+  items: products.map((p) => this.mapProductForUser(p, rate, priceGroupId)),
     };
   }
 
@@ -1313,6 +1330,35 @@ export class ProductsService {
       currencyCode: code,
       ...this.mapProductForUser(product, rate, priceGroupId),
     };
+  }
+
+  // ================== Image Fallback Helper ==================
+  /**
+   * Compute effective image for product.
+   * Priority: if customImageUrl present & useCatalogImage=false => effective = customImageUrl (imageSource='custom')
+   * else if imageUrl present (legacy / catalog) => effective = imageUrl (imageSource='catalog')
+   * else null.
+   */
+  private mapEffectiveImage(product: any) {
+    const customImageUrl = product.customImageUrl ?? null;
+    const useCatalogImage = product.useCatalogImage !== undefined ? !!product.useCatalogImage : true;
+  const catalogImage = product.catalogImageUrl ?? null;
+
+    let effective = null;
+    let source: 'custom' | 'catalog' | null = null;
+
+    if (customImageUrl && useCatalogImage === false) {
+      effective = customImageUrl;
+      source = 'custom';
+    } else if (catalogImage) {
+      effective = catalogImage;
+      source = 'catalog';
+    }
+
+    if (!isFeatureEnabled('productImageFallback')) {
+  return { imageUrl: catalogImage, imageSource: null, hasCustomImage: false, customImageUrl: null, useCatalogImage: true };
+    }
+    return { imageUrl: effective, imageSource: source, hasCustomImage: !!customImageUrl, customImageUrl, useCatalogImage };
   }
 
   async listOrdersWithPagination(dto: ListOrdersDto, tenantId?: string) {

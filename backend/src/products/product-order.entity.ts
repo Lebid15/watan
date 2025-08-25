@@ -38,10 +38,9 @@ export class ProductOrder {
   @Index('idx_orders_tenant')
   tenantId: string;
 
-  /** رقم طلب متسلسل (غير أساسي) */
+  /** رقم طلب متسلسل (غير أساسي). NOTE: Disabled @Generated for sqlite tests to avoid AUTOINCREMENT syntax issue */
   @Index('idx_orders_order_no') // ⛔️ لم يعد فريدًا عالميًا — الفريد المركّب بالأعلى
   @Column({ type: 'int', nullable: true })
-  @Generated('increment')
   orderNo: number | null;
 
   @ManyToOne(() => Product, { eager: true })
@@ -112,7 +111,12 @@ export class ProductOrder {
   manualNote?: string | null;
 
   /** ✅ سجل ملاحظات (مشرف/نظام/مستخدم) — افتراضيًا مصفوفة فاضية */
-  @Column({ type: 'jsonb', default: () => `'[]'` })
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb',
+    // default can't be function for simple-json; handle in service / constructor when sqlite
+    default: process.env.TEST_DB_SQLITE === 'true' ? undefined : () => `'[]'`,
+    nullable: process.env.TEST_DB_SQLITE === 'true',
+  })
   notes!: OrderNote[];
 
   /** ✅ كود الـ PIN من المزود إن توفر */
@@ -120,13 +124,13 @@ export class ProductOrder {
   pinCode?: string | null;
 
   /** أزمنة التنفيذ */
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   sentAt?: Date | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   lastSyncAt?: Date | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   completedAt?: Date | null;
 
   /** مدة التنفيذ بالمللي ثانية */
@@ -149,16 +153,20 @@ export class ProductOrder {
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
   profitUsdAtApproval?: string | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   approvedAt?: Date | null;
 
   @Column({ type: 'date', nullable: true })
   approvedLocalDate?: string | null; // YYYY-MM-DD
 
-  @Column({ type: 'char', length: 7, nullable: true })
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'varchar' : 'char',
+    length: 7,
+    nullable: true,
+  })
   approvedLocalMonth?: string | null; // YYYY-MM
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   fxCapturedAt?: Date | null;
 
   @Column({ type: 'varchar', length: 50, nullable: true })

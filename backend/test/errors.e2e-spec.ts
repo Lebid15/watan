@@ -12,17 +12,31 @@ describe('Errors (e2e)', () => {
   let token: string;
 
   beforeAll(async () => {
+    process.env.BOOTSTRAP_DEV_SECRET = 'test-secret';
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
     await app.init();
     const ds = app.get(DataSource);
-    const dev = await ds.getRepository(User).findOne({ where: { role: 'developer' } as any });
-    if (!dev) throw new Error('No developer user seeded');
+    let dev = await ds.getRepository(User).findOne({ where: { role: 'developer' } as any });
+    if (!dev) {
+      // bootstrap developer via endpoint to exercise flow
+      await request(app.getHttpServer())
+        .post('/api/auth/bootstrap-developer')
+        .send({ secret: 'test-secret', email: 'dev@example.com', password: 'Passw0rd!' })
+        .expect(res => { if (![201, 409, 403].includes(res.status)) throw new Error('bootstrap unexpected status ' + res.status); });
+      dev = await ds.getRepository(User).findOne({ where: { role: 'developer' } as any });
+    }
+    if (!dev) throw new Error('Developer bootstrap failed');
     token = jwt.sign({ sub: dev.id, id: dev.id, role: 'developer' }, jwtConstants.secret, { expiresIn: '1h' });
   });
 
-  afterAll(async () => { await app.close(); });
+  afterAll(async () => {
+    if (!app) return;
+    let ds: DataSource | undefined; try { ds = app.get(DataSource, { strict: false }); } catch {}
+    await app.close();
+    if (ds?.isInitialized) await ds.destroy();
+  });
 
   it('POST /api/dev/errors/ingest stores a frontend error', async () => {
     const res = await request(app.getHttpServer())

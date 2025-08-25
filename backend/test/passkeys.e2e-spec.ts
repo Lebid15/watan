@@ -4,6 +4,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { DataSource } from 'typeorm';
 import * as argon2 from 'argon2';
+import * as crypto from 'crypto';
 
 // NOTE: This is a mocked/bypassed WebAuthn flow for e2e purposes only.
 // We simulate registration & authentication by crafting pseudo WebAuthn JSON
@@ -20,6 +21,7 @@ describe('Passkeys (e2e, mocked)', () => {
   let userId: string;
 
   beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
@@ -31,15 +33,30 @@ describe('Passkeys (e2e, mocked)', () => {
     const existing = await dataSource.getRepository('users').findOne({ where: { email: userEmail } as any });
     if (!existing) {
       const hash = await argon2.hash(userPassword);
-      const inserted = await dataSource.query(`INSERT INTO users (id, email, password, role, "tenantId", "balance", "overdraftLimit", "isActive")
-        VALUES (gen_random_uuid(), $1, $2, 'user', NULL, 0, 0, true) RETURNING id`, [userEmail, hash]);
-      userId = inserted[0].id;
+      const newId = crypto.randomUUID();
+      await dataSource.query(
+        `INSERT INTO users (id, email, password, role, "tenantId", "balance", "overdraftLimit", "isActive") VALUES ($1, $2, $3, 'user', NULL, 0, 0, true)`,
+        [newId, userEmail, hash]
+      );
+      userId = newId;
     } else {
       userId = (existing as any).id;
     }
   });
 
-  afterAll(async () => { await app.close(); });
+  afterAll(async () => {
+    if (app) {
+      await app.close();
+      if (dataSource?.isInitialized) {
+        try {
+          await dataSource.destroy();
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.log('DataSource destroy (ignored) error:', e?.message || e);
+        }
+      }
+    }
+  });
 
   let jwt: string;
 

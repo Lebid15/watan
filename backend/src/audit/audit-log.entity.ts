@@ -17,7 +17,7 @@ export class AuditLog {
   @Column({ type: 'varchar', length: 45, nullable: true }) ip?: string | null;
   @Column({ type: 'varchar', length: 200, nullable: true }) userAgent?: string | null;
 
-  @Column({ type: 'jsonb', nullable: true }) meta?: Record<string, any> | null;
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb', nullable: true }) meta?: Record<string, any> | null;
 
-  @CreateDateColumn() createdAt: Date;
+  @CreateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : undefined }) createdAt: Date;
 }
