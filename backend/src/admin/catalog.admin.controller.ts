@@ -1,8 +1,11 @@
 // src/admin/catalog.admin.controller.ts
 import {
-  Controller, Get, Post, Put, Body, Param, Query,
+  Controller, Get, Post, Put, Patch, Body, Param, Query,
   UseGuards, NotFoundException, BadRequestException, Req,
+  UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import * as multer from 'multer';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '../auth/user-role.enum';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -83,6 +86,16 @@ export class CatalogAdminController {
       take: 500,
     });
     return { items };
+  }
+
+  /* =======================
+     منتج كتالوج واحد بحسب المعرّف
+     ======================= */
+  @Get('products/:id')
+  async getCatalogProduct(@Param('id') id: string) {
+    const p = await this.productsRepo.findOne({ where: { id } });
+    if (!p) throw new NotFoundException('Catalog product not found');
+    return { item: p };
   }
 
   /* =======================
@@ -274,15 +287,32 @@ export class CatalogAdminController {
      3) تحديث صورة منتج كتالوج (مع نشر للصنف في المتجر/tenant)
      =========================================== */
   @Put('products/:id/image')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ok = /^image\/(png|jpe?g|webp|gif|bmp|svg\+xml)$/i.test(file.mimetype);
+      if (!ok) return cb(new Error('Only image files are allowed'), false);
+      cb(null, true);
+    },
+  }))
   async setCatalogProductImage(
     @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
     @Body() body: { imageUrl?: string; propagate?: boolean },
     @Req() req: Request,
   ) {
+    // إذا وصل ملف نرفع أولاً (يعتمد على تكامل خارجي: Cloudinary عبر upload controller)
+    if (file) {
+      // استدعاء مباشر لنفس مسار الرفع الحالي غير متاح هنا بدون تكرار الشيفرة؛ لأجل البساطة نرفض إن لم يوجد imageUrl.
+      // (بديل مستقبلي: إنشاء خدمة رفع مشتركة.)
+      throw new BadRequestException('Use /admin/upload first to get image URL then send PATCH with imageUrl');
+    }
     // tenantId يكون مطلوب فقط إذا أردنا النشر (propagate) إلى متجر محدد
     const tenantId = (req as any)?.tenant?.id || (req as any)?.user?.tenantId as string | undefined;
     if (!tenantId && body?.propagate) {
-      throw new BadRequestException('Missing tenantId for propagate');
+      // أوضح الرسالة للمطور/الواجهة: يمكن إزالة propagate أو تمرير X-Tenant-Id
+      throw new BadRequestException('Missing tenantId: cannot propagate image to tenant store. Provide X-Tenant-Id header or remove propagate flag.');
     }
     // eslint-disable-next-line no-console
     console.log('[Catalog][ImageUpdate]', { id, hasTenant: !!tenantId, propagate: !!body?.propagate });
@@ -303,6 +333,48 @@ export class CatalogAdminController {
     }
 
     // If changed, emit webhook + internal audit-style log via webhook
+    if (previousUrl !== (p as any).imageUrl) {
+      const url = process.env.WEBHOOK_CATALOG_IMAGE_CHANGED_URL;
+      if (url) {
+        this.webhooks.postJson(url, {
+          event: 'catalog.product.image.changed',
+          catalogProductId: id,
+          newImageUrl: (p as any).imageUrl ?? null,
+          previousImageUrl: previousUrl,
+          propagated: !!body?.propagate,
+          tenantId: tenantId || null,
+          at: new Date().toISOString(),
+        }).catch(() => {});
+      }
+    }
+    return { ok: true, id, imageUrl: (p as any).imageUrl ?? null, changed: previousUrl !== (p as any).imageUrl };
+  }
+
+  /* ===========================================
+     تعديل رابط صورة منتج كتالوج (PATCH نفس المسار)
+     =========================================== */
+  @Patch('products/:id/image')
+  async patchCatalogProductImage(
+    @Param('id') id: string,
+    @Body() body: { imageUrl?: string; propagate?: boolean },
+    @Req() req: Request,
+  ) {
+    const tenantId = (req as any)?.tenant?.id || (req as any)?.user?.tenantId as string | undefined;
+    if (!tenantId && body?.propagate) {
+      throw new BadRequestException('Missing tenantId: cannot propagate image to tenant store. Provide X-Tenant-Id header or remove propagate flag.');
+    }
+    const p = await this.productsRepo.findOne({ where: { id } });
+    if (!p) throw new NotFoundException('Catalog product not found');
+    const previousUrl = (p as any).imageUrl ?? null;
+    (p as any).imageUrl = body?.imageUrl ?? null;
+    await this.productsRepo.save(p);
+    if (body?.propagate && tenantId) {
+      const sp = await this.shopProducts.findOne({ where: { tenantId, name: p.name } });
+      if (sp && !(sp as any).catalogImageUrl && (p as any).imageUrl) {
+        (sp as any).catalogImageUrl = (p as any).imageUrl;
+        await this.shopProducts.save(sp);
+      }
+    }
     if (previousUrl !== (p as any).imageUrl) {
       const url = process.env.WEBHOOK_CATALOG_IMAGE_CHANGED_URL;
       if (url) {
