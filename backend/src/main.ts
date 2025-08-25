@@ -44,20 +44,26 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // ✅ CORS مضبوط للواجهة
+  const baseCorsOrigins: (string|RegExp)[] = [
+    'http://localhost:3000',
+    'https://watan-frontend.onrender.com',
+    'http://ahmad.localhost:3000',
+    'http://saeed.localhost:3000',
+    // النطاق الجديد للإنتاج (الجذر)
+    'https://syrz1.com',
+    'https://www.syrz1.com',
+    // نمط عام للنطاقات الفرعية المحلية
+    /^http:\/\/[a-zA-Z0-9-]+\.localhost:3000$/,
+  ];
+  // يسمح بتحديد أصل إضافي عبر متغير بيئة FRONTEND_ORIGIN (مثال: https://preview.syrz1.com)
+  if (process.env.FRONTEND_ORIGIN) {
+    baseCorsOrigins.push(process.env.FRONTEND_ORIGIN);
+  }
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'https://watan-frontend.onrender.com',
-      'http://ahmad.localhost:3000',
-      'http://saeed.localhost:3000',
-      'https://syrz1.com',
-      'https://www.syrz1.com',
-      // نمط عام للنطاقات الفرعية المحلية
-      /^http:\/\/[a-zA-Z0-9-]+\.localhost:3000$/,
-    ],
-    credentials: true, // لازم true لو فيه كوكيز/جلسة
+  origin: baseCorsOrigins,
+  credentials: true, // لازم true لو فيه كوكيز/جلسة
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Host', 'X-Tenant-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Host', 'X-Tenant-Id'],
   });
 
   // Swagger
