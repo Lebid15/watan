@@ -172,6 +172,7 @@ export const API_ROUTES = {
         const qs = params.toString();
         return qs ? `${base}?${qs}` : base;
       },
+  getProduct: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/catalog/products/${id}`,
   setProductImage: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/catalog/products/${id}/image`,
   enableProvider: (providerId: string) => `${EFFECTIVE_API_BASE_URL}/admin/catalog/providers/${providerId}/enable-all`,
   refreshPrices: (providerId: string) => `${EFFECTIVE_API_BASE_URL}/admin/catalog/providers/${providerId}/refresh-prices`,

@@ -27,20 +27,38 @@ interface Product {
   packages?: ProductPackage[];
 }
 
-async function uploadToCloudinary(file: File, token: string, apiBase: string) {
+async function uploadToCloudinary(file: File, token: string, apiBase: string): Promise<string> {
   const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch(`${apiBase}/admin/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: fd,
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`فشل رفع الصورة إلى Cloudinary: ${res.status} ${t}`);
+  fd.append('file', file);
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase}/admin/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+  } catch (e: any) {
+    // Network/DNS errors: surface minimal message
+    throw new Error('تعذر الاتصال بالخادم أثناء الرفع');
   }
-  const data = await res.json();
-  return data.url as string;  // رابط Cloudinary النهائي
+  if (!res.ok) {
+    // Map status codes
+    if (res.status === 401 || res.status === 403) throw new Error('جلسة منتهية، يرجى تسجيل الدخول');
+    if (res.status === 413) throw new Error('الصورة كبيرة جدًا');
+    let payload: any = null;
+    try { payload = await res.json(); } catch { /* ignore */ }
+    const msg: string = payload?.message || payload?.error || '';
+    if (/cloudinary/i.test(msg) && /غير صحيحة|bad credential|cloudinary/i.test(msg)) {
+      throw new Error('إعدادات Cloudinary غير صحيحة');
+    }
+    if (payload?.code === 'file_too_large') throw new Error('الصورة كبيرة جدًا');
+    if (payload?.code === 'cloudinary_bad_credentials') throw new Error('إعدادات Cloudinary غير صحيحة');
+    throw new Error(msg || 'فشل رفع الملف…');
+  }
+  const data = await res.json().catch(() => ({}));
+  const url: string | undefined = data?.url || data?.secure_url;
+  if (!url) throw new Error('لم يتم استلام رابط الصورة');
+  return url;
 }
 
 export default function AdminProductDetailsPage() {
@@ -108,10 +126,11 @@ export default function AdminProductDetailsPage() {
 
       let useCatalogImage = editUseCatalog;
       if (editImage) {
+        // Use new unified flow: upload then PATCH catalog product image (propagate if tenant context available)
         const uploaded = await uploadToCloudinary(editImage, token, apiBase);
         customImageUrl = uploaded;
-        imageUrl = uploaded; // سيكون الفعّال الآن مخصص
-        useCatalogImage = false; // الرفع الجديد يلغي الاعتماد على الكتالوج
+        imageUrl = uploaded;
+        useCatalogImage = false;
       }
 
       const updateRes = await fetch(`${API_ROUTES.products.base}/${id}`, {
@@ -133,12 +152,12 @@ export default function AdminProductDetailsPage() {
         }),
       });
 
-      if (!updateRes.ok) throw new Error("فشل في تعديل المنتج");
+  if (!updateRes.ok) throw new Error("فشل في تعديل المنتج");
       setEditImage(null);
       await fetchProduct();
       alert("تم حفظ التغييرات بنجاح");
     } catch (err: any) {
-      alert(err.message);
+  alert(err.message);
     }
   };
 

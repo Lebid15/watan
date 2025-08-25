@@ -115,18 +115,29 @@ export default function CatalogImagesPage() {
       // 1) رفع الصورة (multipart)
       const form = new FormData();
       form.append('file', file);
-      const up = await api.post<UploadResponse>(API_ROUTES.admin.upload, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      // Use fetch to avoid forcing multipart boundary header manually
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
+      const upRes = await fetch(API_ROUTES.admin.upload, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
       });
+      if (!upRes.ok) {
+        if (upRes.status === 401 || upRes.status === 403) throw new Error('جلسة منتهية، يرجى تسجيل الدخول');
+        if (upRes.status === 413) throw new Error('الصورة كبيرة جدًا');
+        let p: any = null; try { p = await upRes.json(); } catch {}
+        const msg = p?.message || p?.error || 'فشل رفع الملف…';
+        if (p?.code === 'cloudinary_bad_credentials') throw new Error('إعدادات Cloudinary غير صحيحة');
+        throw new Error(msg);
+      }
+      const up: UploadResponse = await upRes.json();
 
       // 2) استخراج الرابط مع تضييق النوع
       const url = extractUploadUrl(up.data);
 
       // 3) تعيين الصورة على منتج الكتالوج + نشرها للمتجر إن كانت ناقصة
-      await api.put(API_ROUTES.admin.catalog.setProductImage(targetId), {
-        imageUrl: url,
-        propagate: true,
-      });
+  // PATCH (could also use PUT; backend accepts both for image link) with propagate:true
+  await api.patch(API_ROUTES.admin.catalog.setProductImage(targetId), { imageUrl: url, propagate: true });
 
       // 4) تحديث الواجهة محليًا
       setItems((prev) => prev.map((it) => (it.id === targetId ? { ...it, imageUrl: url } : it)));
