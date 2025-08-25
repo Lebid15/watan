@@ -277,8 +277,13 @@ export class CatalogAdminController {
     @Body() body: { imageUrl?: string; propagate?: boolean },
     @Req() req: Request,
   ) {
-    const tenantId = (req as any)?.user?.tenantId as string | undefined;
-    if (!tenantId) throw new BadRequestException('Missing tenantId');
+    // tenantId يكون مطلوب فقط إذا أردنا النشر (propagate) إلى متجر محدد
+    const tenantId = (req as any)?.tenant?.id || (req as any)?.user?.tenantId as string | undefined;
+    if (!tenantId && body?.propagate) {
+      throw new BadRequestException('Missing tenantId for propagate');
+    }
+    // eslint-disable-next-line no-console
+    console.log('[Catalog][ImageUpdate]', { id, hasTenant: !!tenantId, propagate: !!body?.propagate });
 
     const p = await this.productsRepo.findOne({ where: { id } });
     if (!p) throw new NotFoundException('Catalog product not found');
@@ -286,7 +291,7 @@ export class CatalogAdminController {
     (p as any).imageUrl = body?.imageUrl ?? null;
     await this.productsRepo.save(p);
 
-    if (body?.propagate) {
+  if (body?.propagate && tenantId) {
       const sp = await this.shopProducts.findOne({ where: { tenantId, name: p.name } });
       if (sp && !sp.imageUrl && (p as any).imageUrl) {
         sp.imageUrl = (p as any).imageUrl;
