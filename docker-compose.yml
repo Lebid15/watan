@@ -22,6 +22,8 @@ services:
     build: ./backend
     container_name: watan-backend
     restart: unless-stopped
+    env_file:
+      - .env
     healthcheck:
       # Nest global prefix is /api, so health endpoint is /api/health
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
@@ -32,18 +34,13 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      # (أزل سرّ bootstrap بعد إنشاء المستخدم المطوّر)
+      # بإمكانك إبقاء DATABASE_URL هنا أو الاعتماد على .env
       DATABASE_URL: postgres://watan:changeme@postgres:5432/watan?sslmode=disable
       REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET}
       PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
       DEBUG_TENANT_GUARD: "1"
-      # Cloudinary (أضف القيم في ملف .env بجذر المشروع)
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
-      # بديل مختصر؛ استخدم إمّا هذا أو المفاتيح الثلاثة بالأعلى (واجعل القيم متطابقة):
-      CLOUDINARY_URL: ${CLOUDINARY_URL}
+      # ⚠️ تمت إزالة مفاتيح Cloudinary من هنا حتى لا تفرَّغ قيم .env
     expose:
       - "3000"
     volumes:
@@ -87,7 +84,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:rw
       - ./certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx
     restart: unless-stopped
