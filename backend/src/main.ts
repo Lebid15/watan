@@ -65,7 +65,8 @@ async function bootstrap() {
     origin: baseCorsOrigins,
     credentials: true, // السماح بإرسال الكوكيز
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Host', 'X-Tenant-Id'],
+  // أضفنا X-Upload-Correlation لمعالجة خطأ preflight الحالي
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Host', 'X-Tenant-Id', 'X-Upload-Correlation'],
   });
 
   // ✅ تفعيل cookie-parser لقراءة التوكن من الكوكي عند اللزوم
