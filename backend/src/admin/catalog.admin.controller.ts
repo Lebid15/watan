@@ -15,6 +15,8 @@ import { Repository, ILike } from 'typeorm';
 import type { Request } from 'express';
 
 import { CatalogProduct } from '../catalog/catalog-product.entity';
+import { Asset } from '../assets/asset.entity';
+import { AuditService } from '../audit/audit.service';
 import { CatalogPackage } from '../catalog/catalog-package.entity';
 
 // متجر المشرف (Tenant-scoped)
@@ -45,6 +47,8 @@ export class CatalogAdminController {
     @InjectRepository(ProductPackage)  private readonly shopPackages:   Repository<ProductPackage>,
   @InjectRepository(Currency)        private readonly currencyRepo:   Repository<Currency>,
   private readonly webhooks: WebhooksService,
+  @InjectRepository(Asset) private readonly assetRepo: Repository<Asset>,
+  private readonly auditService: AuditService,
   ) {}
 
   /* =======================
@@ -390,6 +394,107 @@ export class CatalogAdminController {
       }
     }
     return { ok: true, id, imageUrl: (p as any).imageUrl ?? null, changed: previousUrl !== (p as any).imageUrl };
+  }
+
+  /* ===========================================
+     3b) رفع وربط صورة المنتج مباشرة (upload + assign)
+     =========================================== */
+  @Post('products/:id/image/upload')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ok = /^image\/(png|jpe?g|webp|gif|bmp|svg\+xml)$/i.test(file.mimetype);
+      if (!ok) return cb(new Error('Only image files are allowed'), false);
+      cb(null, true);
+    },
+  }))
+  async directUploadProductImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Req() req: any,
+    @Body('propagate') propagate?: boolean,
+  ) {
+    if (!file) throw new BadRequestException('No file');
+    const user = req?.user || {};
+    const tenantId: string | null = user.tenantId ?? null;
+    if (propagate && !tenantId) {
+      throw new BadRequestException('Missing tenantId for propagation');
+    }
+    const product = await this.productsRepo.findOne({ where: { id } });
+    if (!product) throw new NotFoundException('Catalog product not found');
+    const cloud = require('cloudinary').v2;
+    const folder = tenantId ? `watan/tenants/${tenantId}/products` : 'watan/global/products';
+    const started = Date.now();
+    const result = await new Promise<any>((resolve, reject) => {
+      const stream = cloud.uploader.upload_stream({ folder, resource_type: 'image', overwrite: false, unique_filename: true }, (err, res) => {
+        if (err) return reject(err);
+        if (!res) return reject(new Error('Empty Cloudinary response'));
+        resolve(res);
+      });
+      stream.on('error', reject);
+      stream.end(file.buffer);
+    });
+    const previousUrl = (product as any).imageUrl ?? null;
+    (product as any).imageUrl = result.secure_url;
+    await this.productsRepo.save(product);
+    if (propagate && tenantId) {
+      const sp = await this.shopProducts.findOne({ where: { tenantId, name: product.name } });
+      if (sp && !(sp as any).catalogImageUrl) {
+        (sp as any).catalogImageUrl = result.secure_url;
+        await this.shopProducts.save(sp);
+      }
+    }
+    try {
+      const asset = this.assetRepo.create({
+        tenantId,
+        uploaderUserId: user.id || null,
+        role: user.role,
+        purpose: 'products',
+        productId: id,
+        originalName: file.originalname,
+        publicId: result.public_id,
+        format: result.format,
+        bytes: result.bytes,
+        width: result.width || null,
+        height: result.height || null,
+        secureUrl: result.secure_url,
+        folder: result.folder || folder,
+      });
+      await this.assetRepo.save(asset);
+      try { await this.auditService.log('catalog_product_image_upload', { actorUserId: user.id, targetTenantId: tenantId, meta: { productId: id, previousUrl, elapsedMs: Date.now() - started } }); } catch {}
+    } catch (e) { console.error('[Catalog][ImageUpload][WARN] persist asset', e); }
+    return { ok: true, id, imageUrl: (product as any).imageUrl, previousUrl, changed: previousUrl !== (product as any).imageUrl };
+  }
+
+  /* ===========================================
+     3c) قائمة الأصول مع فلاتر بسيطة
+     =========================================== */
+  @Get('assets')
+  async listAssets(
+    @Query('purpose') purpose?: string,
+    @Query('tenantId') tenantIdFilter?: string,
+    @Query('productId') productId?: string,
+    @Query('limit') limitRaw?: string,
+    @Query('offset') offsetRaw?: string,
+    @Req() req?: any,
+  ) {
+    const user = req?.user || {};
+    const role = user.role;
+    const tenantIdUser: string | null = user.tenantId ?? null;
+    const qb = this.assetRepo.createQueryBuilder('a').orderBy('a.createdAt', 'DESC');
+    const limit = Math.min(parseInt(limitRaw || '30', 10), 100);
+    const offset = parseInt(offsetRaw || '0', 10);
+    if (purpose) qb.andWhere('a.purpose = :purpose', { purpose });
+    if (productId) qb.andWhere('a.productId = :pid', { pid: productId });
+    if (role !== 'developer') {
+      qb.andWhere('a.tenantId = :tid', { tid: tenantIdUser });
+    } else if (tenantIdFilter) {
+      qb.andWhere('a.tenantId = :tidFilter', { tidFilter: tenantIdFilter });
+    }
+    qb.take(limit).skip(offset);
+    const [rows, total] = await qb.getManyAndCount();
+    return { ok: true, total, count: rows.length, items: rows };
   }
 
   /* ===========================================

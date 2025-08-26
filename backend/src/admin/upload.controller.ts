@@ -8,11 +8,16 @@ import {
   UnauthorizedException,
   InternalServerErrorException,
   ServiceUnavailableException,
+  Body,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import type { Express } from 'express';
 import { configureCloudinary } from '../utils/cloudinary';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Asset } from '../assets/asset.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -26,6 +31,7 @@ function getCloud() {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
 export class UploadController {
+  constructor(@InjectRepository(Asset) private assetRepo: Repository<Asset>) {}
   @Post()
   @UseInterceptors(
     FileInterceptor('file', {
@@ -38,14 +44,41 @@ export class UploadController {
       },
     }),
   )
-  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('purpose') purpose?: string,
+    @Body('productId') productId?: string,
+    @Req() req?: any,
+  ) {
     if (!file) {
   throw new BadRequestException({ code: 'no_file', message: 'لم يتم استلام أي ملف' });
     }
 
+    // استنتاج المستخدم و التينانت (قد يكون developer بلا tenantId)
+    const user = req?.user || {};
+    const tenantId: string | null = user.tenantId ?? null;
+    const role: string = user.role;
+
+    // ضبط purpose الافتراضي
+    const rawPurpose = (purpose || '').trim().toLowerCase();
+    const finalPurpose = rawPurpose || 'misc';
+
+    // قيود الأدوار: ADMIN (أو user tenant admin) يسمح له فقط products|logo|misc، المطور حر
+    if (role !== 'developer') {
+      const allowed = ['products', 'logo', 'misc'];
+      if (!allowed.includes(finalPurpose)) {
+        throw new BadRequestException({ code: 'invalid_purpose', message: 'الغرض غير مسموح لهذا الدور' });
+      }
+    }
+
+    // بناء مجلد Cloudinary
+    // لو tenantId موجود: watan/tenants/{tenantId}/{purpose} وإلا watan/global/{purpose}
+    const folder = tenantId ? `watan/tenants/${tenantId}/${finalPurpose}` : `watan/global/${finalPurpose}`;
+
     try {
       const cloudinary = getCloud();
-      const result = await new Promise<{ secure_url: string }>((resolve, reject) => {
+      const started = Date.now();
+      const result = await new Promise<any>((resolve, reject) => {
         // Debug معلومات عن الملف
         // eslint-disable-next-line no-console
         console.log('[Admin Upload][DEBUG] incoming file', {
@@ -56,8 +89,10 @@ export class UploadController {
         });
         const stream = cloudinary.uploader.upload_stream(
           {
-            folder: 'watan',
+            folder,
             resource_type: 'image',
+            overwrite: false,
+            unique_filename: true,
           },
           (err, res) => {
             // eslint-disable-next-line no-console
@@ -68,6 +103,7 @@ export class UploadController {
               errMessage: err?.message,
               resHasError: !!(res as any)?.error,
               resError: (res as any)?.error,
+              elapsedMs: Date.now() - started,
             });
             if (err) return reject(err);
             if ((res as any)?.error) return reject((res as any).error);
@@ -85,8 +121,39 @@ export class UploadController {
         });
         stream.end(file.buffer);
       });
-
-      return { url: result.secure_url, secure_url: result.secure_url };
+      // حفظ metadata في جدول assets
+      try {
+        const asset = this.assetRepo.create({
+          tenantId,
+          uploaderUserId: user.id || null,
+          role,
+          purpose: finalPurpose,
+          productId: productId || null,
+            originalName: file.originalname,
+          publicId: result.public_id,
+          format: result.format,
+          bytes: result.bytes,
+          width: result.width || null,
+          height: result.height || null,
+          secureUrl: result.secure_url,
+          folder: result.folder || folder,
+        });
+        await this.assetRepo.save(asset);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[Admin Upload][WARN] failed to persist asset metadata', e);
+      }
+      return {
+        url: result.secure_url,
+        secure_url: result.secure_url,
+        public_id: result.public_id,
+        bytes: result.bytes,
+        width: result.width,
+        height: result.height,
+        format: result.format,
+        folder,
+        purpose: finalPurpose,
+      };
     } catch (err: any) {
       const rawMsg: string = err?.message || err?.error?.message || '';
       const httpCode: number | undefined = err?.http_code || err?.statusCode || err?.status;

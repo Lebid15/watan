@@ -30,6 +30,7 @@ import { CatalogProduct } from '../catalog/catalog-product.entity';
 import { CatalogPackage } from '../catalog/catalog-package.entity';
 import { Product } from '../products/product.entity';
 import { ProductPackage } from '../products/product-package.entity';
+import { Asset } from '../assets/asset.entity';
 
 import { SiteSettingsService } from './site-settings.service';
 import { CatalogImportService } from '../integrations/catalog-import.service';
@@ -52,7 +53,8 @@ import { StatsAdminService } from './stats.admin.service';
       CatalogPackage,
       Integration,
       Product,
-      ProductPackage,
+  ProductPackage,
+  Asset,
     ]),
   ],
   controllers: [
