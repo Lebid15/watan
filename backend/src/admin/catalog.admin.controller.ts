@@ -322,8 +322,11 @@ export class CatalogAdminController {
     // tenantId يكون مطلوب فقط إذا أردنا النشر (propagate) إلى متجر محدد
     const tenantId = (req as any)?.tenant?.id || (req as any)?.user?.tenantId as string | undefined;
     if (!tenantId && body?.propagate) {
-      // أوضح الرسالة للمطور/الواجهة: يمكن إزالة propagate أو تمرير X-Tenant-Id
-      throw new BadRequestException('Missing tenantId: cannot propagate image to tenant store. Provide X-Tenant-Id header or remove propagate flag.');
+      // بدل رمي خطأ (يعطل تدفق المطوّر) نتجاهل propagate بصمت للمطور العالمي
+      // الهدف: المطور يضبط صور الكتالوج ثم المتجر (tenant) يسحب لاحقاً.
+      // eslint-disable-next-line no-console
+      console.log('[Catalog][ImageUpdate] propagate ignored (no tenantId, developer context)');
+      (body as any).propagate = false;
     }
     // eslint-disable-next-line no-console
     console.log('[Catalog][ImageUpdate]', { id, hasTenant: !!tenantId, propagate: !!body?.propagate });
@@ -372,7 +375,10 @@ export class CatalogAdminController {
   ) {
     const tenantId = (req as any)?.tenant?.id || (req as any)?.user?.tenantId as string | undefined;
     if (!tenantId && body?.propagate) {
-      throw new BadRequestException('Missing tenantId: cannot propagate image to tenant store. Provide X-Tenant-Id header or remove propagate flag.');
+      // تجاهل propagate كما في الـ PUT
+      // eslint-disable-next-line no-console
+      console.log('[Catalog][ImagePatch] propagate ignored (no tenantId, developer context)');
+      (body as any).propagate = false;
     }
     const p = await this.productsRepo.findOne({ where: { id } });
     if (!p) throw new NotFoundException('Catalog product not found');
