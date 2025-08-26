@@ -168,12 +168,23 @@ export default function AdminPaymentMethodsPage() {
     if (!file) return undefined;
     const fd = new FormData();
     fd.append('file', file);
-    const { data } = await api.post<{ url: string }>(
-      API_ROUTES.admin.upload,
-      fd,
-      { headers: { 'Content-Type': 'multipart/form-data' } }
-    );
-    return data?.url;
+    // استخدم fetch مباشرة لضبط التوكن يدوياً لو أحببت لاحقاً
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
+    const res = await fetch(API_ROUTES.admin.upload, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: fd,
+      credentials: 'include',
+    });
+    if (res.status !== 200 && res.status !== 201) {
+      let payload: any = null; try { payload = await res.json(); } catch {}
+      const msg = payload?.message || payload?.error || 'فشل رفع الشعار';
+      throw new Error(msg);
+    }
+    let payload: any = null; try { payload = await res.json(); } catch { payload = {}; }
+  const url = payload?.url || payload?.secure_url || payload?.imageUrl || payload?.data?.url || payload?.data?.secure_url || payload?.data?.imageUrl;
+    if (!url) throw new Error('لم يتم استلام رابط الصورة');
+    return url;
   }
 
   // CREATE

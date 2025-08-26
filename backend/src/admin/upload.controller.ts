@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '../auth/user-role.enum';
+import { HttpCode } from '@nestjs/common';
 
 function getCloud() {
   return configureCloudinary();
@@ -44,12 +45,27 @@ export class UploadController {
       },
     }),
   )
+  @HttpCode(201)
   async uploadFile(
     @UploadedFile() file: Express.Multer.File,
     @Body('purpose') purpose?: string,
     @Body('productId') productId?: string,
     @Req() req?: any,
   ) {
+  const corr: string = req?.headers?.['x-upload-correlation'] || req?.body?.correlationId || `srv-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  // دخول الكنترولر (غير مشروط بـ JWT_DEBUG) لتأكيد أننا استلمنا الطلب
+  try { console.log('[Admin Upload][ENTRY]', { corr, hasFile: !!req?.file, authHeader: !!req?.headers?.authorization }); } catch {}
+    if (process.env.JWT_DEBUG === '1') {
+      // eslint-disable-next-line no-console
+      console.log('[Admin Upload][DEBUG] user ctx', {
+        hasUser: !!req?.user,
+        role: req?.user?.role,
+        tenantId: req?.user?.tenantId ?? null,
+        userId: req?.user?.id,
+        authHeader: !!req?.headers?.authorization,
+    corr,
+      });
+    }
     if (!file) {
   throw new BadRequestException({ code: 'no_file', message: 'لم يتم استلام أي ملف' });
     }
@@ -78,48 +94,47 @@ export class UploadController {
     try {
       const cloudinary = getCloud();
       const started = Date.now();
-      const result = await new Promise<any>((resolve, reject) => {
-        // Debug معلومات عن الملف
+      // Debug معلومات عن الملف
+      // eslint-disable-next-line no-console
+      console.log('[Admin Upload][DEBUG] incoming file', {
+        corr,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        bufferLen: file.buffer?.length,
+      });
+
+      // تحويل إلى Data URI لتفادي أي مشاكل تدفق (stream)
+      const b64 = file.buffer.toString('base64');
+      const mime = file.mimetype || 'application/octet-stream';
+      const dataUri = `data:${mime};base64,${b64}`;
+      let result: any;
+      try {
+        result = await cloudinary.uploader.upload(dataUri, {
+          folder,
+          resource_type: 'image',
+          overwrite: false,
+          unique_filename: true,
+        });
+      } catch (e: any) {
         // eslint-disable-next-line no-console
-        console.log('[Admin Upload][DEBUG] incoming file', {
-          originalname: file.originalname,
-            mimetype: file.mimetype,
-            size: file.size,
-            bufferLen: file.buffer?.length,
+        console.error('[Admin Upload][DEBUG] direct upload error', {
+          corr,
+          message: e?.message,
+          name: e?.name,
+          http_code: e?.http_code,
+          elapsedMs: Date.now() - started,
         });
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder,
-            resource_type: 'image',
-            overwrite: false,
-            unique_filename: true,
-          },
-          (err, res) => {
-            // eslint-disable-next-line no-console
-            console.log('[Admin Upload][DEBUG] cloudinary callback', {
-              hasErr: !!err,
-              errType: err && typeof err,
-              errKeys: err && Object.keys(err || {}),
-              errMessage: err?.message,
-              resHasError: !!(res as any)?.error,
-              resError: (res as any)?.error,
-              elapsedMs: Date.now() - started,
-            });
-            if (err) return reject(err);
-            if ((res as any)?.error) return reject((res as any).error);
-            if (!res) return reject(new Error('Empty Cloudinary response'));
-            resolve(res as any);
-          },
-        );
-        stream.on('error', (e) => {
-          // eslint-disable-next-line no-console
-          console.error('[Admin Upload][DEBUG] stream error event', {
-            message: (e as any)?.message,
-            name: (e as any)?.name,
-          });
-          reject(e);
-        });
-        stream.end(file.buffer);
+        throw e;
+      }
+      // eslint-disable-next-line no-console
+      console.log('[Admin Upload][DEBUG] direct upload result', {
+        corr,
+        hasResult: !!result,
+        keys: result && Object.keys(result || {}).slice(0, 12),
+        public_id: result?.public_id,
+        secure_url_len: result?.secure_url?.length,
+        elapsedMs: Date.now() - started,
       });
       // حفظ metadata في جدول assets
       try {
@@ -139,13 +154,49 @@ export class UploadController {
           folder: result.folder || folder,
         });
         await this.assetRepo.save(asset);
+        // eslint-disable-next-line no-console
+  console.log('[Admin Upload][INFO] asset persisted', { corr, assetId: asset.id, publicId: asset.publicId, tenantId: asset.tenantId, purpose: asset.purpose });
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.error('[Admin Upload][WARN] failed to persist asset metadata', e);
+  console.error('[Admin Upload][WARN] failed to persist asset metadata', { corr, err: e });
       }
+      // تحقّق صارم: يجب أن نمتلك secure_url
+      if (!result?.secure_url) {
+        // eslint-disable-next-line no-console
+        console.error('[Admin Upload][ERROR] missing secure_url in Cloudinary response', {
+          corr,
+          keys: result && Object.keys(result),
+          public_id: result?.public_id,
+          format: result?.format,
+        });
+        throw new InternalServerErrorException({ code: 'cloudinary_no_secure_url', message: 'فشل استلام رابط الصورة من Cloudinary' });
+      }
+      // Log موجز للنتيجة (بدون بيانات حساسة)
+      try {
+        // eslint-disable-next-line no-console
+        console.log('[Admin Upload][INFO] upload success', {
+          corr,
+          public_id: result.public_id,
+          bytes: result.bytes,
+          width: result.width,
+          height: result.height,
+          format: result.format,
+          secure_url_len: result.secure_url?.length,
+        });
+      } catch {}
       return {
+        corr,
+        ok: true,
         url: result.secure_url,
         secure_url: result.secure_url,
+  imageUrl: result.secure_url, // compat alias for older frontend expectations
+        secureUrl: result.secure_url, // camelCase alias (احتياطي)
+        data: { // غلاف توافق لواجهات قديمة كانت تتوقع data.url
+          url: result.secure_url,
+          secure_url: result.secure_url,
+          imageUrl: result.secure_url,
+          secureUrl: result.secure_url,
+        },
         public_id: result.public_id,
         bytes: result.bytes,
         width: result.width,
@@ -160,6 +211,7 @@ export class UploadController {
 
       // eslint-disable-next-line no-console
       console.error('[Admin Upload] Cloudinary error:', {
+        corr,
         message: rawMsg,
         name: err?.name,
         http_code: httpCode,

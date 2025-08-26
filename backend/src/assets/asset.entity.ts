@@ -18,8 +18,9 @@ export class Asset {
   @Column({ length: 48 })
   purpose: string; // products | logo | misc | dev | ...
 
-  @Column({ nullable: true })
-  productId?: string | null; // عند الربط لاحقاً
+  // ربط اختياري بمنتج (نحدد النوع صراحةً لتفادي استنتاج Object)
+  @Column({ type: 'uuid', nullable: true })
+  productId: string | null; // عند الربط لاحقاً
 
   @Column({ length: 255 })
   originalName: string;

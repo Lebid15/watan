@@ -41,7 +41,7 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
     // Network/DNS errors: surface minimal message
     throw new Error('تعذر الاتصال بالخادم أثناء الرفع');
   }
-  if (!res.ok) {
+  if (res.status !== 200 && res.status !== 201) {
     // Map status codes
     if (res.status === 401 || res.status === 403) throw new Error('جلسة منتهية، يرجى تسجيل الدخول');
     if (res.status === 413) throw new Error('الصورة كبيرة جدًا');
@@ -56,8 +56,11 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
     throw new Error(msg || 'فشل رفع الملف…');
   }
   const data = await res.json().catch(() => ({}));
-  const url: string | undefined = data?.url || data?.secure_url;
-  if (!url) throw new Error('لم يتم استلام رابط الصورة');
+  const url: string | undefined = data?.url || data?.secure_url || (data as any)?.imageUrl || data?.data?.url || data?.data?.secure_url || (data as any)?.data?.imageUrl;
+  if (!url) {
+    console.error('Upload response payload:', data);
+    throw new Error('لم يتم استلام رابط الصورة');
+  }
   return url;
 }
 

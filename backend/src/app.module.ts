@@ -89,13 +89,15 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
             if (['localhost', '127.0.0.1'].includes(u.hostname)) needSsl = false;
         } catch (_) {}
 
+        const autoEnv = process.env.AUTO_MIGRATIONS;
+        const migrationsRun = autoEnv === 'false' ? false : (autoEnv === 'true' ? true : isProd);
         return {
           type: 'postgres',
           url: databaseUrl,
           autoLoadEntities: true,
           synchronize: false, // never auto-sync; rely on migrations
           migrations: runningTs ? ['src/migrations/*.ts'] : ['dist/migrations/*.js'],
-          migrationsRun: process.env.AUTO_MIGRATIONS === 'false' ? false : isProd,
+          migrationsRun,
           ssl: needSsl ? { rejectUnauthorized: false } : false,
           extra: needSsl ? { ssl: { rejectUnauthorized: false } } : undefined,
           logging: ['error'],

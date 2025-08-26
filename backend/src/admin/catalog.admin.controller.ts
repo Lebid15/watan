@@ -1,6 +1,6 @@
 // src/admin/catalog.admin.controller.ts
 import {
-  Controller, Get, Post, Put, Patch, Body, Param, Query,
+  Controller, Get, Post, Put, Patch, Delete, Body, Param, Query,
   UseGuards, NotFoundException, BadRequestException, Req,
   UploadedFile, UseInterceptors,
 } from '@nestjs/common';
@@ -495,6 +495,40 @@ export class CatalogAdminController {
     qb.take(limit).skip(offset);
     const [rows, total] = await qb.getManyAndCount();
     return { ok: true, total, count: rows.length, items: rows };
+  }
+
+  /* ===========================================
+     حذف أصل (مع تحقق الصلاحيات) + محاولة حذف Cloudinary
+     =========================================== */
+  @Delete('assets/:id')
+  async deleteAsset(@Param('id') id: string, @Req() req: any) {
+    const user = req?.user || {};
+    const role = user.role;
+    const tenantIdUser: string | null = user.tenantId ?? null;
+    const asset = await this.assetRepo.findOne({ where: { id } });
+    if (!asset) throw new NotFoundException('Asset not found');
+    if (role !== 'developer') {
+      if (asset.tenantId == null || asset.tenantId !== tenantIdUser) {
+        throw new BadRequestException('Not allowed to delete this asset');
+      }
+    }
+    let cloudinaryResult: string | null = null;
+    try {
+      if (asset.publicId) {
+        const cloud = require('cloudinary').v2;
+        try {
+          const res = await cloud.uploader.destroy(asset.publicId);
+          cloudinaryResult = (res && res.result) || 'ok';
+        } catch (e:any) {
+          cloudinaryResult = 'error';
+        }
+      } else {
+        cloudinaryResult = 'not_found';
+      }
+    } catch { cloudinaryResult = cloudinaryResult || 'error'; }
+    await this.assetRepo.delete(asset.id);
+    try { await this.auditService.log('asset_delete', { actorUserId: user.id, targetTenantId: asset.tenantId, meta: { assetId: id, publicId: asset.publicId, cloudinaryResult } }); } catch {}
+    return { success: true, id, cloudinary: { result: cloudinaryResult } };
   }
 
   /* ===========================================

@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "prebuild": "node scripts/generate-build-meta.cjs",
-  "build": "npm run clean && nest build",
+    "build": "npm run clean && nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
@@ -24,8 +24,11 @@
     "migration:generate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate ./src/migrations/AutoMigration -d ./src/data-source.ts",
     "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d ./src/data-source.ts",
     "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d ./src/data-source.ts",
-    "reset-db": "npm run clean && npm run build && npm run migration:run"
-  ,"metrics:product-images": "ts-node -r tsconfig-paths/register ./src/scripts/product-image-metrics.ts"
+    "migration:run:prod": "node dist/data-source.js migration:run",
+    "migration:show:prod": "node dist/data-source.js migration:show",
+    "migration:revert:prod": "node dist/data-source.js migration:revert",
+    "reset-db": "npm run clean && npm run build && npm run migration:run",
+    "metrics:product-images": "ts-node -r tsconfig-paths/register ./src/scripts/product-image-metrics.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.6",
@@ -50,7 +53,9 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "cloudinary": "^1.41.3",
+    "cookie-parser": "^1.4.7",
     "date-fns": "^4.1.0",
+    "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
     "npm": "^11.5.2",
@@ -61,8 +66,7 @@
     "run": "^1.5.0",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1",
-  "typeorm": "^0.3.25",
-  "jsonwebtoken": "^9.0.2"
+    "typeorm": "^0.3.25"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -86,14 +90,14 @@
     "prettier": "^3.4.2",
     "rimraf": "^6.0.1",
     "source-map-support": "^0.5.21",
+    "sqlite3": "^5.1.7",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-  "typescript": "^5.9.2",
-  "typescript-eslint": "^8.20.0",
-  "sqlite3": "^5.1.7"
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.20.0"
   },
   "jest": {
     "moduleFileExtensions": [

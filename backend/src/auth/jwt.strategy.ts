@@ -7,7 +7,25 @@ import { jwtConstants } from './constants';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: (req) => {
+        let token: string | null = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+        if (!token && req?.headers?.['x-access-token']) token = String(req.headers['x-access-token']);
+        if (!token && req?.headers?.token) token = String(req.headers.token);
+        if (!token && req?.query?.token) token = String(req.query.token);
+        if (!token && req?.cookies?.auth) token = req.cookies.auth;
+        if (process.env.JWT_DEBUG === '1') {
+          // eslint-disable-next-line no-console
+          console.log('[JWT][DEBUG] extraction', {
+            hasAuthHeader: !!req?.headers?.authorization,
+            hasXAccess: !!req?.headers?.['x-access-token'],
+            hasTokenHeader: !!req?.headers?.token,
+            hasQuery: !!req?.query?.token,
+            hasCookie: !!req?.cookies?.auth,
+            finalLen: token ? token.length : 0,
+          });
+        }
+        return token as any;
+      },
       ignoreExpiration: false,
       secretOrKey: jwtConstants.secret,
     });
@@ -16,6 +34,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: any, done?: any) {
     if (!payload?.sub) {
       throw new UnauthorizedException('بيانات التوكن غير صالحة: sub مفقود');
+    }
+    if (process.env.JWT_DEBUG === '1') {
+      // eslint-disable-next-line no-console
+      console.log('[JWT][DEBUG] payload', { sub: payload.sub, role: payload.role, tenantId: payload.tenantId, exp: payload.exp });
     }
     const role = (payload.role || 'user').toString().toLowerCase();
     const allowsNullTenant = ['instance_owner', 'developer'].includes(role);

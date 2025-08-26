@@ -66,8 +66,12 @@ export class EnsureTenantDomainColumnsBaseline20250825T1210 implements Migration
 
       -- FK constraint tenantId -> tenants.id (cascade)
       SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_tenant_domain_tenant') INTO v_fk;
-      IF NOT v_fk AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='tenants') THEN
-        BEGIN EXECUTE 'ALTER TABLE "tenant_domain" ADD CONSTRAINT "fk_tenant_domain_tenant" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE'; EXCEPTION WHEN duplicate_object THEN END;
+  IF NOT v_fk AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='tenant') THEN
+        -- Sanitize orphan tenantId values that don't exist in tenants table to avoid FK violation
+        BEGIN
+          EXECUTE 'UPDATE "tenant_domain" td SET "tenantId"=NULL WHERE "tenantId" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM tenant t WHERE t.id = td."tenantId")';
+        EXCEPTION WHEN others THEN END;
+  BEGIN EXECUTE 'ALTER TABLE "tenant_domain" ADD CONSTRAINT "fk_tenant_domain_tenant" FOREIGN KEY ("tenantId") REFERENCES "tenant"("id") ON DELETE CASCADE'; EXCEPTION WHEN duplicate_object THEN END;
       END IF;
     END $$;`);
   }

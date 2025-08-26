@@ -26,12 +26,29 @@ type CatalogListItem = {
 
 type ProviderRow = { id: string; name: string; provider: string };
 
-/** استخراج رابط الصورة من استجابة الرفع مع تضييق النوع */
-function extractUploadUrl(r: UploadResponse | undefined): string {
-  const u = r?.url ?? r?.secure_url ?? r?.data?.url ?? r?.data?.secure_url;
-  if (!u) throw new Error('لم يتم استلام رابط الصورة من الرفع');
-  return u;
+/**
+ * اختيار أول رابط صورة متاح من كائن الاستجابة بدون رمي خطأ مباشرة.
+ * (أبسط من الدالة السابقة لتسهيل التشخيص)
+ */
+function pickUploadUrl(obj: any): string | null {
+  if (!obj || typeof obj !== 'object') return null;
+  return (
+    obj.secure_url ||
+    obj.secureUrl ||
+    obj.url ||
+    obj.imageUrl ||
+    (obj.data && (
+      obj.data.secure_url ||
+      obj.data.secureUrl ||
+      obj.data.url ||
+      obj.data.imageUrl
+    )) ||
+    null
+  );
 }
+
+// Toggleable debug (set localStorage.setItem('UPLOAD_DEBUG','1') to re-enable logging temporarily)
+const isUploadDebug = () => typeof window !== 'undefined' && localStorage.getItem('UPLOAD_DEBUG') === '1';
 
 export default function CatalogImagesPage() {
   const { show } = useToast();
@@ -112,17 +129,25 @@ export default function CatalogImagesPage() {
 
     setUpdatingId(targetId);
     try {
+  const corr = `UPL-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  if (isUploadDebug()) console.log('[UPLOAD][START]', { corr, name: file.name, size: file.size, type: file.type, targetId });
       // 1) رفع الصورة (multipart)
       const form = new FormData();
       form.append('file', file);
+      form.append('correlationId', corr);
       // Use fetch to avoid forcing multipart boundary header manually
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
-      const upRes = await fetch(API_ROUTES.admin.upload, {
+  const upRes = await fetch(API_ROUTES.admin.upload, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'X-Upload-Correlation': corr,
+        },
         body: form,
       });
-      if (!upRes.ok) {
+  if (isUploadDebug()) console.log('[UPLOAD][RESP_META]', corr, upRes.status, upRes.headers.get('content-type'));
+  // اعتبر 200 و 201 نجاحاً
+  if (upRes.status !== 200 && upRes.status !== 201) {
         if (upRes.status === 401 || upRes.status === 403) throw new Error('جلسة منتهية، يرجى تسجيل الدخول');
         if (upRes.status === 413) throw new Error('الصورة كبيرة جدًا');
         let p: any = null; try { p = await upRes.json(); } catch {}
@@ -130,19 +155,33 @@ export default function CatalogImagesPage() {
         if (p?.code === 'cloudinary_bad_credentials') throw new Error('إعدادات Cloudinary غير صحيحة');
         throw new Error(msg);
       }
-      const up: UploadResponse = await upRes.json();
-
-      // 2) استخراج الرابط مع تضييق النوع
-      const url = extractUploadUrl(up.data);
+  let up: UploadResponse | null = null;
+  // DEBUG: طباعة الاستجابة الخام قبل التحويل (أزلها لاحقاً)
+      try {
+        const raw = await upRes.clone().text();
+        if (isUploadDebug()) console.log('[UPLOAD][RAW]', corr, upRes.status, 'len='+raw.length, raw);
+      } catch {}
+      try { up = await upRes.json(); } catch (parseErr) { if (isUploadDebug()) console.warn('[UPLOAD][PARSE_ERR]', corr, parseErr); up = null; }
+      if (isUploadDebug()) console.log('[UPLOAD][JSON]', corr, up);
+  // 2) استخراج الرابط (نمرّر الكائن كلياً لا .data فقط)
+  const picked = pickUploadUrl(up);
+      if (!picked) {
+        if (isUploadDebug()) console.warn('[UPLOAD][MISS]', corr, 'object بدون رابط معروف', up);
+        throw new Error('لم يتم استلام رابط الصورة');
+      }
+      if (isUploadDebug()) console.log('[UPLOAD][URL]', corr, picked);
+  const url = picked;
 
       // 3) تعيين الصورة على منتج الكتالوج + نشرها للمتجر إن كانت ناقصة
   // PATCH (could also use PUT; backend accepts both for image link) with propagate:true
   await api.patch(API_ROUTES.admin.catalog.setProductImage(targetId), { imageUrl: url, propagate: true });
 
       // 4) تحديث الواجهة محليًا
-      setItems((prev) => prev.map((it) => (it.id === targetId ? { ...it, imageUrl: url } : it)));
-      show('تم تحديث صورة المنتج ✓');
+  setItems((prev) => prev.map((it) => (it.id === targetId ? { ...it, imageUrl: url } : it)));
+  if (isUploadDebug()) console.log('[UPLOAD][DONE]', corr, { targetId, url });
+  show('تم تحديث صورة المنتج ✓');
     } catch (err: any) {
+      if (isUploadDebug()) console.error('[UPLOAD][ERROR]', err);
       show(err?.response?.data?.message || err?.message || 'فشل رفع/تحديث الصورة');
     } finally {
       setUpdatingId(null);
@@ -200,11 +239,25 @@ export default function CatalogImagesPage() {
         {filtered.map((p) => (
           <div key={p.id} className="rounded-xl border bg-white p-3 flex gap-3 items-center">
             <div className="h-14 w-14 rounded-lg bg-zinc-100 overflow-hidden flex items-center justify-center">
-              {p.imageUrl ? (
-                <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-2xl">📦</span>
-              )}
+              {(() => {
+                const cleanUrl = p.imageUrl && p.imageUrl.includes('via.placeholder.com') ? null : p.imageUrl;
+                return cleanUrl ? (
+                  <img
+                    src={cleanUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      const img = e.currentTarget as HTMLImageElement;
+                      if (!img.dataset.fallback) {
+                        img.dataset.fallback = '1';
+                        img.src = '/images/placeholder.png';
+                      }
+                    }}
+                  />
+                ) : (
+                  <span className="text-2xl">📦</span>
+                );
+              })()}
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-semibold truncate">{p.name}</div>

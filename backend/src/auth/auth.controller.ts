@@ -1,5 +1,5 @@
 // src/auth/auth.controller.ts
-import { Controller, Post, Body, BadRequestException, UnauthorizedException, UseGuards, Req, ForbiddenException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException, UnauthorizedException, UseGuards, Req, ForbiddenException, ConflictException, NotFoundException, Res } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Tenant } from '../tenants/tenant.entity';
@@ -14,7 +14,7 @@ import { RateLimit } from '../common/rate-limit.guard';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 // (imports already declared above for repositories)
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 
 class LoginDto {
   emailOrUsername?: string;
@@ -45,7 +45,7 @@ export class AuthController {
   @ApiResponse({ status: 201, description: 'تم تسجيل الدخول بنجاح' })
   @ApiResponse({ status: 401, description: 'بيانات غير صحيحة' })
   @ApiBody({ type: LoginDto })
-  async login(@Req() req: Request, @Body() body: LoginDto) {
+  async login(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: LoginDto) {
     const emailOrUsername = body.emailOrUsername ?? body.email ?? body.username;
     if (!emailOrUsername || !body.password) {
       throw new BadRequestException('يرجى إرسال emailOrUsername أو email أو username مع password');
@@ -66,6 +66,20 @@ export class AuthController {
     if (!user) throw new UnauthorizedException('بيانات تسجيل الدخول غير صحيحة');
 
     const { access_token } = await this.authService.login(user, tenantIdFromContext);
+    // تعيين كوكي (دعم الواجهة بالكوكي أو بالـ Bearer). Domain من البيئة إن وجد.
+    const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.syrz1.com';
+    try {
+      res.cookie('auth', access_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        domain: cookieDomain,
+        path: '/',
+        maxAge: 1000 * 60 * 60 * 12, // 12h
+      });
+    } catch (e) {
+      console.warn('[AUTH] failed to set auth cookie:', (e as any)?.message);
+    }
     return { token: access_token };
   }
 

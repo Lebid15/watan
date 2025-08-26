@@ -13,6 +13,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class AddProductImageFallbackFields20250825T1500 implements MigrationInterface {
   name = 'AddProductImageFallbackFields20250825T1500';
 
+  // NOTE: Subsequent migrations (AddCatalogImageUrl, PrepareDropLegacyProductImage, DropLegacyProductImage)
+  // check for the presence of useCatalogImage. If for any reason this migration was skipped,
+  // later ones now degrade gracefully (20250825T1700 made defensive). Keep standard chronological ordering.
+
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
     DO $$

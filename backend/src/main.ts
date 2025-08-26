@@ -19,6 +19,7 @@ import * as dotenv from 'dotenv';
 })();
 
 import { NestFactory } from '@nestjs/core';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -61,11 +62,14 @@ async function bootstrap() {
     baseCorsOrigins.push(process.env.FRONTEND_ORIGIN);
   }
   app.enableCors({
-  origin: baseCorsOrigins,
-  credentials: true, // لازم true لو فيه كوكيز/جلسة
+    origin: baseCorsOrigins,
+    credentials: true, // السماح بإرسال الكوكيز
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Host', 'X-Tenant-Id'],
   });
+
+  // ✅ تفعيل cookie-parser لقراءة التوكن من الكوكي عند اللزوم
+  app.use(cookieParser());
 
   // Swagger
   const config = new DocumentBuilder()
@@ -235,20 +239,28 @@ async function bootstrap() {
         BEGIN
           CREATE INDEX IF NOT EXISTS "idx_integrations_scope" ON "integrations" ("scope");
         EXCEPTION WHEN others THEN NULL; END;
-        -- currencies.tenantId (اكتشفنا خطأ 42703 لعدم وجود العمود في الإنتاج)
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='currencies' AND column_name='tenantId'
+        -- currencies table may still be missing in some drifted envs before rescue migrations run.
+        -- Guard all currency alterations by table existence to avoid PRELOAD failure (relation does not exist).
+        IF EXISTS (
+          SELECT 1 FROM information_schema.tables WHERE table_name='currencies'
         ) THEN
-          ALTER TABLE "currencies" ADD COLUMN "tenantId" uuid NULL;
-          RAISE NOTICE 'Added currencies.tenantId (NULLable for legacy rows)';
+          -- currencies.tenantId (اكتشفنا خطأ 42703 لعدم وجود العمود في الإنتاج)
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='currencies' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "currencies" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added currencies.tenantId (NULLable for legacy rows)';
+          END IF;
+          -- Index & unique composite (ignore errors if exist already)
+          BEGIN
+            CREATE INDEX IF NOT EXISTS "idx_currencies_tenant" ON "currencies" ("tenantId");
+          EXCEPTION WHEN others THEN NULL; END;
+          BEGIN
+            CREATE UNIQUE INDEX IF NOT EXISTS "uniq_currencies_tenant_code" ON "currencies" ("tenantId","code");
+          EXCEPTION WHEN others THEN NULL; END;
+        ELSE
+          RAISE NOTICE 'Skipping currencies alterations (table missing) – expected if rescue migration not yet applied';
         END IF;
-        -- فهرس وفريدة مركبة لو لم تكن موجودة (قد تفشل لو موجودة فنلتقط لاحقاً)
-        BEGIN
-          CREATE INDEX IF NOT EXISTS "idx_currencies_tenant" ON "currencies" ("tenantId");
-        EXCEPTION WHEN others THEN NULL; END;
-        BEGIN
-          CREATE UNIQUE INDEX IF NOT EXISTS "uniq_currencies_tenant_code" ON "currencies" ("tenantId","code");
-        EXCEPTION WHEN others THEN NULL; END;
         -- ====== جداول الكتالوج (قد تكون غير منشأة) ======
         IF NOT EXISTS (
           SELECT 1 FROM information_schema.tables WHERE table_name='catalog_product'
