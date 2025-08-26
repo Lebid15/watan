@@ -80,6 +80,10 @@ export class CatalogAdminController {
       if (q?.trim()) qb.where('p.name ILIKE :q', { q: `%${q.trim()}%` });
 
       const rows = await qb.getRawMany();
+      // Sanitize legacy placeholder external URLs so frontend doesn't attempt unreachable host.
+      for (const r of rows) {
+        if (r.imageUrl && /via\.placeholder\.com/i.test(r.imageUrl)) r.imageUrl = null;
+      }
       return { items: rows };
     }
 
@@ -89,6 +93,9 @@ export class CatalogAdminController {
       order: { name: 'ASC' },
       take: 500,
     });
+    for (const it of items as any[]) {
+      if (it.imageUrl && /via\.placeholder\.com/i.test(it.imageUrl)) it.imageUrl = null;
+    }
     return { items };
   }
 
