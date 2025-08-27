@@ -99,7 +99,8 @@ export class BillingService {
         dueAt,
       });
       try {
-        await this.invRepo.save(invoice);
+  await this.invRepo.save(invoice);
+  this.logger.log(`invoice.created tenant=${tenant.id} id=${invoice.id} amount=${invoice.amountUsd}`);
         subscription.nextDueAt = nextDueAt;
         await this.subRepo.save(subscription);
         created++;
@@ -172,6 +173,7 @@ export class BillingService {
           sub.suspendAt = nowUTC;
           sub.suspendReason = 'billing_overdue';
           await this.subRepo.save(sub);
+          this.logger.log(`subscription.suspended tenant=${sub.tenantId} invoice=${inv.id}`);
           suspended++;
         }
       }
@@ -233,6 +235,7 @@ export class BillingService {
         status: 'pending',
       });
       const saved = await manager.save(dep);
+  this.logger.log(`deposit.created tenant=${tenantId} deposit=${saved.id} amount=${amountUsd.toFixed(6)} invoice=${opts.invoiceId||'none'}`);
       return { depositId: saved.id, status: saved.status };
     });
   }

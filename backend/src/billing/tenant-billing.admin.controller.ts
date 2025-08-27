@@ -10,6 +10,7 @@ export class AdminBillingController {
 
   @Get('tenants')
   async tenants(@Req() req: any, @Query('status') status?: string, @Query('overdue') overdue?: string, @Query('limit') limit='20', @Query('offset') offset='0') {
+  if (!isFeatureEnabled('billingV1')) return { status: 'disabled', items: [], total: 0, limit: 0, offset: 0 };
     this.assertInstanceOwner(req);
     const lim = Math.max(1, Math.min(200, Number(limit) || 20));
     const off = Math.max(0, Number(offset) || 0);
@@ -18,6 +19,7 @@ export class AdminBillingController {
 
   @Post('invoices/:id/mark-paid')
   async markPaid(@Param('id') id: string, @Body() body: any) {
+  if (!isFeatureEnabled('billingV1')) throw new NotFoundException();
     const inv = await this.svc.markInvoicePaid(id, body.depositId || null);
     return { id: inv.id, status: inv.status, paidAt: inv.paidAt };
   }
@@ -41,6 +43,7 @@ export class AdminBillingController {
   @Patch('config/:tenantId')
   async patchConfig(@Req() req: any, @Param('tenantId') tenantId: string, @Body() body: any) {
     this.assertInstanceOwner(req);
+  if (!isFeatureEnabled('billingV1')) throw new NotFoundException();
     const cfg = await this.svc.getOrCreateConfig(tenantId);
     if (body.monthlyPriceUsd !== undefined) cfg.monthlyPriceUsd = body.monthlyPriceUsd;
     if (body.graceDays !== undefined) cfg.graceDays = body.graceDays;
@@ -52,6 +55,7 @@ export class AdminBillingController {
   @Get('tenants/:tenantId/invoices')
   async tenantInvoices(@Req() req: any, @Param('tenantId') tenantId: string, @Query('status') status?: BillingInvoiceStatus, @Query('overdue') overdue?: string) {
     this.assertInstanceOwner(req);
+  if (!isFeatureEnabled('billingV1')) return { status: 'disabled', items: [] };
     const list = await this.svc.listInvoicesFiltered(tenantId, { status, overdue: overdue==='true' });
     return { items: list.map(i => ({ id: i.id, status: i.status, amountUsd: i.amountUsd, amountUSD3: Number(i.amountUsd).toFixed(3), periodStart: i.periodStart, periodEnd: i.periodEnd, dueAt: i.dueAt, issuedAt: i.issuedAt, paidAt: i.paidAt })) };
   }

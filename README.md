@@ -136,3 +136,4 @@ Defaults: SSH host alias `syr1-vps` (override with `SSH_TARGET`), remote dir `/r
 ### Additional Documentation
 
 * Billing API: `docs/api/billing.md`
+* Kill Switch (Billing): set `FEATURE_BILLING_V1=false` and restart backend to immediately disable issuance/enforcement & guard (data remains intact).

@@ -2,6 +2,7 @@ import { Controller, Get, Query, Post, Body, Req, UnprocessableEntityException, 
 import { BillingService } from './billing.service';
 import { BillingInvoiceStatus } from './billing-invoice.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { isFeatureEnabled } from '../common/feature-flags';
 
 function format3(v: string | null | undefined) { if (v==null) return null; return Number(v).toFixed(3); }
 
@@ -12,6 +13,7 @@ export class TenantBillingController {
 
   @Get('overview')
   async overview(@Req() req: any) {
+  if (!isFeatureEnabled('billingV1')) return { status: 'disabled' };
     const tenantId = req.tenant?.id || req.user?.tenantId;
     this.assertTenantOwner(req);
     return this.svc.computeTenantOverview(tenantId);
@@ -19,6 +21,7 @@ export class TenantBillingController {
 
   @Get('invoices')
   async invoices(@Req() req: any, @Query('status') status?: BillingInvoiceStatus, @Query('overdue') overdue?: string) {
+  if (!isFeatureEnabled('billingV1')) return { status: 'disabled', items: [] };
     const tenantId = req.tenant?.id || req.user?.tenantId;
     this.assertTenantOwner(req);
     const list = await this.svc.listInvoicesFiltered(tenantId, { status, overdue: overdue==='true' });
@@ -27,6 +30,7 @@ export class TenantBillingController {
 
   @Post('payments/request')
   async requestPayment(@Req() req: any, @Body() body: any) {
+  if (!isFeatureEnabled('billingV1')) return { status: 'disabled' };
     this.assertTenantOwner(req);
     const tenantId = req.tenant?.id || req.user?.tenantId;
     const amountUsd = Number(body.amountUsd);

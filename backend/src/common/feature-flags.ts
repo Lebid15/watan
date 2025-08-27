@@ -1,17 +1,20 @@
 // Central place for feature flags (simple boolean toggles). Forward-only, no runtime admin UI yet.
 // Phase 1: product image fallback flag (always true once deployed, but structured for future toggling)
+const boolEnv = (v?: string) => !!v && /^(1|true|yes|on)$/i.test(v);
+const billingDefault = process.env.NODE_ENV === 'production' ? false : true; // enable by default on non-prod
 export const FEATURE_FLAGS = {
   productImageFallback: true,
-  // Phase2: تفعيل ربط الكتالوج والباقات والتسعير للموزّع
   catalogLinking: true,
-  // Phase4: واجهة API خارجية للمستخدم (توكنات وصلاحيات)
   externalApi: true,
-  // Phase5: Billing & Subscriptions (tenant billing). Keep disabled in prod until rollout.
-  billingV1: false,
+  billingV1: boolEnv(process.env.FEATURE_BILLING_V1) ? true : billingDefault,
 };
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
 
 export function isFeatureEnabled(flag: FeatureFlagKey): boolean {
   return !!FEATURE_FLAGS[flag];
+}
+
+export function isBillingEnabledEnv(): boolean {
+  return isFeatureEnabled('billingV1');
 }

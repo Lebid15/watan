@@ -179,6 +179,7 @@ Unified pattern:
 * Staging: set `FEATURE_BILLING_V1=true` (or mutate `FEATURE_FLAGS.billingV1 = true` during app bootstrap/tests).
 * Production Canary: keep default `false`; selectively enable for a small tenant cohort.
 * Monitoring: track 4xx (422/403 TENANT_SUSPENDED) rates + latency of issuance/enforcement jobs.
+* Kill Switch: set `FEATURE_BILLING_V1=false` then restart service. Guard & schedulers become inert; no data is deleted.
 
 ## Rollout Plan
 1. Staging Verification – simulate issuance at month boundary, validate overview metrics.
