@@ -5,15 +5,56 @@ import api, { API_ROUTES } from '@/utils/api';
 import Link from 'next/link';
 import { formatMoney3 } from '@/utils/format';
 
+interface PriceGroupPrice { priceGroupId:string; priceGroupName:string; sellPriceUsd?:number|null; }
+
 export default function TenantProductDetails(){
   const params = useParams();
   const id = params?.id as string;
-  const [p,setP]=useState<any>(null); const [loading,setLoading]=useState(true); const [err,setErr]=useState<any>(null);
-  useEffect(()=>{ if(!id) return; (async()=>{ try{ const r=await api.get(API_ROUTES.products.byId(id)); setP(r.data); }catch(e:any){setErr(e);}finally{setLoading(false);} })(); },[id]);
+  const [p,setP]=useState<any>(null);
+  const [loading,setLoading]=useState(true);
+  const [err,setErr]=useState<any>(null);
+  const [groupPrices,setGroupPrices]=useState<PriceGroupPrice[]>([]);
+  const [savingId,setSavingId]=useState<string|null>(null);
+
+  useEffect(()=>{ if(!id) return; (async()=>{ try{
+      const [prodRes, groupsRes] = await Promise.all([
+        api.get(API_ROUTES.products.byId(id)),
+        // Attempt product-specific price groups endpoint; fallback later
+        api.get(`/products/${id}/price-groups`).catch(async (e:any)=>{
+          // Fallback generic list then map (TODO: replace with backend endpoint) 
+          const generic = await api.get(API_ROUTES.priceGroups.base);
+          return { data: (generic.data||[]).map((g:any)=>({ priceGroupId:g.id, priceGroupName:g.name, sellPriceUsd:null })) };
+        })
+      ]);
+      setP(prodRes.data);
+      const rows = (groupsRes.data||[]).map((g:any)=>({
+        priceGroupId: g.priceGroupId || g.id,
+        priceGroupName: g.priceGroupName || g.name,
+        sellPriceUsd: g.sellPriceUsd ?? g.priceUsd ?? null,
+      }));
+      setGroupPrices(rows);
+    }catch(e:any){setErr(e);}finally{setLoading(false);} })(); },[id]);
+
+  const updatePrice = async (pgId:string, newValue:string) => {
+    const num = Number(newValue);
+    setGroupPrices(g=>g.map(r=>r.priceGroupId===pgId?{...r, sellPriceUsd:isNaN(num)?0:num}:r));
+  };
+  const savePrice = async (pgId:string) => {
+    const row = groupPrices.find(r=>r.priceGroupId===pgId);
+    if(!row) return;
+    setSavingId(pgId);
+    try {
+      // Preferred endpoint (TODO: implement backend): /products/{id}/price-groups/{priceGroupId}
+      await api.post(`/products/${id}/price-groups/${pgId}`, { sellPriceUsd: row.sellPriceUsd });
+    } catch (e) {
+      // TODO remove when real endpoint exists
+      // eslint-disable-next-line no-console
+      console.warn('[stub] savePrice failed or endpoint missing', e);
+    } finally { setSavingId(null);} };
   if(loading) return <div>Loading...</div>;
   if(err) return <div className="text-danger">Error loading product.</div>;
   if(!p) return <div>Not found.</div>;
-  return <div className="space-y-4">
+  return <div className="space-y-6">
     <div className="flex items-center justify-between">
       <h1 className="text-xl font-semibold">{p.name}</h1>
       <Link href={`/tenant/products/${id}/packages`} className="btn btn-sm">Packages</Link>
@@ -21,6 +62,37 @@ export default function TenantProductDetails(){
     <div className="grid md:grid-cols-3 gap-3 text-sm">
       <Info label="Base" value={formatMoney3(p.basePriceUsd||0)} />
       <Info label="Capital" value={formatMoney3(p.capitalPriceUsd||0)} />
+    </div>
+    <div className="space-y-2">
+      <h2 className="font-semibold">Price Groups</h2>
+      <table className="w-full text-sm border border-border">
+        <thead className="bg-bg-surface-alt">
+          <tr>
+            <th className="p-2 text-right">Group</th>
+            <th className="p-2 text-right">Sell (USD)</th>
+            <th className="p-2 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groupPrices.map(g=> <tr key={g.priceGroupId} className="border-t border-border">
+            <td className="p-2">{g.priceGroupName}</td>
+            <td className="p-2 font-mono" dir="ltr">
+              <input
+                type="number"
+                step="0.001"
+                value={g.sellPriceUsd==null? '' : g.sellPriceUsd}
+                onChange={e=>updatePrice(g.priceGroupId, e.target.value)}
+                className="w-32 px-2 py-1 bg-bg-surface-alt border border-border rounded"
+              />
+            </td>
+            <td className="p-2">
+              <button disabled={savingId===g.priceGroupId} onClick={()=>savePrice(g.priceGroupId)} className="btn btn-xs btn-primary">{savingId===g.priceGroupId? 'Saving...' : 'Save'}</button>
+            </td>
+          </tr>)}
+          {groupPrices.length===0 && <tr><td colSpan={3} className="p-4 text-center opacity-60">No price groups</td></tr>}
+        </tbody>
+      </table>
+      <p className="text-[11px] opacity-60">All amounts in USD (3 decimals). Edit and Save to apply. (TODO: wire real backend endpoint)</p>
     </div>
   </div>;
 }
