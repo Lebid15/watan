@@ -28,11 +28,9 @@ export class TenantSubscription20250829T1010 implements MigrationInterface {
 
     await queryRunner.createForeignKey('tenant_subscriptions', new TableForeignKey({
       columnNames: ['tenantId'],
-<<<<<<< HEAD
       referencedTableName: 'tenant',
-=======
       referencedTableName: 'tenants',
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
+      referencedTableName: 'tenant',
       referencedColumnNames: ['id'],
       onDelete: 'CASCADE',
       onUpdate: 'CASCADE',
