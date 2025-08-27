@@ -29,6 +29,7 @@
     "migration:revert:prod": "node dist/data-source.js migration:revert",
     "reset-db": "npm run clean && npm run build && npm run migration:run",
     "metrics:product-images": "ts-node -r tsconfig-paths/register ./src/scripts/product-image-metrics.ts"
+ ,"migrations:guard": "node scripts/check-migrations.cjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.6",

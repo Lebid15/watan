@@ -26,12 +26,12 @@ export class TenantBillingConfig20250829T1000 implements MigrationInterface {
 
     await queryRunner.createCheckConstraint('tenant_billing_config', new TableCheck({
       name: 'CHK_tenant_billing_config_anchor',
-      expression: `billingAnchor IN ('EOM','DOM')`,
+      expression: `"billingAnchor" IN ('EOM','DOM')`,
     }));
 
     await queryRunner.createForeignKey('tenant_billing_config', new TableForeignKey({
       columnNames: ['tenantId'],
-      referencedTableName: 'tenants',
+      referencedTableName: 'tenant',
       referencedColumnNames: ['id'],
       onDelete: 'CASCADE',
       onUpdate: 'CASCADE',
