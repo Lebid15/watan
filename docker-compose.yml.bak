@@ -1,0 +1,99 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: watan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: watan
+      POSTGRES_USER: watan
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "watan"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build: ./backend
+    container_name: watan-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://watan:changeme@postgres:5432/watan?sslmode=disable
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
+      DEBUG_TENANT_GUARD: "1"
+    expose:
+      - "3000"
+    volumes:
+      - backend_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    container_name: watan-frontend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3001 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    expose:
+      - "3001"
+    depends_on:
+      - backend
+    volumes:
+      - frontend_logs:/app/logs
+
+  nginx:
+    image: nginx:alpine
+    container_name: watan-nginx
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      - nginx_logs:/var/log/nginx
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  backend_logs:
+  frontend_logs:
+  nginx_logs:
+
+## Usage:
+# 1) جهّز ملف .env (DATABASE_URL, REDIS_URL, JWT_SECRET, PUBLIC_TENANT_BASE_DOMAIN, NEXT_PUBLIC_API_URL, مفاتيح Cloudinary...).
+# 2) docker compose build --pull
+# 3) docker compose up -d
+# 4) DNS (Cloudflare): syrz1.com + www للسابق، api للسيرفر الخلفي.
+# 5) تحقق من health: curl http://localhost:3000/api/health داخل الشبكة.
