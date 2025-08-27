@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from 'react';
 import { useUser } from '@/context/UserContext';
 import { useRouter, usePathname } from 'next/navigation';
-import MainHeader from '@/components/layout/MainHeader';
 
 export default function DistributorLayout({ children }:{children:React.ReactNode}){
   const { user, loading, refreshUser } = useUser();
@@ -17,5 +16,5 @@ export default function DistributorLayout({ children }:{children:React.ReactNode
     setReady(true);
   },[user,loading,router,pathname]);
   if(!ready) return null;
-  return <div className="pt-20"><MainHeader /><div className="max-w-7xl mx-auto p-4 space-y-6">{children}</div></div>;
+  return <div className="max-w-7xl mx-auto p-4 space-y-6">{children}</div>;
 }

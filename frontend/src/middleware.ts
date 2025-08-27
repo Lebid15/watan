@@ -62,7 +62,9 @@ export function middleware(req: NextRequest) {
   if (!isHtml || !isNavigate) return response ?? NextResponse.next();
 
   const token = cookies.get('access_token')?.value || '';
-  const role = (cookies.get('role')?.value || '').toLowerCase();
+  const rawRole = (cookies.get('role')?.value || '').toLowerCase();
+  // Normalize legacy role names
+  const role = rawRole === 'owner' ? 'instance_owner' : rawRole; // 'owner' legacy → instance_owner
 
   // مسارات عامة لا تتطلب تسجيل دخول (أضفنا /nginx-healthz لمسار فحص Nginx فقط)
   const publicPaths = new Set(['/login','/register','/password-reset','/verify-email','/nginx-healthz']);
@@ -71,6 +73,14 @@ export function middleware(req: NextRequest) {
   if (!token) {
     if (path === '/') return response ?? NextResponse.next();
     return redirect('/login', req);
+  }
+
+  // Role-based landing redirects from root (avoid falling into /dev etc.)
+  if (path === '/') {
+    if (role === 'tenant_owner') return redirect('/tenant', req);
+    if (role === 'distributor') return redirect('/distributor', req);
+    if (role === 'instance_owner') return redirect('/owner', req);
+    if (role === 'developer') return redirect('/dev', req);
   }
 
   if (path.startsWith('/admin')) {

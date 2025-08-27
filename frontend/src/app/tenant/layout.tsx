@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
-import MainHeader from '@/components/layout/MainHeader';
 
 // Simple role guard layout for tenant_owner area
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
@@ -32,10 +31,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   },[user, loading, router, pathname]);
 
   if (!ready) return null; // suppress flash
-  return <div className="pt-20">
-    <MainHeader />
-    <div className="max-w-7xl mx-auto p-4 space-y-6">
-      {children}
-    </div>
+  return <div className="max-w-7xl mx-auto p-4 space-y-6">
+    {children}
   </div>;
 }

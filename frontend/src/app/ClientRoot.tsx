@@ -5,6 +5,7 @@ import { clearAuthArtifacts, hasAccessTokenCookie } from '@/utils/authCleanup';
 import MainHeader from '@/components/layout/MainHeader';
 import BottomNav from '@/components/layout/BottomNav';
 import { UserProvider } from '../context/UserContext';
+import { I18nProvider } from '@/i18n';
 import { ToastProvider } from '@/context/ToastContext';
 import ThemeFab from '@/components/ThemeFab';
 import PasskeyPrompt from '@/components/auth/PasskeyPrompt';
@@ -13,6 +14,7 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const hideHeaderFooter = pathname === '/login' || pathname === '/register';
   const isBackoffice = pathname?.startsWith('/admin') || pathname?.startsWith('/dev');
+  const hasRoleAreaLayout = pathname?.startsWith('/tenant') || pathname?.startsWith('/distributor') || pathname?.startsWith('/owner');
 
   useEffect(() => {
     if (pathname === '/login') {
@@ -29,15 +31,17 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
 
   return (
     <ToastProvider>
-      <UserProvider>
-        {!hideHeaderFooter && !isBackoffice && <ThemeFab />}
-        {!hideHeaderFooter && !isBackoffice && <MainHeader />}
-        <main className={`${!hideHeaderFooter && !isBackoffice ? 'pb-20 pt-20' : ''} relative z-0`}>
+  <I18nProvider>
+  <UserProvider>
+  {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <ThemeFab />}
+  {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <MainHeader />}
+  <main className={`${!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout ? 'pb-20 pt-20' : ''} relative z-0`}>
           {children}
         </main>
-        {!hideHeaderFooter && !isBackoffice && <PasskeyPrompt />}
-        {!hideHeaderFooter && !isBackoffice && <BottomNav />}
-      </UserProvider>
+  {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <PasskeyPrompt />}
+  {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <BottomNav />}
+  </UserProvider>
+  </I18nProvider>
     </ToastProvider>
   );
 }
