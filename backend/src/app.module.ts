@@ -17,6 +17,9 @@ import { PaymentsModule } from './payments/payments.module';
 import { CodesModule } from './codes/codes.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { AuditModule } from './audit/audit.module';
+import { DistributorPricingModule } from './distributor/distributor-pricing.module';
+import { ExternalApiModule } from './external-api/external-api.module';
+import { BillingModule } from './billing/billing.module';
 
 import { Tenant } from './tenants/tenant.entity';
 import { TenantDomain } from './tenants/tenant-domain.entity';
@@ -25,6 +28,9 @@ import { TenantContextMiddleware } from './tenants/tenant-context.middleware';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './health/metrics.controller';
 import { TenantGuard } from './tenants/tenant.guard';
+import { BillingGuard } from './billing/billing.guard';
+import { FinalRolesGuard } from './common/authz/roles';
+import { TenantMoneyDisplayInterceptor } from './common/interceptors/tenant-money-display.interceptor';
 import { RateLimiterRegistry, RateLimitGuard } from './common/rate-limit.guard';
 import { ErrorsModule } from './dev/errors.module';
 import { APP_FILTER } from '@nestjs/core';
@@ -54,7 +60,8 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
             synchronize: true,
             dropSchema: true,
             migrationsRun: false,
-            logging: true,
+            // Reduce logging noise in tests to prevent "Cannot log after tests are done" warnings
+            logging: ['error'],
           } as any;
         }
 
@@ -117,12 +124,21 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
     CodesModule,
     TenantsModule,
     AuditModule,
+  DistributorPricingModule,
+  ExternalApiModule,
+  BillingModule,
   ErrorsModule,
   TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot]),
   ],
   controllers: [HealthController, MetricsController],
   providers: [
-    { provide: APP_GUARD, useClass: TenantGuard },
+  { provide: APP_GUARD, useClass: TenantGuard },
+  { provide: APP_GUARD, useClass: FinalRolesGuard },
+  // Billing guard executes after tenant + roles to leverage tenant context & user role
+  { provide: APP_GUARD, useClass: BillingGuard },
+  { provide: APP_FILTER, useClass: AllExceptionsFilter },
+  // Note: intercepter could also be applied conditionally at controllers; simple global registration here
+  { provide: 'APP_INTERCEPTOR', useClass: TenantMoneyDisplayInterceptor },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   RateLimiterRegistry,
     RateLimitGuard,

@@ -203,6 +203,11 @@ export class BillingService {
     return inv;
   }
 
+  /** Fetch subscription without creating (used by BillingGuard lazy hydrate) */
+  async fetchSubscription(tenantId: string) {
+    return this.subRepo.findOne({ where: { tenantId } });
+  }
+
   /* ================== Private Helpers ================== */
 
   /** جلب المتاجر مع configs والاشتراك (بدون تصفية إضافية حالياً) */
