@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
 import Link from 'next/link';
 import { formatMoney3 } from '@/utils/format';
+import { useToast } from '@/context/ToastContext';
 
 interface PriceGroupPrice { priceGroupId:string; priceGroupName:string; sellPriceUsd?:number|null; }
 
@@ -14,7 +15,9 @@ export default function TenantProductDetails(){
   const [loading,setLoading]=useState(true);
   const [err,setErr]=useState<any>(null);
   const [groupPrices,setGroupPrices]=useState<PriceGroupPrice[]>([]);
+  const [originalPrices,setOriginalPrices]=useState<Record<string, number|null>>({});
   const [savingId,setSavingId]=useState<string|null>(null);
+  const { show } = useToast();
 
   useEffect(()=>{ if(!id) return; (async()=>{ try{
       const [prodRes, groupsRes] = await Promise.all([
@@ -27,12 +30,16 @@ export default function TenantProductDetails(){
         })
       ]);
       setP(prodRes.data);
-      const rows = (groupsRes.data||[]).map((g:any)=>({
+  const rows = (groupsRes.data||[]).map((g:any)=>({
         priceGroupId: g.priceGroupId || g.id,
         priceGroupName: g.priceGroupName || g.name,
         sellPriceUsd: g.sellPriceUsd ?? g.priceUsd ?? null,
       }));
       setGroupPrices(rows);
+  // snapshot originals for dirty tracking
+  const snap: Record<string, number|null> = {};
+  rows.forEach((r: PriceGroupPrice)=>{ snap[r.priceGroupId] = r.sellPriceUsd ?? null; });
+  setOriginalPrices(snap);
     }catch(e:any){setErr(e);}finally{setLoading(false);} })(); },[id]);
 
   const updatePrice = async (pgId:string, newValue:string) => {
@@ -46,10 +53,13 @@ export default function TenantProductDetails(){
     try {
       // Preferred endpoint (TODO: implement backend): /products/{id}/price-groups/{priceGroupId}
       await api.post(`/products/${id}/price-groups/${pgId}`, { sellPriceUsd: row.sellPriceUsd });
+      setOriginalPrices(o=>({ ...o, [pgId]: row.sellPriceUsd ?? null }));
+      show('تم حفظ السعر');
     } catch (e) {
       // TODO remove when real endpoint exists
       // eslint-disable-next-line no-console
       console.warn('[stub] savePrice failed or endpoint missing', e);
+      show('فشل حفظ السعر');
     } finally { setSavingId(null);} };
   if(loading) return <div>Loading...</div>;
   if(err) return <div className="text-danger">Error loading product.</div>;
@@ -74,7 +84,10 @@ export default function TenantProductDetails(){
           </tr>
         </thead>
         <tbody>
-          {groupPrices.map(g=> <tr key={g.priceGroupId} className="border-t border-border">
+          {groupPrices.map(g=> {
+            const original = originalPrices[g.priceGroupId];
+            const isDirty = (g.sellPriceUsd ?? null) !== (original ?? null);
+            return <tr key={g.priceGroupId} className={"border-t border-border " + (isDirty? 'bg-amber-500/10' : '')}>
             <td className="p-2">{g.priceGroupName}</td>
             <td className="p-2 font-mono" dir="ltr">
               <input
@@ -86,9 +99,13 @@ export default function TenantProductDetails(){
               />
             </td>
             <td className="p-2">
-              <button disabled={savingId===g.priceGroupId} onClick={()=>savePrice(g.priceGroupId)} className="btn btn-xs btn-primary">{savingId===g.priceGroupId? 'Saving...' : 'Save'}</button>
+              <div className="flex items-center gap-2">
+                <button disabled={savingId===g.priceGroupId || !isDirty} onClick={()=>savePrice(g.priceGroupId)} className="btn btn-xs btn-primary disabled:opacity-40">{savingId===g.priceGroupId? 'Saving...' : isDirty? 'Save' : 'Saved'}</button>
+                {isDirty && <span className="text-[10px] uppercase tracking-wide text-warning">dirty</span>}
+                {!isDirty && <span className="text-[10px] text-success">✓</span>}
+              </div>
             </td>
-          </tr>)}
+          </tr>; })}
           {groupPrices.length===0 && <tr><td colSpan={3} className="p-4 text-center opacity-60">No price groups</td></tr>}
         </tbody>
       </table>
