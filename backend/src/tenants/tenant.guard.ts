@@ -61,17 +61,24 @@ export class TenantGuard implements CanActivate {
 
   if (PUBLIC_PATHS.some(r => r.test(path))) return true;
 
-  // Allow certain global-scope admin routes to pass without tenant; JWT & RolesGuard will run after us.
+  // Allow certain legacy global-scope admin routes to pass without tenant; JWT & Roles/FinalRoles will run after us.
   if (NO_TENANT_REQUIRED_PATHS.some(r => r.test(path))) return true;
+
+  const isTenantPath = /^\/(api\/)?tenant\//.test(path);
+  const isAdminPath  = /^\/(api\/)?admin\//.test(path);
+  const isDevPath    = /^\/(api\/)?dev\//.test(path);
+  const isAppPath    = /^\/(api\/)?app\//.test(path);
+  const isExternalTenantPath = /^\/(api\/)?tenant\/external\/v1\//.test(path);
 
     // JWT user injected by auth guard earlier (assume global order: auth -> tenant guard) or manually attached.
     const user = req.user;
     const tenant = req.tenant;
 
-    // Must have tenant context for any protected route unless elevated WITHOUT impersonation is still global (no tenant access)
-    if (!tenant) throw new UnauthorizedException('Tenant context required');
+  // External tenant API paths rely on ExternalAuthGuard (controller-level) to attach tenant after this guard
+  if (isExternalTenantPath) return true;
+  if (isTenantPath && !tenant) throw new UnauthorizedException('Tenant context required');
 
-    if (!user) {
+  if (!user && !req.externalToken) {
       // Defer auth evaluation to JwtAuthGuard / RolesGuard if an Authorization header is present.
       // This avoids ordering issues where this global guard runs before controller-level JwtAuthGuard.
       if (req.headers && req.headers.authorization) {
@@ -80,18 +87,21 @@ export class TenantGuard implements CanActivate {
       throw new UnauthorizedException('Auth required');
     }
 
-  // المطور فقط يُسمح له بالوصول بعد الانتحال في سياق تينانت
-  if (user.role === 'developer') {
-      if (!user.tenantId || user.tenantId !== tenant.id) {
-        // Not impersonated properly
-        throw new ForbiddenException('Impersonation required for tenant access');
-      }
-    } else {
-      // Regular user must match tenant
-      if (user.tenantId !== tenant.id) {
-        throw new ForbiddenException('Cross-tenant access blocked');
+    // Enforce tenant ownership/distributor constraints only on tenant paths
+    if (isTenantPath) {
+      if (isExternalTenantPath && req.externalToken) {
+        if (req.externalToken.tenantId !== tenant.id) throw new ForbiddenException('Cross-tenant access (external)');
+        // no role enforcement for external token usage
+      } else {
+        if (!user) throw new UnauthorizedException('Auth required');
+        if (user.tenantId !== tenant.id) throw new ForbiddenException('Cross-tenant access blocked');
+        const finalRole = user.roleFinal || user.role; // fallback to legacy if not injected
+        if (!['tenant_owner', 'distributor'].includes(finalRole)) {
+          throw new ForbiddenException('Role not permitted for tenant API');
+        }
       }
     }
+    // Admin/dev/app paths don't require tenant impersonation here; FinalRolesGuard will restrict roles.
     return true;
   }
 }

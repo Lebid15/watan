@@ -30,6 +30,18 @@ import * as bcrypt from 'bcrypt';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Lightweight conditional request logging (diagnostics for missing /auth/login)
+  if ((process.env.REQUEST_LOGGING || '0') === '1') {
+    app.use((req: any, res: any, next: any) => {
+      const start = Date.now();
+      const host = req.headers['host'];
+      res.on('finish', () => {
+        console.log('[REQ]', req.method, req.originalUrl, 'host=', host, 'status=', res.statusCode, 'ms=', Date.now() - start);
+      });
+      next();
+    });
+    console.log('🟢 REQUEST_LOGGING enabled');
+  }
   // Debug presence of developer bootstrap secret (length only) - remove later
   if (process.env.BOOTSTRAP_DEV_SECRET) {
     console.log('[DEBUG] BOOTSTRAP_DEV_SECRET detected (length=%d)', process.env.BOOTSTRAP_DEV_SECRET.length);
@@ -56,6 +68,8 @@ async function bootstrap() {
     'https://www.syrz1.com',
     // نمط عام للنطاقات الفرعية المحلية
     /^http:\/\/[a-zA-Z0-9-]+\.localhost:3000$/,
+  // ✅ السماح بكل النطاقات الفرعية للإنتاج *.syrz1.com
+  /^https:\/\/[a-zA-Z0-9-]+\.syrz1\.com$/,
   ];
   // يسمح بتحديد أصل إضافي عبر متغير بيئة FRONTEND_ORIGIN (مثال: https://preview.syrz1.com)
   if (process.env.FRONTEND_ORIGIN) {

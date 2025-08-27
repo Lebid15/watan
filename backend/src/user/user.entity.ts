@@ -69,8 +69,16 @@ export class User {
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   overdraftLimit: number;
 
+  // مرحلة 1: عمود تفضيل عملة للموزّع (NULLABLE الآن)
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  preferredCurrencyCode?: string | null;
+
   @Column({ type: 'uuid', nullable: true })
   price_group_id?: string | null;
+
+  // Phase3: الربط الهرمي لمستخدمي الموزّع
+  @Column({ type: 'uuid', nullable: true })
+  parentUserId?: string | null;
 
   @ManyToOne(() => PriceGroup, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'price_group_id' })
@@ -97,4 +105,8 @@ export class User {
     nullable: true,
   })
   emailVerifiedAt?: Date | null;
+
+  // Phase4: تمكين واجهة API خارجية (nullable حتى التفعيل اليدوي)
+  @Column({ type: 'boolean', nullable: true, default: false })
+  apiEnabled?: boolean | null;
 }

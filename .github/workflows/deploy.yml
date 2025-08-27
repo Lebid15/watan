@@ -89,6 +89,10 @@ jobs:
           REDIS_URL: ${{ secrets.REDIS_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           PUBLIC_TENANT_BASE_DOMAIN: ${{ secrets.PUBLIC_TENANT_BASE_DOMAIN }}
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
         run: |
           set -e
           PTBD="${PUBLIC_TENANT_BASE_DOMAIN:-syrz1.com}"
@@ -105,6 +109,10 @@ jobs:
             echo "INITIAL_ROOT_PASSWORD=ChangeMe123!"
             echo "BOOTSTRAP_ENABLED=true"
             echo "NEXT_PUBLIC_API_URL=http://api.syrz1.com/api"
+            if [ -n "${CLOUDINARY_CLOUD_NAME}" ]; then echo "CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}"; fi
+            if [ -n "${CLOUDINARY_API_KEY}" ]; then echo "CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}"; fi
+            if [ -n "${CLOUDINARY_API_SECRET}" ]; then echo "CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}"; fi
+            if [ -n "${CLOUDINARY_URL}" ]; then echo "CLOUDINARY_URL=${CLOUDINARY_URL}"; fi
           } > .deploy_tmp/.env
           if grep -E '^DATABASE_URL=' .deploy_tmp/.env | grep -Eq '@(localhost|127\.0\.0\.1)(:|/)'; then
             echo 'Normalizing DATABASE_URL host -> postgres (local rewrite)'

@@ -1,10 +1,7 @@
-import {
-  Column, CreateDateColumn, Entity, Index, OneToMany,
-  PrimaryGeneratedColumn, UpdateDateColumn
-} from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { TenantDomain } from './tenant-domain.entity';
 
-@Entity('tenant')
+@Entity('tenants')
 export class Tenant {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -25,6 +22,7 @@ export class Tenant {
 
   @Column({ default: true })
   isActive: boolean;
+
 
   @CreateDateColumn()
   createdAt: Date;

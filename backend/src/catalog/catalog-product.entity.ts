@@ -12,7 +12,8 @@ import { CatalogPackage } from './catalog-package.entity';
 export type CatalogSourceType = 'external' | 'internal';
 
 @Entity('catalog_product')
-@Index(['tenantId', 'name']) // كل منتج مرتبط بمستأجر
+// Phase2: سنحوّل هذا لاحقًا لمنتج منصة بدون tenantId (حاليًا موجود).
+@Index(['tenantId', 'name'])
 export class CatalogProduct {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -47,6 +48,10 @@ export class CatalogProduct {
 
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
+
+  // Phase2: بعد عملية publish نحدد المنتجات القابلة للاختيار
+  @Column({ type: 'boolean', default: false })
+  isPublishable: boolean;
 
   @OneToMany(() => CatalogPackage, (p) => p.catalogProduct, { cascade: false })
   packages: CatalogPackage[];

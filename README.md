@@ -39,6 +39,15 @@ docker compose -f docker-compose.dev.yml down -v
 
 Production deployment uses the main `docker-compose.yml` (without local DB/Redis). Add external DATABASE_URL & REDIS_URL in the root `.env` for GitHub Actions or VPS deploy.
 
+> IMPORTANT: The GitHub Actions workflow `.github/workflows/deploy.yml` regenerates and uploads a fresh `.env` on each deploy. Any manual edits you make directly on the server (e.g. adding `CLOUDINARY_*` lines via SSH) will be LOST on the next pipeline run unless you also add them as GitHub repository secrets. To persist Cloudinary credentials, define these secrets in the repo settings:
+>
+> * `CLOUDINARY_CLOUD_NAME`
+> * `CLOUDINARY_API_KEY`
+> * `CLOUDINARY_API_SECRET`
+> * (Optional convenience) `CLOUDINARY_URL` (format: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`)
+>
+> After adding the secrets, the workflow will inject them into the generated `.env` automatically (logic guarded to skip empty values). Then redeploy so containers start with the correct vars.
+
 ### Production Image / Upload Notes
 
 Cloudinary credentials must live only in the root `.env` (loaded via `env_file:` in `docker-compose.yml`). Do NOT repeat `CLOUDINARY_*` inside `services.backend.environment` or Docker will override them with empty values. Example `.env` snippet:
@@ -123,3 +132,8 @@ $env:AUTO_SKIP_UNCHANGED=1; pwsh -File scripts/remote-fast-deploy.ps1
 ```
 
 Defaults: SSH host alias `syr1-vps` (override with `SSH_TARGET`), remote dir `/root/watan` (override with `REMOTE_DIR`).
+
+### Additional Documentation
+
+* Billing API: `docs/api/billing.md`
+* Kill Switch (Billing): set `FEATURE_BILLING_V1=false` and restart backend to immediately disable issuance/enforcement & guard (data remains intact).

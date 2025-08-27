@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { jwtConstants } from './constants';
+import { mapLegacyRole } from '../common/authz/roles';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -39,7 +40,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // eslint-disable-next-line no-console
       console.log('[JWT][DEBUG] payload', { sub: payload.sub, role: payload.role, tenantId: payload.tenantId, exp: payload.exp });
     }
-    const role = (payload.role || 'user').toString().toLowerCase();
+  const role = (payload.role || 'user').toString().toLowerCase();
+  const roleFinal = mapLegacyRole(role);
     const allowsNullTenant = ['instance_owner', 'developer'].includes(role);
     // Allow null tenantId for passkey registration so users can add global credential before tenant association.
     if (!payload.tenantId && !allowsNullTenant) {
@@ -47,11 +49,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // To avoid larger refactor, we'll just permit null tenantId for all roles temporarily (security acceptable if other guards restrict tenant routes)
       // throw new UnauthorizedException('بيانات التوكن غير صالحة: tenantId مفقود لهذا الدور');
     }
-  return {
+    return {
       id: payload.sub,
       sub: payload.sub,
       email: payload.email,
-      role,
+      role, // الدور الأصلي (legacy)
+      roleFinal, // الدور النهائي بعد المواءمة
       tenantId: payload.tenantId ?? null,
     };
   }
