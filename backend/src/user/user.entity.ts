@@ -69,6 +69,10 @@ export class User {
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   overdraftLimit: number;
 
+  // مرحلة 1: عمود تفضيل عملة للموزّع (NULLABLE الآن)
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  preferredCurrencyCode?: string | null;
+
   @Column({ type: 'uuid', nullable: true })
   price_group_id?: string | null;
 
