@@ -11,6 +11,11 @@ export class Product {
   @Index()
   tenantId: string;
 
+  // Phase2: الربط بالكتالوج (nullable في البداية ثم سنقيد لاحقًا حسب الحاجة)
+  @Column({ type: 'uuid', nullable: true })
+  @Index()
+  catalogProductId?: string | null;
+
   @Column()
   name: string;
 

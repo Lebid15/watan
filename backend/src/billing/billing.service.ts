@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import { TenantBillingConfig } from './tenant-billing-config.entity';
 import { TenantSubscription, TenantSubscriptionStatus } from './tenant-subscription.entity';
 import { BillingInvoice, BillingInvoiceStatus } from './billing-invoice.entity';
 import { isFeatureEnabled } from '../common/feature-flags';
 import { Tenant } from '../tenants/tenant.entity';
+import { Deposit } from '../payments/deposit.entity';
+import { PaymentMethod } from '../payments/payment-method.entity';
 import { computePeriodAndIssuance, isFirstMonthFree, computeDueAt, computeNextDueAt, nextIssuanceTimestampAfter, buildMonthlyPeriod, toIsoDate } from './billing-utils';
 
 @Injectable()
@@ -16,6 +18,8 @@ export class BillingService {
     @InjectRepository(TenantSubscription) private subRepo: Repository<TenantSubscription>,
     @InjectRepository(BillingInvoice) private invRepo: Repository<BillingInvoice>,
     @InjectRepository(Tenant) private tenantRepo: Repository<Tenant>,
+    @InjectRepository(Deposit) private depositRepo: Repository<Deposit>,
+    private dataSource: DataSource,
   ) {}
 
   ensureBillingEnabled() {
@@ -206,6 +210,122 @@ export class BillingService {
   /** Fetch subscription without creating (used by BillingGuard lazy hydrate) */
   async fetchSubscription(tenantId: string) {
     return this.subRepo.findOne({ where: { tenantId } });
+  }
+
+  /** Create a pending billing deposit (validated payment method + user) */
+  async createBillingDeposit(tenantId: string, userId: string, methodId: string, amountUsd: number, opts: { invoiceId?: string }) {
+    if (amountUsd <= 0) throw new UnprocessableEntityException({ code: 'INVALID_AMOUNT', message: 'Amount must be > 0' });
+    if (!methodId) throw new UnprocessableEntityException({ code: 'METHOD_REQUIRED', message: 'methodId required' });
+    const pmRepo = this.dataSource.getRepository(PaymentMethod);
+    const method = await pmRepo.findOne({ where: { id: methodId, tenantId } });
+    if (!method) throw new UnprocessableEntityException({ code: 'METHOD_NOT_FOUND', message: 'Payment method not found' });
+    return this.dataSource.transaction(async manager => {
+      const dep: any = manager.create(Deposit as any, {
+        tenantId,
+        user_id: userId,
+        method_id: methodId,
+        originalAmount: amountUsd.toFixed(6),
+        originalCurrency: 'USD',
+        walletCurrency: 'USD',
+        rateUsed: '1',
+        convertedAmount: amountUsd.toFixed(6),
+        note: opts.invoiceId ? `billing:invoice:${opts.invoiceId}` : 'billing:topup',
+        status: 'pending',
+      });
+      const saved = await manager.save(dep);
+      return { depositId: saved.id, status: saved.status };
+    });
+  }
+
+  /** Extended overview */
+  async computeTenantOverview(tenantId: string, now = new Date()) {
+    const sub = await this.getOrCreateSubscription(tenantId);
+    const invs = await this.invRepo.find({ where: { tenantId }, order: { issuedAt: 'DESC' }, take: 12 });
+    const last = invs[0];
+    const open = invs.filter(i => i.status === BillingInvoiceStatus.OPEN);
+    const overdueOpen = open.filter(i => i.dueAt && i.dueAt < now);
+    const primaryOpen = open[0];
+    let daysUntilDue: number | null = null;
+    let daysOverdue: number | null = null;
+    if (primaryOpen?.dueAt) {
+      const diff = primaryOpen.dueAt.getTime() - now.getTime();
+      if (diff >= 0) daysUntilDue = Math.ceil(diff / 86400000); else daysOverdue = Math.ceil(Math.abs(diff) / 86400000);
+    }
+    let currentPeriodProgressPct: number | null = null;
+    if (sub.currentPeriodStart && sub.currentPeriodEnd) {
+      const startDate = new Date(sub.currentPeriodStart + 'T00:00:00Z');
+      const endDate = new Date(sub.currentPeriodEnd + 'T00:00:00Z');
+      const span = endDate.getTime() - startDate.getTime();
+      const elapsed = now.getTime() - startDate.getTime();
+      if (span > 0) currentPeriodProgressPct = Math.min(100, Math.max(0, (elapsed / span) * 100));
+    }
+    const fmt3 = (v: string | null) => (v == null ? null : Number(v).toFixed(3));
+    return {
+      status: sub.status,
+      currentPeriodStart: sub.currentPeriodStart,
+      currentPeriodEnd: sub.currentPeriodEnd,
+      nextDueAt: sub.nextDueAt,
+      lastPaidAt: sub.lastPaidAt,
+      openInvoiceCount: open.length,
+      overdue: overdueOpen.length > 0,
+      daysOverdue,
+      daysUntilDue,
+      currentPeriodProgressPct,
+      lastInvoice: last ? {
+        id: last.id,
+        status: last.status,
+        amountUsd: last.amountUsd,
+        amountUSD3: fmt3(last.amountUsd),
+        issuedAt: last.issuedAt,
+        dueAt: last.dueAt,
+        paidAt: last.paidAt,
+      } : null,
+    };
+  }
+
+  async listInvoicesFiltered(tenantId: string, opts: { status?: BillingInvoiceStatus; overdue?: boolean; now?: Date }) {
+    const { status, overdue, now = new Date() } = opts;
+    const where: any = { tenantId }; if (status) where.status = status;
+    let list = await this.invRepo.find({ where, order: { issuedAt: 'DESC' } });
+    if (overdue) list = list.filter(i => i.status === BillingInvoiceStatus.OPEN && i.dueAt && i.dueAt < now);
+    return list;
+  }
+
+  async aggregateTenantsForAdmin(params: { status?: string; overdue?: boolean; limit: number; offset: number }) {
+    const { status, overdue, limit, offset } = params;
+    const subs = await this.subRepo.find();
+    const tenantIds = subs.map(s => s.tenantId);
+    if (!tenantIds.length) return { items: [], total: 0, limit, offset };
+    const tenants = await this.tenantRepo.find({ where: { id: In(tenantIds) } });
+    const tm = new Map(tenants.map(t => [t.id, t]));
+    const invoices = await this.invRepo.find({ where: { tenantId: In(tenantIds) } });
+    const invMap = new Map<string, BillingInvoice[]>();
+    for (const inv of invoices) { if (!invMap.has(inv.tenantId)) invMap.set(inv.tenantId, []); invMap.get(inv.tenantId)!.push(inv); }
+    let rows = subs.map(s => {
+      const invs = (invMap.get(s.tenantId) || []).sort((a,b)=> (b.issuedAt?.getTime()||0)-(a.issuedAt?.getTime()||0));
+      const open = invs.filter(i => i.status === BillingInvoiceStatus.OPEN);
+      const overdueOpen = open.filter(i => i.dueAt && i.dueAt < new Date());
+      const last = invs[0];
+      const t: any = tm.get(s.tenantId);
+      return {
+        tenantId: s.tenantId,
+        tenantCode: t?.code || null,
+        tenantName: t?.name || null,
+        status: s.status,
+        nextDueAt: s.nextDueAt,
+        lastPaidAt: s.lastPaidAt,
+        openInvoices: open.length,
+        overdueOpenInvoices: overdueOpen.length,
+        lastInvoiceAmountUsd: last?.amountUsd || null,
+      };
+    });
+    if (status) rows = rows.filter(r => r.status === status);
+    if (overdue) rows = rows.filter(r => r.overdueOpenInvoices > 0);
+    const total = rows.length;
+    const boundedLimit = Math.max(1, Math.min(200, limit));
+    const safeOffset = Math.max(0, offset);
+    const slice = rows.slice(safeOffset, safeOffset + boundedLimit);
+    return { items: slice, total, limit: boundedLimit, offset: safeOffset };
   }
 
   /* ================== Private Helpers ================== */

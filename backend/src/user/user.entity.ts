@@ -76,6 +76,10 @@ export class User {
   @Column({ type: 'uuid', nullable: true })
   price_group_id?: string | null;
 
+  // Phase3: الربط الهرمي لمستخدمي الموزّع
+  @Column({ type: 'uuid', nullable: true })
+  parentUserId?: string | null;
+
   @ManyToOne(() => PriceGroup, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'price_group_id' })
   priceGroup?: PriceGroup | null;
@@ -101,4 +105,8 @@ export class User {
     nullable: true,
   })
   emailVerifiedAt?: Date | null;
+
+  // Phase4: تمكين واجهة API خارجية (nullable حتى التفعيل اليدوي)
+  @Column({ type: 'boolean', nullable: true, default: false })
+  apiEnabled?: boolean | null;
 }

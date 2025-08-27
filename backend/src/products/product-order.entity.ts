@@ -186,4 +186,26 @@ export class ProductOrder {
   /** ✅ عداد الملاحظات (يمكن تحدّثه عند كل إضافة) */
   @Column({ type: 'int', default: 0 })
   notesCount?: number;
+
+  // Phase2: نسبة الطلب للموزّع
+  @Column({ type: 'uuid', nullable: true })
+  @Index('idx_orders_placed_by_distributor')
+  placedByDistributorId?: string | null;
+
+  // Phase3: لقطات ربح الموزّع (USD) عند الإنشاء (ولاحقًا يمكن إضافة حقول عند الاعتماد)
+  @Column({ type: 'decimal', precision: 18, scale: 6, nullable: true })
+  distributorCapitalUsdAtOrder?: string | null;
+
+  @Column({ type: 'decimal', precision: 18, scale: 6, nullable: true })
+  distributorSellUsdAtOrder?: string | null;
+
+  @Column({ type: 'decimal', precision: 18, scale: 6, nullable: true })
+  distributorProfitUsdAtOrder?: string | null;
+
+  // FX snapshot لعرض الموزّع (USD -> distCurrencyCodeAtOrder)
+  @Column({ type: 'decimal', precision: 18, scale: 6, nullable: true })
+  fxUsdToDistAtOrder?: string | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  distCurrencyCodeAtOrder?: string | null;
 }

@@ -14,6 +14,8 @@ import { User } from '../user/user.entity';
 import { ProductOrder } from './product-order.entity';
 import { OrderDispatchLog } from './order-dispatch-log.entity';
 import { Currency } from '../currencies/currency.entity';
+// Distributor pricing entities needed for ProductsService snapshot logic
+import { DistributorPackagePrice, DistributorUserPriceGroup, DistributorPriceGroup } from '../distributor/distributor-pricing.entities';
 
 // كيانات الربط (من integrations)
 import { PackageRouting } from '../integrations/package-routing.entity';
@@ -49,6 +51,10 @@ import { ThumbnailScheduler } from './thumbnail.scheduler';
       PackageCost,
   PackageMapping,
   ProductImageMetricsSnapshot,
+  // Distributor pricing entities (ensure availability for injection in ProductsService)
+  DistributorPriceGroup,
+  DistributorPackagePrice,
+  DistributorUserPriceGroup,
     ]),
   NotificationsModule,
     IntegrationsModule,

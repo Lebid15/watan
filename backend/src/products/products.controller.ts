@@ -143,6 +143,23 @@ export class ProductsController {
     return { message: 'تم حذف المنتج بنجاح' };
   }
 
+  // Phase2 temporary backward compatibility: redirect old activation path to new tenant/catalog endpoint
+  @Post('activate-catalog')
+  async deprecatedActivate(@Req() req: Request, @Body('catalogProductId') catalogProductId: string) {
+    // Simply call service then respond with 302 style object (API clients can adjust)
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    const product = await this.productsService.activateCatalogProduct(tenantId, catalogProductId);
+    return { redirect: '/api/tenant/catalog/activate-product', productId: product.id };
+  }
+
+  // Phase2: تفعيل منتج من الكتالوج
+  @Post('activate-catalog')
+  async activateCatalog(@Req() req: Request, @Body('catalogProductId') catalogProductId: string) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    const product = await this.productsService.activateCatalogProduct(tenantId, catalogProductId);
+    return { id: product.id, catalogProductId: product.catalogProductId };
+  }
+
   // 🔹 رفع صورة المنتج إلى Cloudinary
   // =====================================
   @Post(':id/image')
@@ -204,6 +221,7 @@ export class ProductsController {
     @Param('id') productId: string,
     @UploadedFile() file: Express.Multer.File,
     @Body('name') name: string,
+  @Body('catalogLinkCode') catalogLinkCode: string,
     @Body('capital') capitalStr?: string,
     @Body('basePrice') basePriceStr?: string,
     @Body('price') priceStr?: string,
@@ -234,11 +252,17 @@ export class ProductsController {
 
     const capital = parseMoney(capitalStr ?? basePriceStr ?? priceStr);
 
-    return this.productsService.addPackageToProduct((req as any).tenant?.id || (req as any).user?.tenantId, productId, {
-      name,
-      imageUrl,
-      capital,
-    });
+    return this.productsService.addPackageToProduct(
+      (req as any).tenant?.id || (req as any).user?.tenantId,
+      productId,
+      {
+        name,
+        imageUrl,
+        capital,
+        catalogLinkCode,
+      },
+      { userId: (req as any).user?.id, finalRole: (req as any).user?.roleFinal },
+    );
   }
 
   @Delete('packages/:id')
