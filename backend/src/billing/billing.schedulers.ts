@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { BillingService } from './billing.service';
@@ -9,6 +10,12 @@ import { BillingInvoice, BillingInvoiceStatus } from './billing-invoice.entity';
 import { TenantSubscription, TenantSubscriptionStatus } from './tenant-subscription.entity';
 
 let Redis: any; try { Redis = require('ioredis'); } catch {}
+=======
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { BillingService } from './billing.service';
+import { isFeatureEnabled } from '../common/feature-flags';
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
 
 // Simple in-memory lock (process-level). For multi-instance deployment, replace with distributed lock (e.g., Redis).
 class BillingJobLocks {
@@ -22,11 +29,16 @@ class BillingJobLocks {
 }
 
 @Injectable()
+<<<<<<< HEAD
 export class BillingSchedulers implements OnModuleDestroy {
+=======
+export class BillingSchedulers {
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
   private readonly logger = new Logger('BillingSchedulers');
   private readonly ISSUE_KEY = 'billing:issue';
   private readonly REMIND_KEY = 'billing:reminders';
   private readonly ENFORCE_KEY = 'billing:enforcement';
+<<<<<<< HEAD
   private redis: any = null;
   private lastIssueAt: Date | null = null;
   private lastEnforceAt: Date | null = null;
@@ -80,6 +92,17 @@ export class BillingSchedulers implements OnModuleDestroy {
       billingGauges.openInvoices(open);
       billingGauges.suspendedTenants(suspended);
     } catch {}
+=======
+
+  constructor(private billing: BillingService) {}
+
+  private async withLock(key: string, fn: () => Promise<void>) {
+    if (!BillingJobLocks.tryAcquire(key)) {
+      this.logger.warn(`[lock] skip job=${key}`);
+      return;
+    }
+    try { await fn(); } finally { BillingJobLocks.release(key); }
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
   }
 
   // Daily 23:55 UTC, internally check for last day of month (since "L" unsupported in node-cron)
@@ -89,11 +112,17 @@ export class BillingSchedulers implements OnModuleDestroy {
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 86400000);
     if (tomorrow.getUTCDate() !== 1) return; // not last day-of-month
+<<<<<<< HEAD
     await this.withLock(this.ISSUE_KEY, 5*60_000, 'issue', async () => {
       const res = await this.billing.issueMonthlyInvoices(now);
       this.logger.log(`[billing][issue] created=${res.created} skipped=${res.skipped} at=${now.toISOString()}`);
       this.lastIssueAt = new Date();
       if (this.redis) await this.redis.set('billing:last_run:issue', this.lastIssueAt.toISOString(), 'PX', 6*60*60*1000);
+=======
+    await this.withLock(this.ISSUE_KEY, async () => {
+      const res = await this.billing.issueMonthlyInvoices(now);
+      this.logger.log(`[billing][issue] created=${res.created} skipped=${res.skipped} at=${now.toISOString()}`);
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     });
   }
 
@@ -101,12 +130,19 @@ export class BillingSchedulers implements OnModuleDestroy {
   @Cron('0 10 0 * * *', { timeZone: 'UTC' })
   async cronEnforce() {
     if (!isFeatureEnabled('billingV1')) return;
+<<<<<<< HEAD
     await this.withLock(this.ENFORCE_KEY, 15*60_000, 'enforce', async () => {
       const now = new Date();
       const res = await this.billing.applyEnforcement(now);
       this.logger.log(`[billing][enforce] suspended=${res.suspended} at=${now.toISOString()}`);
       this.lastEnforceAt = new Date();
       if (this.redis) await this.redis.set('billing:last_run:enforce', this.lastEnforceAt.toISOString(), 'PX', 6*60*60*1000);
+=======
+    await this.withLock(this.ENFORCE_KEY, async () => {
+      const now = new Date();
+      const res = await this.billing.applyEnforcement(now);
+      this.logger.log(`[billing][enforce] suspended=${res.suspended} at=${now.toISOString()}`);
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     });
   }
 
@@ -114,12 +150,19 @@ export class BillingSchedulers implements OnModuleDestroy {
   @Cron('0 0 8 * * *', { timeZone: 'UTC' })
   async cronReminders() {
     if (!isFeatureEnabled('billingV1')) return;
+<<<<<<< HEAD
     await this.withLock(this.REMIND_KEY, 5*60_000, 'remind', async () => {
       const now = new Date();
       const res = await this.billing.sendReminders(now);
       this.logger.log(`[billing][reminders] matches=${res.matches} at=${now.toISOString()}`);
       this.lastRemindAt = new Date();
       if (this.redis) await this.redis.set('billing:last_run:remind', this.lastRemindAt.toISOString(), 'PX', 6*60*60*1000);
+=======
+    await this.withLock(this.REMIND_KEY, async () => {
+      const now = new Date();
+      const res = await this.billing.sendReminders(now);
+      this.logger.log(`[billing][reminders] matches=${res.matches} at=${now.toISOString()}`);
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     });
   }
 
@@ -127,12 +170,19 @@ export class BillingSchedulers implements OnModuleDestroy {
   isIssueLocked() { return BillingJobLocks.isLocked(this.ISSUE_KEY); }
   async manualIssue(now = new Date()) {
     if (!isFeatureEnabled('billingV1')) return { created: 0, skipped: 0, locked: false };
+<<<<<<< HEAD
     const locked = !(await this.acquireDistLock(this.ISSUE_KEY, 60_000));
     if (locked) return { created: 0, skipped: 0, locked: true };
+=======
+    if (!BillingJobLocks.tryAcquire(this.ISSUE_KEY)) {
+      return { created: 0, skipped: 0, locked: true };
+    }
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     try {
       const res = await this.billing.issueMonthlyInvoices(now);
       return { ...res, locked: false };
     } finally {
+<<<<<<< HEAD
       await this.releaseDistLock(this.ISSUE_KEY);
     }
   }
@@ -144,6 +194,9 @@ export class BillingSchedulers implements OnModuleDestroy {
   async onModuleDestroy() {
     if (this.redis) {
       try { await this.redis.quit(); } catch {}
+=======
+      BillingJobLocks.release(this.ISSUE_KEY);
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     }
   }
 }

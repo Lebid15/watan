@@ -9,7 +9,10 @@ import { Tenant } from '../tenants/tenant.entity';
 import { Deposit } from '../payments/deposit.entity';
 import { PaymentMethod } from '../payments/payment-method.entity';
 import { computePeriodAndIssuance, isFirstMonthFree, computeDueAt, computeNextDueAt, nextIssuanceTimestampAfter, buildMonthlyPeriod, toIsoDate } from './billing-utils';
+<<<<<<< HEAD
 import { billingCounters } from './billing.metrics';
+=======
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
 
 @Injectable()
 export class BillingService {
@@ -66,6 +69,10 @@ export class BillingService {
     return inv;
   }
 
+<<<<<<< HEAD
+=======
+  /* ================== Phase5 Core Public Methods (Feature Flag Protected) ================== */
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
 
   /**
    * إصدار الفواتير الشهرية (EOM anchor)
@@ -101,7 +108,10 @@ export class BillingService {
       try {
   await this.invRepo.save(invoice);
   this.logger.log(`invoice.created tenant=${tenant.id} id=${invoice.id} amount=${invoice.amountUsd}`);
+<<<<<<< HEAD
   billingCounters.invoicesCreated();
+=======
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
         subscription.nextDueAt = nextDueAt;
         await this.subRepo.save(subscription);
         created++;
@@ -174,8 +184,12 @@ export class BillingService {
           sub.suspendAt = nowUTC;
           sub.suspendReason = 'billing_overdue';
           await this.subRepo.save(sub);
+<<<<<<< HEAD
           this.logger.log(`enforcement.suspended tenant=${sub.tenantId} invoice=${inv.id}`);
           billingCounters.enforcementSuspended();
+=======
+          this.logger.log(`subscription.suspended tenant=${sub.tenantId} invoice=${inv.id}`);
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
           suspended++;
         }
       }
@@ -238,7 +252,10 @@ export class BillingService {
       });
       const saved = await manager.save(dep);
   this.logger.log(`deposit.created tenant=${tenantId} deposit=${saved.id} amount=${amountUsd.toFixed(6)} invoice=${opts.invoiceId||'none'}`);
+<<<<<<< HEAD
   billingCounters.paymentDeposits();
+=======
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
       return { depositId: saved.id, status: saved.status };
     });
   }
@@ -334,6 +351,10 @@ export class BillingService {
     return { items: slice, total, limit: boundedLimit, offset: safeOffset };
   }
 
+<<<<<<< HEAD
+=======
+  /* ================== Private Helpers ================== */
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
 
   /** جلب المتاجر مع configs والاشتراك (بدون تصفية إضافية حالياً) */
   private async getTenantConfigsForBilling(): Promise<Array<{ tenant: Tenant; config: TenantBillingConfig; subscription: TenantSubscription }>> {

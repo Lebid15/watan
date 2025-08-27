@@ -74,9 +74,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
 function mapCode(status: number, message: string, exception: any): string {
   switch (status) {
+<<<<<<< HEAD
     case 401:
       if (/TENANT_MISMATCH/i.test(message)) return 'TENANT_MISMATCH';
       return 'INVALID_TOKEN';
+=======
+    case 401: return 'INVALID_TOKEN';
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     case 403: return message === 'MISSING_SCOPE' ? 'MISSING_SCOPE' : 'FORBIDDEN';
     case 409:
       if (/IDEMPOTENCY_MISMATCH/i.test(message)) return 'IDEMPOTENCY_MISMATCH';

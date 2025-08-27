@@ -62,6 +62,7 @@ export class ProductsService {
     private readonly accounting: AccountingPeriodsService,
   ) {}
 
+<<<<<<< HEAD
   // معرف التينانت الخاص بالمطور (المصدر) – يجب توحيده في كل المواضع
   private readonly DEV_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -72,6 +73,34 @@ export class ProductsService {
   }
 
 
+=======
+  // Phase2: تفعيل منتج من الكتالوج للـ tenant
+  async activateCatalogProduct(tenantId: string, catalogProductId: string): Promise<Product> {
+    if (!catalogProductId) throw new BadRequestException('catalogProductId مطلوب');
+    // تحقق أن الكتالوج منشور وقابل للتفعيل
+    const catalogRow = await this.productsRepo.manager.query(
+      'SELECT id, "isPublishable" FROM catalog_product WHERE id = $1 AND "isPublishable" = true LIMIT 1',
+      [catalogProductId],
+    );
+    if (!catalogRow || catalogRow.length === 0) {
+      throw new NotFoundException('المنتج غير متاح أو غير منشور في الكتالوج');
+    }
+    // تحقق من عدم وجود منتج مفعّل سابقًا لنفس catalogProductId داخل نفس التينانت
+    const existing = await this.productsRepo.findOne({ where: { tenantId, catalogProductId } as any });
+    if (existing) return existing; // idempotent
+
+    const product = this.productsRepo.create({
+      tenantId,
+      name: 'Catalog Product', // يمكن لاحقًا سحب الاسم من catalog_product
+      description: '',
+      isActive: true,
+      catalogProductId,
+      useCatalogImage: true,
+    } as Partial<Product>);
+    return this.productsRepo.save(product);
+  }
+
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
   // ---------- Helpers خاصة بالـ tenant ----------
   private ensureSameTenant(entityTenantId?: string | null, expectedTenantId?: string) {
     if (!expectedTenantId) return; // لا تحقق إن لم يُطلب تقييد
@@ -637,7 +666,11 @@ export class ProductsService {
   async addPackageToProduct(
     tenantId: string,
     productId: string,
+<<<<<<< HEAD
   data: Partial<ProductPackage>,
+=======
+    data: Partial<ProductPackage> & { catalogLinkCode?: string },
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     ctx?: { userId?: string; finalRole?: string },
   ): Promise<ProductPackage> {
     // Lightweight debug log (avoid dumping large objects)
@@ -668,6 +701,27 @@ export class ProductsService {
 
   // Catalog linking removed: no catalogLinkCode validation required.
 
+    if (isFeatureEnabled('catalogLinking')) {
+      if (!product.catalogProductId) {
+        throw new BadRequestException('catalogProductId مفقود للمنتج؛ لا يمكن إنشاء باقة (ربط الكتالوج مفعل)');
+      }
+      const link = (data as any).catalogLinkCode?.trim();
+      if (!link) throw new BadRequestException('catalogLinkCode مطلوب');
+      // تحقق وجود linkCode في catalog_package لنفس catalogProductId
+      const row = await this.productsRepo.manager.query(
+        'SELECT 1 FROM catalog_package WHERE "catalogProductId" = $1 AND "linkCode" = $2 LIMIT 1',
+        [product.catalogProductId, link],
+      );
+      if (!row || row.length === 0) {
+        throw new BadRequestException('catalogLinkCode غير صالح لهذا المنتج الكتالوجي');
+      }
+      (data as any).catalogLinkCode = link;
+      // إن كان الدور موزّع سجل من أنشأ الباقة
+      if (ctx?.finalRole === 'distributor' && ctx?.userId) {
+        (data as any).createdByDistributorId = ctx.userId;
+      }
+    }
+
     const initialCapital = Number(data.capital ?? data.basePrice ?? 0);
 
     const newPackage: ProductPackage = this.packagesRepo.create({
@@ -678,10 +732,16 @@ export class ProductsService {
       capital: initialCapital,
       isActive: data.isActive ?? true,
       imageUrl: data.imageUrl,
+<<<<<<< HEAD
   product,
       createdByDistributorId: (data as any).createdByDistributorId || null,
   providerName: (data as any).providerName || null,
   // إزالة منطق المصدر/الاستنساخ
+=======
+      product,
+      catalogLinkCode: (data as any).catalogLinkCode || null,
+      createdByDistributorId: (data as any).createdByDistributorId || null,
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     } as Partial<ProductPackage>) as ProductPackage;
 
     // اختيارياً: ضبط publicCode أثناء الإنشاء إن وُفّر

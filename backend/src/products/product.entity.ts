@@ -11,6 +11,13 @@ export class Product {
   @Index()
   tenantId: string;
 
+<<<<<<< HEAD
+=======
+  // Phase2: الربط بالكتالوج (nullable في البداية ثم سنقيد لاحقًا حسب الحاجة)
+  @Column({ type: 'uuid', nullable: true })
+  @Index()
+  catalogProductId?: string | null;
+>>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
 
   @Column()
   name: string;
