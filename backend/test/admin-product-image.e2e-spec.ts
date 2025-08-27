@@ -31,7 +31,7 @@ describe('Admin Product Image (e2e)', () => {
   it('provisions tenant + product', async () => {
     // Seed tenant + product directly (avoids hitting /products POST which lacks JwtAuthGuard so guard expects user but none set).
     tenantId = '11111111-1111-1111-1111-111111111111';
-    await ds.query(`INSERT INTO tenant (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, [tenantId, 'Test Tenant', 'testcode', null, 1, new Date().toISOString(), new Date().toISOString()]);
+  await ds.query(`INSERT INTO tenants (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, [tenantId, 'Test Tenant', 'testcode', null, 1, new Date().toISOString(), new Date().toISOString()]);
     await ds.query(`INSERT INTO tenant_domain (id, tenantId, domain, type, isPrimary, isVerified, createdAt, updatedAt) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))`, ['dom-1', tenantId, '127.0.0.1', 'subdomain', 1, 1]);
     createdProductId = '22222222-2222-2222-2222-222222222222';
     await ds.query(`INSERT INTO product (id, tenantId, name, description, catalogImageUrl, customImageUrl, useCatalogImage, isActive) VALUES (?,?,?,?,?,?,?,?)`, [

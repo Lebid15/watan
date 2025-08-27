@@ -4,6 +4,8 @@ export type FinalRole = 'instance_owner' | 'tenant_owner' | 'distributor' | 'end
 // مواءمة الأدوار القديمة إلى النهائية
 export function mapLegacyRole(r?: string): FinalRole {
   const v = (r || '').toLowerCase();
+  // Preserve already-final roles explicitly
+  if (v === 'tenant_owner') return 'tenant_owner';
   if (v === 'admin') return 'tenant_owner';
   if (v === 'user') return 'end_user';
   if (v === 'developer') return 'instance_owner'; // وصول منصّة مؤقت

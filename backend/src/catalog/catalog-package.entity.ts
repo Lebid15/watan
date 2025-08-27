@@ -12,7 +12,9 @@ import { CatalogProduct } from './catalog-product.entity';
 
 @Entity('catalog_package')
 @Index(['tenantId', 'sourceProviderId', 'externalPackageId'])
-@Index(['tenantId', 'publicCode'], { unique: true }) // فريد داخل المستأجر
+@Index(['tenantId', 'publicCode'], { unique: true })
+// Phase2: ضمان فريدة linkCode داخل المنتج المنصّي لاحقًا
+@Index(['catalogProductId', 'linkCode'], { unique: true })
 export class CatalogPackage {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -32,6 +34,15 @@ export class CatalogPackage {
 
   @Column({ length: 200 })
   name: string;
+
+  // اسم افتراضي قابل للتخصيص مستقبلاً
+  // Explicit type for sqlite test compatibility (union type caused reflect metadata = Object)
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  nameDefault?: string | null;
+
+  // linkCode: الكود القياسي للربط عبر المستويات (Phase2)
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  linkCode?: string | null;
 
   // كود عام للربط — صار فريدًا لكل tenant
   @Column({ type: 'varchar', length: 120 })

@@ -1,5 +1,5 @@
 // src/products/products.service.ts
-import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Brackets } from 'typeorm';
 import { Product } from './product.entity';
@@ -19,6 +19,7 @@ import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { CodeItem } from '../codes/entities/code-item.entity';
 import { isFeatureEnabled } from '../common/feature-flags';
+import { DistributorPackagePrice, DistributorUserPriceGroup } from '../distributor/distributor-pricing.entities';
 
 
 type OrderView = {
@@ -46,10 +47,12 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product)            private productsRepo: Repository<Product>,
     @InjectRepository(ProductPackage)     private packagesRepo: Repository<ProductPackage>,
-    @InjectRepository(PackagePrice)       private packagePriceRepo: Repository<PackagePrice>,
+  @InjectRepository(PackagePrice)       private packagePriceRepo: Repository<PackagePrice>,
     @InjectRepository(PriceGroup)         private priceGroupsRepo: Repository<PriceGroup>,
     @InjectRepository(User)               private usersRepo: Repository<User>,
-    @InjectRepository(ProductOrder)       private ordersRepo: Repository<ProductOrder>,
+  @InjectRepository(ProductOrder)       private ordersRepo: Repository<ProductOrder>,
+  @InjectRepository(DistributorPackagePrice) private distPkgPriceRepo: Repository<DistributorPackagePrice>,
+  @InjectRepository(DistributorUserPriceGroup) private distUserGroupRepo: Repository<DistributorUserPriceGroup>,
     @InjectRepository(Currency)           private currenciesRepo: Repository<Currency>,
     @InjectRepository(OrderDispatchLog)   private readonly logsRepo: Repository<OrderDispatchLog>,
     @InjectRepository(PackageRouting)     private readonly routingRepo: Repository<PackageRouting>,
@@ -58,6 +61,32 @@ export class ProductsService {
     private readonly notifications: NotificationsService,
     private readonly accounting: AccountingPeriodsService,
   ) {}
+
+  // Phase2: تفعيل منتج من الكتالوج للـ tenant
+  async activateCatalogProduct(tenantId: string, catalogProductId: string): Promise<Product> {
+    if (!catalogProductId) throw new BadRequestException('catalogProductId مطلوب');
+    // تحقق أن الكتالوج منشور وقابل للتفعيل
+    const catalogRow = await this.productsRepo.manager.query(
+      'SELECT id, "isPublishable" FROM catalog_product WHERE id = $1 AND "isPublishable" = true LIMIT 1',
+      [catalogProductId],
+    );
+    if (!catalogRow || catalogRow.length === 0) {
+      throw new NotFoundException('المنتج غير متاح أو غير منشور في الكتالوج');
+    }
+    // تحقق من عدم وجود منتج مفعّل سابقًا لنفس catalogProductId داخل نفس التينانت
+    const existing = await this.productsRepo.findOne({ where: { tenantId, catalogProductId } as any });
+    if (existing) return existing; // idempotent
+
+    const product = this.productsRepo.create({
+      tenantId,
+      name: 'Catalog Product', // يمكن لاحقًا سحب الاسم من catalog_product
+      description: '',
+      isActive: true,
+      catalogProductId,
+      useCatalogImage: true,
+    } as Partial<Product>);
+    return this.productsRepo.save(product);
+  }
 
   // ---------- Helpers خاصة بالـ tenant ----------
   private ensureSameTenant(entityTenantId?: string | null, expectedTenantId?: string) {
@@ -339,7 +368,8 @@ export class ProductsService {
   async addPackageToProduct(
     tenantId: string,
     productId: string,
-    data: Partial<ProductPackage>,
+    data: Partial<ProductPackage> & { catalogLinkCode?: string },
+    ctx?: { userId?: string; finalRole?: string },
   ): Promise<ProductPackage> {
     if (!data.name || !data.name.trim()) throw new ConflictException('اسم الباقة مطلوب');
 
@@ -348,6 +378,27 @@ export class ProductsService {
       relations: ['packages'],
     });
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
+
+    if (isFeatureEnabled('catalogLinking')) {
+      if (!product.catalogProductId) {
+        throw new BadRequestException('catalogProductId مفقود للمنتج؛ لا يمكن إنشاء باقة (ربط الكتالوج مفعل)');
+      }
+      const link = (data as any).catalogLinkCode?.trim();
+      if (!link) throw new BadRequestException('catalogLinkCode مطلوب');
+      // تحقق وجود linkCode في catalog_package لنفس catalogProductId
+      const row = await this.productsRepo.manager.query(
+        'SELECT 1 FROM catalog_package WHERE "catalogProductId" = $1 AND "linkCode" = $2 LIMIT 1',
+        [product.catalogProductId, link],
+      );
+      if (!row || row.length === 0) {
+        throw new BadRequestException('catalogLinkCode غير صالح لهذا المنتج الكتالوجي');
+      }
+      (data as any).catalogLinkCode = link;
+      // إن كان الدور موزّع سجل من أنشأ الباقة
+      if (ctx?.finalRole === 'distributor' && ctx?.userId) {
+        (data as any).createdByDistributorId = ctx.userId;
+      }
+    }
 
     const initialCapital = Number(data.capital ?? data.basePrice ?? 0);
 
@@ -360,6 +411,8 @@ export class ProductsService {
       isActive: data.isActive ?? true,
       imageUrl: data.imageUrl,
       product,
+      catalogLinkCode: (data as any).catalogLinkCode || null,
+      createdByDistributorId: (data as any).createdByDistributorId || null,
     } as Partial<ProductPackage>) as ProductPackage;
 
     // ✅ ثبّت النوع هنا
@@ -717,13 +770,16 @@ export class ProductsService {
     }
 
     const created = await this.ordersRepo.manager.transaction(async (trx) => {
-      const productsRepo = trx.getRepository(Product);
-      const packagesRepo = trx.getRepository(ProductPackage);
-      const usersRepo    = trx.getRepository(User);
-      const ordersRepo   = trx.getRepository(ProductOrder);
+  const productsRepo = trx.getRepository(Product);
+  const packagesRepo = trx.getRepository(ProductPackage);
+  const usersRepo    = trx.getRepository(User);
+  const ordersRepo   = trx.getRepository(ProductOrder);
+  const packagePriceRepo = trx.getRepository(PackagePrice);
+  const distPkgPriceRepo = trx.getRepository(DistributorPackagePrice);
+  const distUserGroupRepo = trx.getRepository(DistributorUserPriceGroup);
 
       // جلب المستخدم + العملة
-      const user = await usersRepo.findOne({ where: { id: userId } as any, relations: ['currency'] });
+  const user = await usersRepo.findOne({ where: { id: userId } as any, relations: ['currency','priceGroup'] });
       if (!user) throw new NotFoundException('المستخدم غير موجود');
 
       // 🔐 تأكيد أن الطلب ينتمي لنفس المستأجر المتوقع (إن تم تمريره)
@@ -774,10 +830,100 @@ export class ProductsService {
         extraField:     extraField ?? null,
       }) as ProductOrder;
 
+      // Phase2/3: تحديد الموزّع الجذر (سواء المستخدم نفسه موزّع أو مستخدم فرعي له parentUserId)
+      let rootDistributor: any = null;
+      const userAny: any = user as any;
+      if (isFeatureEnabled('catalogLinking')) {
+        if (userAny.roleFinal === 'distributor' || userAny.role === 'distributor') {
+          rootDistributor = userAny;
+        } else if (userAny.parentUserId) {
+          // اجلب المستخدم الأب
+            rootDistributor = await usersRepo.findOne({ where: { id: userAny.parentUserId } as any, relations: ['priceGroup'] });
+            if (!rootDistributor) throw new BadRequestException('الموزّع الأب غير موجود');
+            if (!(rootDistributor.roleFinal === 'distributor' || rootDistributor.role === 'distributor')) {
+              throw new BadRequestException('المستخدم الأب ليس موزّعًا');
+            }
+        }
+        if (rootDistributor) {
+          (order as any).placedByDistributorId = rootDistributor.id;
+        }
+      }
+
       // 🧷 تضمين tenantId صراحةً على الكيان
       (order as any).tenantId = (user as any).tenantId;
 
       const saved = await ordersRepo.save<ProductOrder>(order);
+
+      // Phase3: منطق اللقطات المتقدم
+      if (isFeatureEnabled('catalogLinking') && rootDistributor) {
+        try {
+          // A) capitalUSD: سعر رأس مال الموزّع حسب مجموعة أسعار المتجر الخاصة به
+          let capitalPerUnitUSD = 0;
+          if (rootDistributor.priceGroup?.id) {
+            const priceRow = await packagePriceRepo.findOne({ where: { package: { id: packageId } as any, priceGroup: { id: rootDistributor.priceGroup.id } as any } as any, relations: ['priceGroup','package'] });
+            if (priceRow) {
+              capitalPerUnitUSD = Number(priceRow.price) || 0;
+            } else {
+              capitalPerUnitUSD = Number(pkg.basePrice ?? pkg.capital ?? 0) || 0;
+            }
+          } else {
+            capitalPerUnitUSD = Number(pkg.basePrice ?? pkg.capital ?? 0) || 0;
+          }
+
+          // B) sellUSD: سعر بيع الموزّع للمستخدم الفرعي
+          let sellPerUnitUSD: number;
+          const isSubUser = user.id !== rootDistributor.id; // مستخدم فرعي
+          if (isSubUser) {
+            // استرجاع مجموعة المستخدم الفرعي من distributor_user_price_groups
+            const userGroup = await distUserGroupRepo.findOne({ where: { userId: user.id } as any });
+            if (!userGroup) {
+              throw new UnprocessableEntityException('Distributor price not configured');
+            }
+            const pkgPrice = await distPkgPriceRepo.findOne({ where: { distributorUserId: rootDistributor.id, distributorPriceGroupId: userGroup.distributorPriceGroupId, packageId } as any });
+            if (!pkgPrice) {
+              throw new UnprocessableEntityException('Distributor price not configured');
+            }
+            sellPerUnitUSD = Number(pkgPrice.priceUSD) || 0;
+          } else {
+            // الموزّع نفسه — استخدم التسعير الفعّال الحالي (unitPriceUSD)
+            sellPerUnitUSD = Number(unitPriceUSD) || 0;
+          }
+
+          // C) ضرب في الكمية
+            const qty = Number(quantity);
+            const capitalTotalUSD = capitalPerUnitUSD * qty;
+            const sellTotalUSD = sellPerUnitUSD * qty;
+
+          // D) snapshots
+          const profitUSD = sellTotalUSD - capitalTotalUSD;
+          // FX snapshot لعملة الموزع
+          let distCurr: string | undefined = rootDistributor.preferredCurrencyCode || userAny.preferredCurrencyCode || 'USD';
+          if (!distCurr) distCurr = 'USD';
+          let fxUsdToDist = 1;
+          if (distCurr !== 'USD') {
+            const curRow = await this.currenciesRepo.findOne({ where: { tenantId: (user as any).tenantId, code: distCurr } as any });
+            if (curRow?.rate && Number(curRow.rate) > 0) fxUsdToDist = Number(curRow.rate);
+          }
+          await ordersRepo.update(saved.id, {
+            distributorCapitalUsdAtOrder: capitalTotalUSD.toFixed(6),
+            distributorSellUsdAtOrder: sellTotalUSD.toFixed(6),
+            distributorProfitUsdAtOrder: profitUSD.toFixed(6),
+            fxUsdToDistAtOrder: fxUsdToDist.toFixed(6),
+            distCurrencyCodeAtOrder: distCurr,
+          } as any);
+          (saved as any).distributorCapitalUsdAtOrder = capitalTotalUSD.toFixed(6);
+          (saved as any).distributorSellUsdAtOrder = sellTotalUSD.toFixed(6);
+          (saved as any).distributorProfitUsdAtOrder = profitUSD.toFixed(6);
+          (saved as any).fxUsdToDistAtOrder = fxUsdToDist.toFixed(6);
+          (saved as any).distCurrencyCodeAtOrder = distCurr;
+        } catch (e) {
+          if (e instanceof UnprocessableEntityException) {
+            throw e; // أعد تمريرها لـ 422
+          }
+          // لا تفشل الطلب لأخطاء غير متوقعة — فقط سجل
+          console.error('[Distributor Snapshot Error]', e);
+        }
+      }
 
       // عرض مختصر
       type OrderView = {
@@ -1134,6 +1280,15 @@ export class ProductsService {
       relations: ['user', 'user.currency', 'package'],
     });
     if (!order) return null;
+
+    // حماية: لا نعيد حساب لقطات الموزع أو FX إن كان الطلب في حالة نهائية
+  // NOTE: We include a superset of possible terminal labels (approved/completed/failed/cancelled/refunded)
+  // even if current InternalOrderStatus enum only uses (pending|approved|rejected) to future-proof
+  // and avoid recomputation should additional terminal statuses be introduced.
+  const terminalStatuses = new Set(['approved','completed','failed','cancelled','refunded']);
+    if (terminalStatuses.has(String(order.status)) && (order as any).distributorSellUsdAtOrder) {
+      // فقط السماح بتغيير حالات معينة (مثلاً approved->rejected سابقاً) حسب المنطق الأصلي، بدون أي لمس لحقول distributor*
+    }
     
     // ✅ تعريف مرّة وحدة
     const effectiveTenantId = String(tenantId ?? (order as any)?.user?.tenantId);
