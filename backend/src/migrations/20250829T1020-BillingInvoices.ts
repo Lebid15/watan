@@ -29,7 +29,7 @@ export class BillingInvoices20250829T1020 implements MigrationInterface {
     await queryRunner.createCheckConstraint('billing_invoices', new TableCheck({ name: 'CHK_billing_invoices_status', expression: `status IN ('open','paid','void')` }));
 
     await queryRunner.createForeignKey('billing_invoices', new TableForeignKey({
-      columnNames: ['tenantId'], referencedTableName: 'tenants', referencedColumnNames: ['id'], onDelete: 'CASCADE', onUpdate: 'CASCADE'
+      columnNames: ['tenantId'], referencedTableName: 'tenant', referencedColumnNames: ['id'], onDelete: 'CASCADE', onUpdate: 'CASCADE'
     }));
     await queryRunner.createForeignKey('billing_invoices', new TableForeignKey({
       columnNames: ['depositId'], referencedTableName: 'deposit', referencedColumnNames: ['id'], onDelete: 'SET NULL', onUpdate: 'CASCADE'
