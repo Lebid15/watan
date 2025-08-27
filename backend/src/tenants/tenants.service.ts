@@ -113,12 +113,13 @@ export class TenantsService {
     await this.domains.save(domainEntity);
 
     // 5) أعد البيانات + كلمة السر المؤقتة (dev فقط)
-    const isProd = (process.env.NODE_ENV || 'development') === 'production';
+    // إعطاء كلمة المرور المؤقتة دائماً (بناءً على طلب المستخدم) حتى في بيئة الإنتاج.
+    // ملاحظة أمان: هذا يُعرِّض الكلمة في الواجهة؛ يُفضل لاحقاً وضع متغير بيئة لتعطيله.
     return {
       tenant: savedTenant,
       defaultDomain,
       ownerEmail: dto.ownerEmail || null,
-      ownerTempPassword: ownerPlainPassword && !isProd ? ownerPlainPassword : undefined,
+      ownerTempPassword: ownerPlainPassword || undefined,
     };
   }
 
@@ -133,10 +134,10 @@ export class TenantsService {
     user.password = await bcrypt.hash(plain, 10);
     await this.users.save(user);
 
-    const isProd = (process.env.NODE_ENV || 'development') === 'production';
+    // إعادة: إرجاع الكلمة دائماً وفق المتطلب الحالي
     return {
       ownerEmail: (user as any).email,
-      ownerTempPassword: !isProd ? plain : undefined,
+      ownerTempPassword: plain,
     };
   }
 

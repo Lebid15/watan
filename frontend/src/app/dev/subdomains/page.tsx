@@ -44,6 +44,12 @@ export default function SubdomainsPage() {
     domain?: string;
     name?: string;
   } | null>(null);
+  // آخر إعادة تعيين باسورد (للعرض أسفل المتجر المعني)
+  const [lastReset, setLastReset] = useState<{
+    tenantId: string;
+    email?: string;
+    password?: string;
+  } | null>(null);
 
   // النطاقات
   const [domains, setDomains] = useState<Record<string, Domain[]>>({});
@@ -145,17 +151,20 @@ export default function SubdomainsPage() {
 
     async function resetOwnerPassword(tenantId: string) {
     try {
-      const { data } = await api.post<{
-        ownerEmail?: string;
-        ownerTempPassword?: string;
-      }>(`${API_BASE_URL}/admin/tenants/${tenantId}/reset-owner-password`, {});
-      if (data?.ownerTempPassword) {
-        alert(
-          `تم إعادة تعيين كلمة المرور للمشرف:\nEmail: ${data?.ownerEmail}\nPassword: ${data.ownerTempPassword}`,
+        const { data } = await api.post<{ ownerEmail?: string; ownerTempPassword?: string }>(
+          `${API_BASE_URL}/admin/tenants/${tenantId}/reset-owner-password`,
+          {},
         );
-      } else {
-        alert('تمت إعادة التعيين. (لن تظهر كلمة المرور في بيئة الإنتاج)');
-      }
+        if (!data?.ownerTempPassword) {
+          alert('لم تُسترجع كلمة المرور (تحقق من الخادم)');
+          return;
+        }
+        // خزّن نتيجة إعادة التعيين لعرضها تحت المتجر مباشرة
+        setLastReset({
+          tenantId,
+          email: data.ownerEmail,
+          password: data.ownerTempPassword,
+        });
     } catch (e: any) {
       alert(e?.response?.data?.message || 'فشل إعادة تعيين كلمة المرور');
     }
@@ -371,13 +380,35 @@ export default function SubdomainsPage() {
                     )}
                   </td>
                   <td>
-                    <button
-                      className="rounded px-3 py-1 border text-xs"
-                      onClick={() => resetOwnerPassword(t.id)}
-                      title="إعادة تعيين كلمة مرور مالك المتجر"
-                    >
-                      إعادة تعيين باسورد المالك
-                    </button>
+                            <div className="flex flex-col gap-2">
+                              <button
+                                className="rounded px-3 py-1 border text-xs"
+                                onClick={() => resetOwnerPassword(t.id)}
+                                title="إعادة تعيين كلمة مرور مالك المتجر"
+                              >
+                                إعادة تعيين باسورد المالك
+                              </button>
+                              {lastReset?.tenantId === t.id && lastReset.password && (
+                                <div className="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 flex flex-col gap-1">
+                                  <div>
+                                    <span className="font-semibold">تمت إعادة التعيين ✅ كلمة المرور المؤقتة:</span>
+                                    <code className="ml-2 px-1.5 py-0.5 bg-white border rounded">
+                                      {lastReset.password}
+                                    </code>
+                                    <button
+                                      className="ml-2 text-blue-600 underline"
+                                      onClick={() => navigator.clipboard.writeText(lastReset.password || '')}
+                                    >
+                                      نسخ
+                                    </button>
+                                  </div>
+                                  {lastReset.email && (
+                                    <div>بريد المالك: <b>{lastReset.email}</b></div>
+                                  )}
+                                  <div className="text-[10px] text-gray-500">لا تُعرض هذه الرسالة إلا لك (Developer) – انسخها الآن.</div>
+                                </div>
+                              )}
+                            </div>
                   </td>
                 </tr>
               ))}

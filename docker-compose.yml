@@ -25,7 +25,9 @@ services:
     env_file:
       - .env
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      # Use 127.0.0.1 (not localhost) to force IPv4 (BusyBox wget may try ::1 first and fail)
+      # BusyBox wget (in alpine) لا يدعم --spider أحياناً، لذلك نستخدم -O /dev/null + timeout
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -38,6 +40,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       PUBLIC_TENANT_BASE_DOMAIN: ${PUBLIC_TENANT_BASE_DOMAIN}
       DEBUG_TENANT_GUARD: "1"
+      REQUEST_LOGGING: "1"
     expose:
       - "3000"
     volumes:
@@ -45,7 +48,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
   frontend:
     build:
       context: ./frontend
@@ -62,13 +64,14 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_API_URL: "https://syrz1.com/api"
     expose:
       - "3001"
     depends_on:
       - backend
     volumes:
       - frontend_logs:/app/logs
+
 
   nginx:
     image: nginx:alpine
@@ -90,10 +93,3 @@ volumes:
   backend_logs:
   frontend_logs:
   nginx_logs:
-
-## Usage:
-# 1) جهّز ملف .env (DATABASE_URL, REDIS_URL, JWT_SECRET, PUBLIC_TENANT_BASE_DOMAIN, NEXT_PUBLIC_API_URL, مفاتيح Cloudinary...).
-# 2) docker compose build --pull
-# 3) docker compose up -d
-# 4) DNS (Cloudflare): syrz1.com + www للسابق، api للسيرفر الخلفي.
-# 5) تحقق من health: curl http://localhost:3000/api/health داخل الشبكة.

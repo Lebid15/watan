@@ -7,8 +7,52 @@ import axios from 'axios';
 
 // Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ù€ API (Ù…Ø«Ø§Ù„ Ù…Ø­Ù„ÙŠ: http://localhost:3001/api)
 // Ø§Ù„Ù‚ÙŠÙ…Ø© Ø§Ù„Ø®Ø§Ù… Ù…Ù† Ø§Ù„Ø¨ÙŠØ¦Ø© (Ù‚Ø¯ ØªÙƒÙˆÙ† Ø®Ø§Ø·Ø¦Ø© Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ÙŠÙ‹Ø§)
-const RAW_API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+let RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+// Dynamic production fallback: if env not provided (still localhost) but we're on a real domain, derive https://api.<root>/api
+if (typeof window !== 'undefined') {
+  try {
+    if (/localhost:3001\/api$/.test(RAW_API_BASE_URL)) {
+      const host = window.location.hostname; // e.g. syrz1.com or www.syrz1.com
+      const parts = host.split('.');
+      if (parts.length >= 2 && !/^api\./i.test(host)) {
+        const root = parts.slice(-2).join('.');
+        // Avoid using www as subdomain base twice
+        const apiHost = `api.${root}`;
+        const proto = window.location.protocol === 'https:' ? 'https' : 'http';
+        RAW_API_BASE_URL = `${proto}://${apiHost}/api`;
+        console.log('[API][AUTO-FALLBACK] Derived API base URL =>', RAW_API_BASE_URL);
+      }
+    }
+  } catch {}
+}
+
+// Prefer relative /api when on a tenant subdomain (non api/www) of syrz1.com to eliminate cross-origin & CORS preflight.
+// This should help with mysterious timeouts in normal browser mode while incognito works.
+if (typeof window !== 'undefined') {
+  try {
+    // Allow opt-out via env flag
+    if (process.env.NEXT_PUBLIC_FORCE_API_ABSOLUTE === '1') {
+      // eslint-disable-next-line no-console
+      console.log('[API][RELATIVE] Skipped relative /api because NEXT_PUBLIC_FORCE_API_ABSOLUTE=1');
+    } else {
+      const h = window.location.hostname; // sham.syrz1.com
+      if (/\.syrz1\.com$/i.test(h)) {
+        const parts = h.split('.');
+        if (parts.length > 2) {
+          const sub = parts[0].toLowerCase();
+          if (!['www', 'api'].includes(sub)) {
+            // Switch to relative only if current base points to api.<root> (derived) or localhost default
+            if (/api\.[A-Za-z0-9-]+\.[A-Za-z0-9-]+\/api$/.test(RAW_API_BASE_URL) || /localhost:3001\/api$/.test(RAW_API_BASE_URL)) {
+              RAW_API_BASE_URL = '/api';
+              // eslint-disable-next-line no-console
+              console.log('[API][RELATIVE] Using relative /api base for tenant subdomain =>', h);
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+}
 
 // Ø­Ø§Ø±Ø³ Ø¯ÙØ§Ø¹ÙŠ: Ø¥Ø°Ø§ Ø§Ù„ØµÙØ­Ø© Ù†ÙØ³Ù‡Ø§ https Ù„ÙƒÙ† Ø§Ù„Ù€ API_BASE_URL ÙŠØ¨Ø¯Ø£ Ø¨Ù€ http Ù„Ù†ÙØ³ Ø§Ù„Ø¯ÙˆÙ…ÙŠÙ† Ø§Ù„Ø£Ø³Ø§Ø³ÙŠ -> Ø§Ø±ÙØ¹ Ù„Ù„Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ https Ù„ØªÙØ§Ø¯ÙŠ Mixed Content
 function upgradeToHttpsIfNeeded(raw: string): string {
@@ -317,6 +361,19 @@ function addTenantHeaders(config: any) {
         document.cookie = `tenant_host=${tenantHost}; path=/`;
       }
     }
+    // Production multi-tenant: *.syrz1.com (exclude bare root, www, api)
+    else if (/\.syrz1\.com$/i.test(currentHost)) {
+      const hostParts = currentHost.split('.');
+      if (hostParts.length > 2) {
+        const sub = hostParts[0].toLowerCase();
+        if (!['www', 'api'].includes(sub)) {
+          if (!config.headers['X-Tenant-Host']) {
+            config.headers['X-Tenant-Host'] = currentHost;
+          }
+          document.cookie = `tenant_host=${currentHost}; path=/`;
+        }
+      }
+    }
   }
 
   // 3) Ø§Ù„ØªÙˆÙƒÙ†
@@ -345,9 +402,19 @@ if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) 
         const sub = h.split('.')[0];
         if (sub && sub !== 'localhost' && sub !== 'www') {
           const tenantHost = `${sub}.localhost`;
-            headers.set('X-Tenant-Host', tenantHost);
-            document.cookie = `tenant_host=${tenantHost}; path=/`;
-            console.log(`[FETCH] Setting X-Tenant-Host header: ${tenantHost}`);
+          headers.set('X-Tenant-Host', tenantHost);
+          document.cookie = `tenant_host=${tenantHost}; path=/`;
+          console.log(`[FETCH] Setting X-Tenant-Host header: ${tenantHost}`);
+        }
+      } else if (/\.syrz1\.com$/i.test(h)) {
+        const parts = h.split('.');
+        if (parts.length > 2) {
+          const sub = parts[0].toLowerCase();
+          if (!['www', 'api'].includes(sub)) {
+            headers.set('X-Tenant-Host', h);
+            document.cookie = `tenant_host=${h}; path=/`;
+            console.log(`[FETCH] Setting X-Tenant-Host header (prod): ${h}`);
+          }
         }
       }
     }
