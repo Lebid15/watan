@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { FaUserCircle } from 'react-icons/fa';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 import { formatGroupsDots } from '@/utils/format';
@@ -140,9 +141,27 @@ export default function MainHeader() {
           </div>
         </div>
 
-        {/* اليمين: اسم المشروع */}
-        <div className="text-xl font-semibold select-none">
-          Kadro Store
+        {/* اليمين: اسم المشروع + روابط دورية */}
+        <div className="flex items-center gap-4 text-sm select-none">
+          <div className="text-xl font-semibold">Kadro Store</div>
+          {/* Role aware quick nav */}
+          {user?.role === 'tenant_owner' && <nav className="hidden md:flex gap-3">
+            <Link className="hover:underline" href="/tenant/products">Products</Link>
+            <Link className="hover:underline" href="/tenant/users">Users</Link>
+            <Link className="hover:underline" href="/tenant/price-groups">Price Groups</Link>
+            <Link className="hover:underline" href="/tenant/reports">Reports</Link>
+            <Link className="hover:underline" href="/billing/overview">Billing</Link>
+          </nav>}
+          {user?.role === 'distributor' && <nav className="hidden md:flex gap-3">
+            <Link className="hover:underline" href="/distributor/products">Products</Link>
+            <Link className="hover:underline" href="/distributor/price-groups">Price Groups</Link>
+            <Link className="hover:underline" href="/distributor/orders">Orders</Link>
+          </nav>}
+          {user?.role === 'instance_owner' && <nav className="hidden md:flex gap-3">
+            <Link className="hover:underline" href="/owner/catalog/import">Import</Link>
+            <Link className="hover:underline" href="/owner/catalog/new">Manual</Link>
+            <Link className="hover:underline" href="/owner/catalog/review">Review</Link>
+          </nav>}
         </div>
       </div>
     </header>
