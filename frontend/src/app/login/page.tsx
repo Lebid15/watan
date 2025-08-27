@@ -31,8 +31,33 @@ export default function LoginPage() {
           document.cookie = `role=${json.role}; Path=/; Max-Age=${60*60*24*7}`;
         }
       } catch {}
-      // لو المطور فضّل تحويله مباشرة لصفحة التطوير
-      router.push('/dev');
+      // تحديد مسار الوجهة:
+      // 1) احترام باراميتر next إن وُجد (ومسار داخلي آمن)
+      // 2) وإلا اختر حسب الدور
+      let nextDest: string | null = null;
+      try {
+        const url = new URL(window.location.href);
+        const n = url.searchParams.get('next');
+        if (n && /^\//.test(n) && !/^\/api\b/.test(n)) {
+          nextDest = n;
+        }
+      } catch {}
+      // إن لم يوجد next صالح، وجّه حسب الدور
+      if (!nextDest) {
+        try {
+          const payloadPart = token.split('.')[1];
+          const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+          const json = JSON.parse(atob(b64));
+          const role = (json?.role || '').toLowerCase();
+          if (role === 'tenant_owner') nextDest = '/tenant';
+          else if (role === 'distributor') nextDest = '/distributor';
+          else if (role === 'instance_owner' || role === 'owner') nextDest = '/owner';
+          else if (role === 'developer') nextDest = '/dev';
+          else if (['admin','supervisor'].includes(role)) nextDest = '/admin/dashboard';
+          else nextDest = '/';
+        } catch { nextDest = '/'; }
+      }
+      router.push(nextDest);
     } catch (e:any) {
       setError(e?.message || 'فشل الدخول');
     } finally { setLoading(false); }
@@ -41,8 +66,9 @@ export default function LoginPage() {
   const doPasskeyLogin = async () => {
     if (!identifier) { setError('أدخل بريدك أو اسم المستخدم أولاً'); return; }
     try {
-      await authenticateWithPasskey(identifier);
-      router.push('/');
+  await authenticateWithPasskey(identifier);
+  // دفع إلى الجذر ثم middleware يتولى التوجيه حسب الدور
+  router.push('/');
     } catch {/* handled in hook */}
   };
 
