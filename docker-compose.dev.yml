@@ -54,6 +54,25 @@ services:
       redis:
         condition: service_healthy
 
+  frontend:
+    build: ./frontend
+    container_name: watan-frontend-dev
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3000/api
+      NEXT_PUBLIC_FEATURE_BILLING_V1: "true"
+      PORT: 3000
+    command: ["npm", "run", "dev"]
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules_dev:/app/node_modules
+    ports:
+      - '3001:3000'
+    depends_on:
+      backend:
+        condition: service_started
+
 volumes:
   pg_data_dev:
   backend_node_modules_dev:
+  frontend_node_modules_dev:
