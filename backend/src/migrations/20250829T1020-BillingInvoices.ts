@@ -23,24 +23,59 @@ export class BillingInvoices20250829T1020 implements MigrationInterface {
         { name: 'createdAt', type: 'timestamptz', default: 'now()' },
         { name: 'updatedAt', type: 'timestamptz', default: 'now()' },
       ],
-      uniques: [ new TableUnique({ name: 'UQ_billing_invoices_tenant_period', columnNames: ['tenantId', 'periodStart', 'periodEnd'] }) ],
+      uniques: [
+        new TableUnique({
+          name: 'UQ_billing_invoices_tenant_period',
+          columnNames: ['tenantId', 'periodStart', 'periodEnd'],
+        }),
+      ],
     }));
 
-    await queryRunner.createCheckConstraint('billing_invoices', new TableCheck({ name: 'CHK_billing_invoices_status', expression: `status IN ('open','paid','void')` }));
+    await queryRunner.createCheckConstraint(
+      'billing_invoices',
+      new TableCheck({
+        name: 'CHK_billing_invoices_status',
+        expression: `status IN ('open','paid','void')`,
+      }),
+    );
 
-    await queryRunner.createForeignKey('billing_invoices', new TableForeignKey({
-<<<<<<< HEAD
-      columnNames: ['tenantId'], referencedTableName: 'tenant', referencedColumnNames: ['id'], onDelete: 'CASCADE', onUpdate: 'CASCADE'
-=======
-      columnNames: ['tenantId'], referencedTableName: 'tenants', referencedColumnNames: ['id'], onDelete: 'CASCADE', onUpdate: 'CASCADE'
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
-    }));
-    await queryRunner.createForeignKey('billing_invoices', new TableForeignKey({
-      columnNames: ['depositId'], referencedTableName: 'deposit', referencedColumnNames: ['id'], onDelete: 'SET NULL', onUpdate: 'CASCADE'
-    }));
+    await queryRunner.createForeignKey(
+      'billing_invoices',
+      new TableForeignKey({
+        columnNames: ['tenantId'],
+        referencedTableName: 'tenant',  // ✅ الصحيح
+        referencedColumnNames: ['id'],
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
+      }),
+    );
 
-    await queryRunner.createIndex('billing_invoices', new TableIndex({ name: 'IDX_billing_invoices_tenant_status', columnNames: ['tenantId', 'status'] }));
-    await queryRunner.createIndex('billing_invoices', new TableIndex({ name: 'IDX_billing_invoices_dueAt', columnNames: ['dueAt'] }));
+    await queryRunner.createForeignKey(
+      'billing_invoices',
+      new TableForeignKey({
+        columnNames: ['depositId'],
+        referencedTableName: 'deposit',
+        referencedColumnNames: ['id'],
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+      }),
+    );
+
+    await queryRunner.createIndex(
+      'billing_invoices',
+      new TableIndex({
+        name: 'IDX_billing_invoices_tenant_status',
+        columnNames: ['tenantId', 'status'],
+      }),
+    );
+
+    await queryRunner.createIndex(
+      'billing_invoices',
+      new TableIndex({
+        name: 'IDX_billing_invoices_dueAt',
+        columnNames: ['dueAt'],
+      }),
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
