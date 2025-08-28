@@ -11,7 +11,7 @@ export default function ProductPackages(){
   const [rows,setRows]=useState<PackageRow[]>([]);
   const [loading,setLoading]=useState(true);
   const [err,setErr]=useState<any>(null);
-  useEffect(()=>{ if(!id) return; (async()=>{ try { const r = await api.get(`/products/${id}/packages`); setRows(r.data||[]);}catch(e:any){setErr(e);}finally{setLoading(false);} })(); },[id]);
+  useEffect(()=>{ if(!id) return; (async()=>{ try { const r = await api.get(`/products/${id}/packages`); const _raw=r.data;const _arr=Array.isArray(_raw)?_raw:(Array.isArray(_raw?.items)?_raw.items:[]);setRows(_arr);}catch(e:any){setErr(e);}finally{setLoading(false);} })(); },[id]);
 
   return <div className="space-y-4">
     <h1 className="text-xl font-semibold">Packages</h1>

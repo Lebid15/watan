@@ -11,7 +11,7 @@ export default function TenantPriceGroupsPage(){
   const [creating,setCreating]=useState(false);
   const [newName,setNewName]=useState('');
 
-  useEffect(()=>{ (async()=>{ try { const r = await api.get(API_ROUTES.priceGroups.base); setGroups(r.data||[]);} catch(e:any){setErr(e);} finally { setLoading(false);} })(); },[]);
+  useEffect(()=>{ (async()=>{ try { const r = await api.get(API_ROUTES.priceGroups.base); const _raw=r.data;const _arr=Array.isArray(_raw)?_raw:(Array.isArray(_raw?.items)?_raw.items:[]);setGroups(_arr);} catch(e:any){setErr(e);} finally { setLoading(false);} })(); },[]);
 
   const create = async ()=>{
     if(!newName.trim()) return;

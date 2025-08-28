@@ -11,7 +11,7 @@ export default function TenantReportsPage(){
   const [err,setErr]=useState<any>(null);
   const [page,setPage]=useState(0);
   const limit = 20;
-  useEffect(()=>{ (async()=>{ setLoading(true); try { const r = await api.get(`/tenant/reports/profits?limit=${limit}&offset=${page*limit}`); setRows(r.data?.items||[]);} catch(e:any){ setErr(e);} finally { setLoading(false);} })(); },[page]);
+  useEffect(()=>{ (async()=>{ setLoading(true); try { const r = await api.get(`/tenant/reports/profits?limit=${limit}&offset=${page*limit}`); const _raw=r.data;const _arr=Array.isArray(_raw)?_raw:(Array.isArray(_raw?.items)?_raw.items:[]);setRows(_arr);} catch(e:any){ setErr(e);} finally { setLoading(false);} })(); },[page]);
 
   const capTotal = rows.reduce((s,r)=>s+(r.capitalUsd||0),0);
   const sellTotal = rows.reduce((s,r)=>s+(r.sellUsd||0),0);

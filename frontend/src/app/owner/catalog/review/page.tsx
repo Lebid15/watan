@@ -7,7 +7,7 @@ interface Candidate { id:string; name:string; queued?:boolean; }
 export default function CatalogReviewPublish(){
   const [rows,setRows]=useState<Candidate[]>([]); const [loading,setLoading]=useState(true); const [err,setErr]=useState<any>(null);
   const [selected,setSelected]=useState<Record<string,boolean>>({});
-  useEffect(()=>{(async()=>{try{const r=await api.get('/owner/catalog/publish-queue'); setRows(r.data||[]);}catch(e:any){setErr(e);}finally{setLoading(false);} })();},[]);
+  useEffect(()=>{(async()=>{try{const r=await api.get('/owner/catalog/publish-queue'); const _raw=r.data;const _arr=Array.isArray(_raw)?_raw:(Array.isArray(_raw?.items)?_raw.items:[]);setRows(_arr);}catch(e:any){setErr(e);}finally{setLoading(false);} })();},[]);
   const toggle=(id:string)=>setSelected(s=>({...s,[id]:!s[id]}));
   const publish=async()=>{const ids=Object.entries(selected).filter(([,v])=>v).map(([k])=>k); if(!ids.length)return; await api.post('/owner/catalog/publish',{ ids }); alert('Published (stub)');};
   return <div className="space-y-4"><h1 className="text-xl font-semibold">Catalog Review & Publish</h1>

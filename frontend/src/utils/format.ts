@@ -55,3 +55,13 @@ export function useDebounce<T>(value: T, delay = 300): T {
 
   return debounced;
 }
+
+// 3-decimal fixed formatting (used in reports/billing)
+export function formatMoney3(amount: number | string) {
+  const v = typeof amount === 'string' ? Number(amount) : amount;
+  const safe = isNaN(v) ? 0 : v;
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }).format(safe);
+}

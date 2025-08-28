@@ -10,7 +10,7 @@ export default function TenantProductsPage(){
   const [rows,setRows]=useState<ProductRow[]>([]);
   const [loading,setLoading]=useState(true);
   const [err,setErr]=useState<any>(null);
-  useEffect(()=>{(async()=>{try{const r=await api.get(API_ROUTES.products.base);setRows(r.data||[]);}catch(e:any){setErr(e);}finally{setLoading(false);}})();},[]);
+  useEffect(()=>{(async()=>{try{const r=await api.get(API_ROUTES.products.base);const _raw=r.data;const _arr=Array.isArray(_raw)?_raw:(Array.isArray(_raw?.items)?_raw.items:[]);setRows(_arr);}catch(e:any){setErr(e);}finally{setLoading(false);}})();},[]);
   return <div className="space-y-4">
     <div className="flex items-center justify-between">
       <h1 className="text-xl font-semibold">Products</h1>
