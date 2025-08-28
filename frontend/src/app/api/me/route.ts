@@ -1,11 +1,14 @@
 // frontend/src/app/api/me/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-// Use api.<root>/api always in production to avoid hitting same subdomain frontend which 404s for /api/users/profile
+// Derive backend API base. On tenant subdomains we prefer relative '/api' so nginx proxies directly (avoids CORS and extra DNS hop).
 function deriveApiBase(req: NextRequest): string {
+  const host = req.headers.get('host') || '';
+  if (/\.syrz1\.com$/i.test(host) && !/^api\./i.test(host)) {
+    return '/api';
+  }
   const envBase = process.env.NEXT_PUBLIC_API_URL;
   if (envBase && /^https?:\/\//i.test(envBase)) return envBase.replace(/\/$/, '');
-  const host = req.headers.get('host') || '';
   if (/\.syrz1\.com$/i.test(host)) {
     const root = host.split('.').slice(-2).join('.');
     return `https://api.${root}/api`;
@@ -16,14 +19,16 @@ function deriveApiBase(req: NextRequest): string {
 export async function GET(req: NextRequest) {
   const API_BASE_URL = deriveApiBase(req);
   try {
-    const token = req.cookies.get('access_token')?.value;
+  // Accept either access_token (client) or auth (httpOnly from backend) cookie.
+  const token = req.cookies.get('access_token')?.value || req.cookies.get('auth')?.value;
     if (!token) {
       return NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
     }
 
     // نمرّر التوكن للباك إند عبر Authorization
-    const originalHost = req.headers.get('host') || '';
-    const r = await fetch(`${API_BASE_URL}/users/profile`, {
+  const originalHost = req.headers.get('host') || '';
+  const profileUrl = API_BASE_URL === '/api' ? '/api/users/profile' : `${API_BASE_URL}/users/profile`;
+  const r = await fetch(profileUrl, {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -34,13 +39,15 @@ export async function GET(req: NextRequest) {
     });
 
     if (!r.ok) {
-      // لو 401 من الباك: نعتبرها جلسة غير صالحة
-      return NextResponse.json({ ok: false }, { status: 401 });
+      if (r.status === 401) {
+        return NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
+      }
+      return NextResponse.json({ ok: false, error: 'UPSTREAM_ERROR', status: r.status }, { status: 500 });
     }
 
     const data = await r.json();
-    return NextResponse.json({ ok: true, user: data });
+  return NextResponse.json({ ok: true, user: data });
   } catch (e) {
-    return NextResponse.json({ ok: false }, { status: 500 });
+  return NextResponse.json({ ok: false, error: 'INTERNAL' }, { status: 500 });
   }
 }
