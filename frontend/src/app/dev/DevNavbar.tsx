@@ -59,13 +59,7 @@ export default function DevNavbar() {
             );
           })}
         </div>
-        <div className="flex items-center gap-2">
-          {/* زر إضافة منتج من الصفر */}
-          <Link
-            href="/dev/catalog/new"
-            className="px-3 py-1.5 rounded bg-black/40 hover:bg-black/30 text-white text-sm whitespace-nowrap"
-            title="إضافة منتج من الصفر"
-          >+ منتج جديد</Link>
+  <div className="flex items-center gap-2">
           <button
             onClick={logout}
             className="px-3 py-1.5 rounded-full bg-black/50 hover:bg-black/40 flex items-center justify-center"
