@@ -1,4 +1,4 @@
-import { Controller, Post } from '@nestjs/common';
+import { Controller, Post, Get } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../products/product.entity';
@@ -119,6 +119,18 @@ export class DevFilteredProductsController {
       beforePackages,
       afterProducts,
       afterPackages,
+    };
+  }
+
+  @Get('status')
+  async status() {
+    const beforeProducts = await this.productsRepo.count();
+    const beforePackages = await this.packagesRepo.count();
+    const sample = await this.productsRepo.find({ take: 3, relations: ['packages'] });
+    return {
+      products: beforeProducts,
+      packages: beforePackages,
+      sample: sample.map(p => ({ id: p.id, name: p.name, packages: p.packages.length })),
     };
   }
 }

@@ -18,7 +18,8 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/auth\/passkeys\/register$/,
   /^\/api\/auth\/passkeys\/options\/login$/,
   /^\/api\/auth\/passkeys\/login$/,
-  /^\/api\/dev\/filtered-products-sync$/,
+  /^\/api\/dev\/filtered-products-sync$/, // POST sync
+  /^\/api\/dev\/filtered-products-sync\/status$/, // GET status
   // Public catalog product listing (image fallback test)
   /^\/api\/products$/,
   /^\/api\/products\/[0-9a-fA-F-]{10,}$/,
