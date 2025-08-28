@@ -130,7 +130,7 @@ export default function DevFilteredProductsPage(){
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold">المنتجات والباقات2 (Dev / All)</h1>
+        <h1 className="text-2xl font-bold">المنتجات والباقات3 (Dev / All)</h1>
         <div className="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="font-mono" title="Frontend Git SHA">F:{process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}</span>
@@ -154,7 +154,7 @@ export default function DevFilteredProductsPage(){
         {showRefreshConfirm && (
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 px-3 py-1 rounded text-xs">
             <span>تأكيد التحديث؟</span>
-            <button onClick={load} className="px-2 py-0.5 bg-amber-600 text-white rounded">تأكيد</button>
+            <button onClick={async()=>{ try { await api.post('/dev/filtered-products-sync'); } catch(e:any){ console.log('sync error', e?.response?.data||e?.message);} finally { await load(); } }} className="px-2 py-0.5 bg-amber-600 text-white rounded">تأكيد</button>
             <button onClick={()=> setShowRefreshConfirm(false)} className="px-2 py-0.5 bg-gray-300 rounded">إلغاء</button>
           </div>
         )}
