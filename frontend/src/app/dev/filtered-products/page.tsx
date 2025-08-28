@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
 
 interface DevPackage {
@@ -16,6 +17,7 @@ interface DevProduct {
 }
 
 export default function DevFilteredProductsPage(){
+  const router = useRouter();
   const [products,setProducts]=useState<DevProduct[]>([]);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
@@ -45,6 +47,10 @@ export default function DevFilteredProductsPage(){
           isActive: k.isActive,
         }))
       }));
+      if (!Array.isArray(mapped) || mapped.length===0) {
+        // Debug فقط مؤقت
+        console.log('[DEV][filtered-products] raw products payload =', raw);
+      }
       setProducts(mapped);
       // fetch backend meta in parallel (non-blocking)
       api.get('/health').then(r=>{
@@ -152,16 +158,9 @@ export default function DevFilteredProductsPage(){
         )}
         {/* زر إضافة منتج جديد */}
         <button
-          onClick={async ()=>{
-            const name = prompt('اسم المنتج الجديد؟');
-            if(!name) return;
-            try {
-              const res = await api.post('/products', { name });
-              setProducts(ps=> [...ps, { id: res.data.id, name: res.data.name, packages: [] }]);
-            } catch(e:any){ alert(e?.response?.data?.message || e?.message || 'فشل الإنشاء'); }
-          }}
+          onClick={()=> router.push('/dev/filtered-products/new')}
           className="px-4 py-1.5 rounded text-sm bg-emerald-600 text-white"
-        >+ إضافة منتج جديد</button>
+        >+ إضافة منتج</button>
         {/* فلتر نصي */}
         <input
           value={textFilter}
@@ -225,6 +224,7 @@ export default function DevFilteredProductsPage(){
                     <th className="px-2 py-1 text-right">#</th>
                     <th className="px-2 py-1 text-right">الباقة</th>
                     <th className="px-2 py-1 text-right">الكود</th>
+                    <th className="px-2 py-1 text-right">المزوّد</th>
                     <th className="px-2 py-1 text-right">السعر الأساس</th>
                     <th className="px-2 py-1 text-right">نشطة</th>
                     <th className="px-2 py-1"></th>
@@ -245,6 +245,7 @@ export default function DevFilteredProductsPage(){
                           disabled={!!saving[pkg.id]}
                         />
                       </td>
+                      <td className="px-2 py-1">-</td>
                       <td className="px-2 py-1">{pkg.basePrice}</td>
                       <td className="px-2 py-1">{pkg.isActive? '✓':'✗'}</td>
                       <td className="px-2 py-1 text-center">

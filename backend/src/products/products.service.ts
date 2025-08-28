@@ -493,6 +493,18 @@ export class ProductsService {
       createdByDistributorId: (data as any).createdByDistributorId || null,
     } as Partial<ProductPackage>) as ProductPackage;
 
+    // اختيارياً: ضبط publicCode أثناء الإنشاء إن وُفّر
+    if (data.publicCode != null) {
+      const pc = Number(data.publicCode);
+      if (Number.isInteger(pc) && pc > 0) {
+        const existing = await this.packagesRepo.findOne({ where: { publicCode: pc } as any });
+        if (existing) throw new ConflictException('الكود مستخدم مسبقًا');
+        (newPackage as any).publicCode = pc;
+      } else if (data.publicCode !== null) {
+        throw new BadRequestException('publicCode غير صالح (يجب أن يكون رقمًا موجبًا)');
+      }
+    }
+
     // ✅ ثبّت النوع هنا
     const saved: ProductPackage = await this.packagesRepo.save(newPackage as ProductPackage);
 
