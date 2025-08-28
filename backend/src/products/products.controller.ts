@@ -204,7 +204,8 @@ export class ProductsController {
       if (!result?.secure_url) {
         throw new Error('Cloudinary did not return secure_url');
       }
-      return this.productsService.updateImage((req as any).tenant?.id || (req as any).user?.tenantId, id, result.secure_url);
+  const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId || '00000000-0000-0000-0000-000000000000';
+  return this.productsService.updateImage(tenantId, id, result.secure_url);
     } catch (err: any) {
       console.error('[Upload Product Image] Cloudinary error:', {
         message: err?.message,
@@ -264,8 +265,9 @@ export class ProductsController {
 
     const capital = parseMoney(capitalStr ?? basePriceStr ?? priceStr);
 
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId || '00000000-0000-0000-0000-000000000000';
     return this.productsService.addPackageToProduct(
-      (req as any).tenant?.id || (req as any).user?.tenantId,
+      tenantId,
       productId,
       {
         name,

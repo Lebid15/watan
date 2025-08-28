@@ -131,14 +131,18 @@ export default function DevFilteredProductsPage(){
 
   const nameFiltered = products.filter(p=> !textFilter.trim() || p.name.toLowerCase().includes(textFilter.toLowerCase()));
   const filtered = selectedProductId ? nameFiltered.filter(p=>p.id===selectedProductId) : nameFiltered;
-  const productOptions = products; // كامل القائمة
+  const productOptions = [
+    ...products,
+    // دمج أسماء منتجات الكتالوج المجمعة للفلترة (بدون تكرار IDs المحلية)
+    ...catalogGrouped.map(g=>({ id: `catalog-${g.id}`, name: g.name, packages: [] as any[] }))
+  ];
   const totalPackages = filtered.reduce((acc,p)=> acc + p.packages.length, 0);
   const activePackages = filtered.reduce((acc,p)=> acc + p.packages.filter(pk=>pk.isActive).length, 0);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold">المنتجات 1 (Dev / All)</h1>
+        <h1 className="text-2xl font-bold">المنتجات 2 (Dev / All)</h1>
         <div className="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="font-mono" title="Frontend Git SHA">F:{process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}</span>

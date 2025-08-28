@@ -133,14 +133,20 @@ export class DevFilteredProductsController {
     // حدود أمان
     const MAX_PRODUCTS = 15;
     const MAX_PACKAGES_PER = 25;
+    // احضر المنتجات مع عدّ الباقات ثم رشّح التي تمتلك اثنتين أو أكثر
     const products: any[] = await this.productsRepo.manager.query(
-      `SELECT id, name FROM catalog_product ORDER BY name LIMIT $1`, [MAX_PRODUCTS]);
-    if (products.length === 0) return { items: [] };
-    const ids = products.map(p => p.id);
+      `SELECT p.id, p.name,
+        (SELECT count(*) FROM catalog_package cp WHERE cp."catalogProductId" = p.id) AS pkg_count
+       FROM catalog_product p
+       ORDER BY p.name
+       LIMIT $1`, [MAX_PRODUCTS]);
+    const filtered = products.filter(p => Number(p.pkg_count) >= 2);
+    if (filtered.length === 0) return { items: [] };
+    const ids = filtered.map(p => p.id);
     const pkgs: any[] = await this.productsRepo.manager.query(
       `SELECT cp.id, cp.name, cp."catalogProductId", cp."publicCode" FROM catalog_package cp
         WHERE cp."catalogProductId" = ANY($1) ORDER BY cp.name`, [ids]);
-    const grouped = products.map(p => ({
+    const grouped = filtered.map(p => ({
       id: p.id,
       name: p.name,
       packages: pkgs.filter(k => k.catalogProductId === p.id).slice(0, MAX_PACKAGES_PER)
