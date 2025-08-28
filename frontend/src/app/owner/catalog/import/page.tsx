@@ -3,11 +3,26 @@ import React,{useEffect,useState} from 'react';
 import api,{ API_ROUTES } from '@/utils/api';
 
 interface CatalogProduct { id:string; name:string; provider?:string; packages?:any[]; }
+interface CatalogListResponse { items?: CatalogProduct[]; [k:string]: any }
 
 export default function CatalogImportPage(){
   const [rows,setRows]=useState<CatalogProduct[]>([]); const [loading,setLoading]=useState(true); const [err,setErr]=useState<any>(null);
   const [selected,setSelected]=useState<Record<string,boolean>>({});
-  useEffect(()=>{(async()=>{try{const r=await api.get(API_ROUTES.admin.catalog.listProducts(true)); const data=(r.data?.items||r.data||[]).filter((p:any)=> (p.packages?.length||0) >=2); setRows(data);}catch(e:any){setErr(e);}finally{setLoading(false);} })();},[]);
+  useEffect(()=>{(async()=>{
+    try {
+      const r = await api.get(API_ROUTES.admin.catalog.listProducts(true));
+      const raw: CatalogListResponse | CatalogProduct[] = r?.data;
+      const list: CatalogProduct[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.items) ? raw.items as CatalogProduct[] : [];
+      const filtered = list.filter((p:any)=> (p?.packages?.length||0) >= 2);
+      setRows(filtered);
+    } catch(e:any){
+      setErr(e);
+    } finally {
+      setLoading(false);
+    }
+  })();},[]);
   const toggle=(id:string)=>setSelected(s=>({...s,[id]:!s[id]}));
   const selectedIds=Object.entries(selected).filter(([,v])=>v).map(([k])=>k);
   const publish=async()=>{ // TODO backend queue endpoint
