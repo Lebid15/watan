@@ -18,6 +18,9 @@ export class DevFilteredProductsController {
   @Post()
   async sync() {
     const pseudoTenant = '00000000-0000-0000-0000-000000000000';
+    // Diagnostics: counts before
+    const beforeProducts = await this.productsRepo.count();
+    const beforePackages = await this.packagesRepo.count();
     // 1. Fetch catalog products with their packages count >1
     const rows: Array<{ id: string; name: string; pkg_count: number }> = await this.productsRepo.manager.query(`
       SELECT cp.id, COALESCE(cp.name, 'Catalog Product') as name, COUNT(cpk.id) as pkg_count
@@ -25,7 +28,7 @@ export class DevFilteredProductsController {
       LEFT JOIN catalog_package cpk ON cpk."catalogProductId" = cp.id
       GROUP BY cp.id
       HAVING COUNT(cpk.id) > 1
-      ORDER BY cp.created_at DESC
+      ORDER BY cp.created_at DESC NULLS LAST
       LIMIT 500;
     `);
 
@@ -72,6 +75,50 @@ export class DevFilteredProductsController {
         createdPackages++;
       }
     }
-    return { catalogProducts: rows.length, createdProducts, createdPackages };
+    // Fallback seeding if no catalog rows matched AND database empty
+    if (rows.length === 0 && beforeProducts === 0) {
+      const demo = this.productsRepo.create({
+        name: 'Demo Product',
+        description: 'Fallback demo product (no catalog data found)',
+        tenantId: pseudoTenant,
+        isActive: true,
+        useCatalogImage: true,
+      } as any);
+      const savedDemo = await this.productsRepo.save(demo as any);
+      for (let i = 1; i <= 2; i++) {
+        const pkg = this.packagesRepo.create({
+          product: savedDemo,
+          tenantId: pseudoTenant,
+          name: `Demo Package ${i}`,
+          basePrice: 10 * i,
+          capital: 10 * i,
+          isActive: true,
+          publicCode: null,
+        } as any);
+        await this.packagesRepo.save(pkg as any);
+      }
+      return {
+        catalogProducts: 0,
+        createdProducts,
+        createdPackages,
+        fallbackSeeded: true,
+        beforeProducts,
+        beforePackages,
+        afterProducts: beforeProducts + 1,
+        message: 'No catalog data -> seeded demo product',
+      };
+    }
+
+    const afterProducts = await this.productsRepo.count();
+    const afterPackages = await this.packagesRepo.count();
+    return {
+      catalogProductsMatched: rows.length,
+      createdProducts,
+      createdPackages,
+      beforeProducts,
+      beforePackages,
+      afterProducts,
+      afterPackages,
+    };
   }
 }
