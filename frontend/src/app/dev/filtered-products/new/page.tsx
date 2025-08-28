@@ -8,9 +8,11 @@ interface NewPkg { id: string; name: string; publicCode: string; isActive: boole
 
 export default function NewProductWithPackagesPage(){
   const [name,setName]=useState("");
-  const [imageUrl,setImageUrl]=useState("");
   const [pkgs,setPkgs]=useState<NewPkg[]>([]);
+  const [file,setFile]=useState<File|null>(null);
   const [saving,setSaving]=useState(false);
+  const [error,setError]=useState<string|null>(null);
+  const [hint,setHint]=useState<string|null>(null);
   const router = useRouter();
 
   function addPkg(){
@@ -25,10 +27,28 @@ export default function NewProductWithPackagesPage(){
 
   async function submit(){
     if(!name.trim()) { alert('الاسم مطلوب'); return; }
-    setSaving(true);
+    setSaving(true); setError(null); setHint(null);
     try {
-      const prodRes = await api.post('/products', { name: name.trim(), imageUrl: imageUrl.trim()||undefined });
+      // 1) إنشاء المنتج (لا نرسل imageUrl هنا لأن الرفع يتم بخطوة منفصلة)
+  console.log('[NEW PRODUCT] creating with name=', name.trim());
+  const prodRes = await api.post('/products', { name: name.trim() });
+  console.log('[NEW PRODUCT] created id=', prodRes.data?.id);
       const productId = prodRes.data.id;
+
+      // 2) رفع الصورة إن وُجدت
+      if(file){
+        try {
+          const fd = new FormData();
+          fd.append('image', file);
+          await api.post(`/products/${productId}/image`, fd, { headers: { 'Content-Type':'multipart/form-data' }});
+          console.log('[NEW PRODUCT] image uploaded');
+        } catch(imgErr:any){
+          console.warn('فشل رفع الصورة', imgErr?.response?.data||imgErr?.message);
+          setHint('تم إنشاء المنتج بدون الصورة (خطأ في الرفع)');
+        }
+      }
+
+      // 3) إنشاء الباقات
       for (const pkg of pkgs){
         if(!pkg.name.trim()) continue;
         const pc = pkg.publicCode.trim();
@@ -38,10 +58,13 @@ export default function NewProductWithPackagesPage(){
           await api.post(`/products/${productId}/packages`, { name: pkg.name.trim(), publicCode, isActive: pkg.isActive });
         } catch(e:any){ console.warn('فشل إنشاء باقة', pkg, e?.response?.data||e?.message); }
       }
-      alert('تم إنشاء المنتج');
-      router.push('/dev/filtered-products');
+      router.push(`/dev/filtered-products/${productId}`);
     } catch(e:any){
-      alert(e?.response?.data?.message || e?.message || 'فشل إنشاء المنتج');
+      const msg = e?.response?.data?.message || e?.message || 'فشل إنشاء المنتج';
+      setError(msg);
+      if(/Missing tenant context/i.test(msg) || /tenant/i.test(msg)){
+        setHint('يجب ضمان سياق المستأجر: رأس X-Tenant-Host (مثال: tenant1.syrz1.com) أو تسجيل الدخول كمستخدم tenant_owner أو استعمال X-Tenant-Id. تأكد أن الدومين الفرعي مسجل في tenant_domain.');
+      }
     } finally { setSaving(false); }
   }
 
@@ -54,8 +77,10 @@ export default function NewProductWithPackagesPage(){
           <input value={name} onChange={e=>setName(e.target.value)} className="border rounded px-3 py-1 w-full" />
         </div>
         <div className="space-y-1">
-          <label className="text-sm font-medium">رابط الصورة (اختياري)</label>
-          <input value={imageUrl} onChange={e=>setImageUrl(e.target.value)} className="border rounded px-3 py-1 w-full" />
+          <label className="text-sm font-medium">صورة المنتج (اختياري)</label>
+          <input type="file" accept="image/*" onChange={e=> setFile(e.target.files?.[0]||null)} className="block w-full text-sm" />
+          {file && <div className="text-xs text-gray-600">سيتم رفع: {file.name}</div>}
+          <p className="text-[11px] text-gray-500">الحجم الأقصى 10MB. الصيغ المسموحة: PNG, JPG, WEBP, GIF, SVG.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={addPkg} type="button" className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white">+ إضافة باقة</button>
@@ -86,7 +111,9 @@ export default function NewProductWithPackagesPage(){
           ))}
           {pkgs.length===0 && <div className="text-center text-gray-400 text-sm">لا توجد باقات بعد</div>}
         </div>
-        <div className="flex gap-3">
+  {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded">{error}</div>}
+  {hint && <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded leading-relaxed">{hint}</div>}
+  <div className="flex gap-3 pt-2">
           <button disabled={saving} onClick={submit} className="px-6 py-2 rounded bg-blue-600 text-white disabled:opacity-50 text-sm">حفظ</button>
           <button type="button" onClick={()=> router.push('/dev/filtered-products')} className="px-6 py-2 rounded bg-gray-200 text-sm">إلغاء</button>
         </div>

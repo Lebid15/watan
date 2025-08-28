@@ -134,7 +134,7 @@ export default function DevFilteredProductsPage(){
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold">المنتجات والباقات13 (Dev / All)</h1>
+        <h1 className="text-2xl font-bold">المنتجات والباقات1313 (Dev / All)</h1>
         <div className="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="font-mono" title="Frontend Git SHA">F:{process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}</span>
@@ -220,6 +220,7 @@ export default function DevFilteredProductsPage(){
             <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
               <div className="font-semibold text-sm">{prod.name} <span className="text-xs text-gray-400">({prod.packages.length} باقات)</span></div>
               <div className="flex gap-2">
+                <button onClick={()=> router.push(`/dev/filtered-products/${prod.id}`)} className="text-xs px-2 py-1 rounded bg-sky-600 text-white">تعديل</button>
                 <button onClick={()=>deleteProduct(prod.id)} disabled={!!deleting[prod.id]} className="text-xs px-2 py-1 rounded bg-red-600 text-white disabled:opacity-50">حذف المنتج</button>
               </div>
             </div>

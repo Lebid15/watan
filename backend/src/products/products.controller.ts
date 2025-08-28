@@ -126,7 +126,11 @@ export class ProductsController {
   async create(@Req() req: Request, @Body() body: Partial<Product>): Promise<Product> {
     // ✅ استخدم tenant context من middleware
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    console.log('[PRODUCTS] create tenantId=', tenantId);
+    console.log('[PRODUCTS] create tenantId=', tenantId, 'body=', body);
+    if (!tenantId) {
+      // اجعل الرسالة واضحة لسهولة التشخيص بدل 500 غامض
+      throw new BadRequestException('Missing tenant context (X-Tenant-Host header or auth token with tenant)');
+    }
     const product = new Product();
     product.name = body.name ?? 'منتج بدون اسم';
     product.description = body.description ?? '';

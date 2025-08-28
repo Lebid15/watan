@@ -439,7 +439,14 @@ export class ProductsService {
   }
 
   async create(product: Product): Promise<Product> {
-    return this.productsRepo.save(product);
+    try {
+      const saved = await this.productsRepo.save(product);
+      console.log('[PRODUCTS][SERVICE] created product id=', saved.id, 'tenantId=', saved.tenantId);
+      return saved;
+    } catch (e) {
+      console.error('[PRODUCTS][SERVICE][ERROR] create failed:', e);
+      throw e;
+    }
   }
 
   async update(tenantId: string, id: string, body: Partial<Product>): Promise<Product> {
