@@ -22,8 +22,9 @@ export class DevFilteredProductsController {
     const beforePackages = await this.packagesRepo.count();
 
     // Helper to insert demo packages (publicCode kept NULL to avoid uniqueness conflicts in prod data)
-    const insertDemoPackages = async (product: Product) => {
-      let created = 0;
+  const insertDemoPackages = async (product: Product) => {
+    let created = 0;
+    const errors: any[] = [];
       for (let i = 1; i <= 2; i++) {
         const exists = await this.packagesRepo.findOne({ where: { product: { id: product.id }, name: `Demo Package ${i}` } as any });
         if (exists) continue;
@@ -40,11 +41,10 @@ export class DevFilteredProductsController {
           await this.packagesRepo.save(pkg as any);
           created++;
         } catch (e: any) {
-          // swallow unique errors or others and continue; provide minimal debug info
-          // (we don't throw to keep idempotency)
+      errors.push({ i, message: e?.message, code: e?.code });
         }
       }
-      return created;
+    return { created, errors };
     };
 
     if (beforeProducts === 0) {
@@ -56,16 +56,16 @@ export class DevFilteredProductsController {
         useCatalogImage: true,
       } as any);
       const savedDemo = await this.productsRepo.save(demo as any);
-      const createdPkgs = await insertDemoPackages(savedDemo);
-      return { fallbackSeeded: true, beforeProducts, beforePackages, afterProducts: beforeProducts + 1, createdPkgs };
+  const { created: createdPkgs, errors } = await insertDemoPackages(savedDemo);
+  return { fallbackSeeded: true, beforeProducts, beforePackages, afterProducts: beforeProducts + 1, createdPkgs, errors };
     }
 
     // Backfill scenario: product exists (e.g., first attempt failed mid-way) but packages missing
     if (beforeProducts > 0 && beforePackages === 0) {
       const demoExisting = await this.productsRepo.findOne({ where: { tenantId: pseudoTenant, name: 'Demo Product' } as any });
       if (demoExisting) {
-        const createdPkgs = await insertDemoPackages(demoExisting);
-        return { packagesBackfilled: true, createdPkgs, beforeProducts, beforePackages };
+        const { created: createdPkgs, errors } = await insertDemoPackages(demoExisting);
+        return { packagesBackfilled: true, createdPkgs, errors, beforeProducts, beforePackages };
       }
     }
 
@@ -92,5 +92,11 @@ export class DevFilteredProductsController {
     const beforePackages = await this.packagesRepo.count();
     const res = await this.sync();
     return { beforeProducts, beforePackages, result: res };
+  }
+
+  // Convenience GET variant (some users may try GET and receive 404 otherwise)
+  @Get('repair')
+  async repairGet() {
+    return this.repair();
   }
 }

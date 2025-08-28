@@ -20,6 +20,7 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/auth\/passkeys\/login$/,
   /^\/api\/dev\/filtered-products-sync$/, // POST sync
   /^\/api\/dev\/filtered-products-sync\/status$/, // GET status
+  /^\/api\/dev\/filtered-products-sync\/repair$/, // POST/GET repair
   /^\/api\/dev\/seed-products$/, // POST seed demo products
   // Public catalog product listing (image fallback test)
   /^\/api\/products$/,

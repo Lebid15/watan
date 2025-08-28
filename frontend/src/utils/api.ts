@@ -28,31 +28,8 @@ if (typeof window !== 'undefined') {
 
 // Prefer relative /api when on a tenant subdomain (non api/www) of syrz1.com to eliminate cross-origin & CORS preflight.
 // This should help with mysterious timeouts in normal browser mode while incognito works.
-if (typeof window !== 'undefined') {
-  try {
-    // Allow opt-out via env flag
-    if (process.env.NEXT_PUBLIC_FORCE_API_ABSOLUTE === '1') {
-      // eslint-disable-next-line no-console
-      console.log('[API][RELATIVE] Skipped relative /api because NEXT_PUBLIC_FORCE_API_ABSOLUTE=1');
-    } else {
-      const h = window.location.hostname; // sham.syrz1.com
-      if (/\.syrz1\.com$/i.test(h)) {
-        const parts = h.split('.');
-        if (parts.length > 2) {
-          const sub = parts[0].toLowerCase();
-          if (!['www', 'api'].includes(sub)) {
-            // Switch to relative only if current base points to api.<root> (derived) or localhost default
-            if (/api\.[A-Za-z0-9-]+\.[A-Za-z0-9-]+\/api$/.test(RAW_API_BASE_URL) || /localhost:3001\/api$/.test(RAW_API_BASE_URL)) {
-              RAW_API_BASE_URL = '/api';
-              // eslint-disable-next-line no-console
-              console.log('[API][RELATIVE] Using relative /api base for tenant subdomain =>', h);
-            }
-          }
-        }
-      }
-    }
-  } catch {}
-}
+// Disabled: relative /api caused 404 on tenant subdomains because frontend host doesn't serve backend endpoints.
+// Keeping absolute api.<root>/api base to avoid redirect loops & 404.
 
 // Ø­Ø§Ø±Ø³ Ø¯ÙØ§Ø¹ÙŠ: Ø¥Ø°Ø§ Ø§Ù„ØµÙØ­Ø© Ù†ÙØ³Ù‡Ø§ https Ù„ÙƒÙ† Ø§Ù„Ù€ API_BASE_URL ÙŠØ¨Ø¯Ø£ Ø¨Ù€ http Ù„Ù†ÙØ³ Ø§Ù„Ø¯ÙˆÙ…ÙŠÙ† Ø§Ù„Ø£Ø³Ø§Ø³ÙŠ -> Ø§Ø±ÙØ¹ Ù„Ù„Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ https Ù„ØªÙØ§Ø¯ÙŠ Mixed Content
 function upgradeToHttpsIfNeeded(raw: string): string {
@@ -339,6 +316,7 @@ export const API_ROUTES = {
   seed: `${EFFECTIVE_API_BASE_URL}/dev/seed-products`,
   filteredSync: `${EFFECTIVE_API_BASE_URL}/dev/filtered-products-sync`,
   filteredStatus: `${EFFECTIVE_API_BASE_URL}/dev/filtered-products-sync/status`,
+  filteredRepair: `${EFFECTIVE_API_BASE_URL}/dev/filtered-products-sync/repair`,
   },
 };
 
