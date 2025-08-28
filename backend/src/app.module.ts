@@ -33,6 +33,7 @@ import { FinalRolesGuard } from './common/authz/roles';
 import { TenantMoneyDisplayInterceptor } from './common/interceptors/tenant-money-display.interceptor';
 import { RateLimiterRegistry, RateLimitGuard } from './common/rate-limit.guard';
 import { ErrorsModule } from './dev/errors.module';
+import { DevToolsModule } from './dev/dev-tools.module';
 import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './dev/all-exceptions.filter';
 import { SchemaGuardService } from './infrastructure/schema/schema-guard.service';
@@ -133,6 +134,7 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
   ExternalApiModule,
   BillingModule,
   ErrorsModule,
+  DevToolsModule,
   TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot]),
   ],
   controllers: [HealthController, MetricsController],
