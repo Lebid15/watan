@@ -25,6 +25,8 @@ import { BillingModule } from './billing/billing.module';
 import { Tenant } from './tenants/tenant.entity';
 import { TenantDomain } from './tenants/tenant-domain.entity';
 import { ProductImageMetricsSnapshot } from './products/product-image-metrics-snapshot.entity';
+import { ProductOrder } from './products/product-order.entity';
+import { Deposit } from './payments/deposit.entity';
 import { TenantContextMiddleware } from './tenants/tenant-context.middleware';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './health/metrics.controller';
@@ -136,7 +138,9 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
   BillingModule,
   ErrorsModule,
   DevToolsModule,
-  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot]),
+  // Repositories needed directly in AppModule-level controllers (e.g., AdminCountsController)
+  // Include ProductOrder + Deposit so their repositories can be injected.
+  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot, ProductOrder, Deposit]),
   ],
   controllers: [HealthController, MetricsController, AdminCountsController],
   providers: [
