@@ -3,16 +3,25 @@ import { NextRequest, NextResponse } from 'next/server';
 // Apex (المنصة الرئيسية) يؤخذ من متغير البيئة أو يُستنتج لاحقاً
 const CONFIGURED_APEX = (process.env.NEXT_PUBLIC_APEX_DOMAIN || '').toLowerCase().replace(/\/$/, '');
 
+// Safe redirect helper with loop protection
 function redirect(target: string, req: NextRequest) {
+  const current = req.nextUrl;
   let url: URL | any;
   if (/^https?:\/\//i.test(target)) {
-    // Absolute URL (possibly different host)
     url = new URL(target);
   } else {
-    url = req.nextUrl.clone();
+    url = current.clone();
     url.pathname = target;
     url.search = '';
   }
+  // Loop protection: if destination (host+path) matches current, skip redirect
+  try {
+    const sameHost = (url.host || '') === current.host;
+    const samePath = (url.pathname || '/') === current.pathname;
+    if (sameHost && samePath) {
+      return NextResponse.next();
+    }
+  } catch {}
   const res = NextResponse.redirect(url, 302);
   res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   return res;
@@ -147,9 +156,14 @@ export function middleware(req: NextRequest) {
       if (role === 'distributor') return redirect('/admin/distributor', req);
       if (role === 'user') return redirect('/app', req);
       if (role === 'developer') {
-        const apex = CONFIGURED_APEX || hostInfo.apex; // fallback إلى المستنتج
+        const apex = CONFIGURED_APEX || hostInfo.apex; // fallback
         const proto = req.nextUrl.protocol;
-        return redirect(`${proto}//${apex}/dev`, req); // absolute to apex
+        // Prevent redirect loop if apex resolves to same subdomain
+        if (apex && apex !== hostInfo.full) {
+          return redirect(`${proto}//${apex}/dev`, req);
+        }
+        // If apex misconfigured (same host), fall back to staying put (developer should normally not hit subdomain root)
+        return NextResponse.next();
       }
     } else { // apex platform
       if (role === 'developer') return redirect('/dev', req);
@@ -179,10 +193,14 @@ export function middleware(req: NextRequest) {
   }
 
   if (path.startsWith('/dev')) {
-    // Only developer on apex domain; إذا وُجد على subdomain أعده إلى apex
+    // Only developer on apex domain
     if (hostInfo.isSub) {
       const apex = CONFIGURED_APEX || hostInfo.apex;
-      return redirect(`${req.nextUrl.protocol}//${apex}/dev`, req);
+      if (apex && apex !== hostInfo.full) {
+        return redirect(`${req.nextUrl.protocol}//${apex}/dev`, req);
+      }
+      // Apex misconfigured == current host: avoid loop, just block access for non-apex
+      return redirect('/', req);
     }
     if (role !== 'developer') return redirect('/', req);
     return response ?? NextResponse.next();

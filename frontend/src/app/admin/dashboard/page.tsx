@@ -30,14 +30,10 @@ export default function AdminDashboard() {
       .then((res) => {
         const userData = res.data;
         setUser(userData);
-
-        // ✅ التحقق من الدور
-        if (userData.role !== 'admin') {
-          router.push('/admin/dashboard'); // صفحة المستخدم العادي لاحقًا
-        }
+        // أزلنا إعادة التوجيه الذاتي لتفادي loop عند أدوار غير admin (مثل tenant_owner)
       })
       .catch(() => {
-        router.push('/login'); // لو فشل جلب البيانات يرجع لصفحة تسجيل الدخول
+        router.push('/login');
       });
   }, [router]);
 

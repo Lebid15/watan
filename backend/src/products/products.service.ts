@@ -281,10 +281,33 @@ export class ProductsService {
     }
 
     // السياق الطبيعي: مقيّد بالتينانت
-    const products = await this.productsRepo.find({
+    let products = await this.productsRepo.find({
       where: { tenantId } as any,
       relations: ['packages', 'packages.prices', 'packages.prices.priceGroup'],
     });
+
+    // Fallback: إذا لم يكن لدى المستأجر أي منتجات بعد، أعرض المنتجات العالمية (pseudo tenant) لتسهيل التجربة
+    if (products.length === 0) {
+      const globalProducts = await this.productsRepo.find({
+        where: { tenantId: '00000000-0000-0000-0000-000000000000' } as any,
+        relations: ['packages'],
+      });
+      if (globalProducts.length) {
+        return globalProducts.map((product: any) => {
+          const mapped = this.mapEffectiveImage(product);
+          return {
+            ...product,
+            ...mapped,
+            globalFallback: true,
+            packages: (product.packages || []).map((pkg: any) => ({
+              ...pkg,
+              basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+              prices: [],
+            })),
+          };
+        });
+      }
+    }
 
     const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
     return products.map((product) => {
