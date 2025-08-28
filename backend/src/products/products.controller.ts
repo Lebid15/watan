@@ -8,6 +8,7 @@ import {
   NotFoundException,
   Delete,
   Put,
+  Patch,
   UseInterceptors,
   UploadedFile,
   UseGuards,
@@ -20,11 +21,16 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Express, Request } from 'express';
 import { ProductsService } from './products.service';
+import { UpdatePackageCodeDto } from './dto/update-package-code.dto';
 import { Product } from './product.entity';
 import { ProductPackage } from './product-package.entity';
 import { PriceGroup } from './price-group.entity';
 import { AuthGuard } from '@nestjs/passport';
 import { configureCloudinary } from '../utils/cloudinary';
+// Guards & Roles
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { UserRole } from '../auth/user-role.enum';
 
 
 function parseMoney(input?: any): number {
@@ -71,11 +77,14 @@ export class ProductsController {
 
 
   @Get()
-  async findAll(@Req() req: Request): Promise<any[]> {
+  async findAll(@Req() req: Request, @Query('all') all?: string, @Query('includeNull') includeNull?: string): Promise<any[]> {
     // ✅ استخدم tenant context من middleware
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
     console.log('[PRODUCTS] findAll tenantId=', tenantId);
-    const products = await this.productsService.findAllWithPackages(tenantId);
+    const wantAll = (all === '1' || all === 'true' || includeNull === '1' || includeNull === 'true');
+    const products = wantAll
+      ? await this.productsService.findAllWithPackages(tenantId)
+      : await this.productsService.getTenantVisibleProducts(tenantId);
     return products.map((product) => ({
       ...product,
       packagesCount: product.packages?.length ?? 0,
@@ -91,11 +100,14 @@ export class ProductsController {
   }
 
   @Get(':id')
-  async findOne(@Req() req: Request, @Param('id') id: string): Promise<any> {
+  async findOne(@Req() req: Request, @Param('id') id: string, @Query('all') all?: string, @Query('includeNull') includeNull?: string): Promise<any> {
     // ✅ استخدم tenant context من middleware
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
     console.log('[PRODUCTS] findOne tenantId=', tenantId, 'productId=', id);
-    const product = await this.productsService.findOneWithPackages(tenantId, id);
+    const wantAll = (all === '1' || all === 'true' || includeNull === '1' || includeNull === 'true');
+    const product = wantAll
+      ? await this.productsService.findOneWithPackages(tenantId, id)
+      : await this.productsService.getTenantVisibleProductById(tenantId, id);
     if (!product) throw new NotFoundException('معرف المنتج غير صالح');
     return {
       ...product,
@@ -285,6 +297,19 @@ export class ProductsController {
         price: r.price
       })),
     };
+  }
+
+  // ✅ تحديث publicCode لباقـة (Dev/Admin context يفترض الحماية بطبقة أعلى)
+  @Patch('packages/:id/code')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  async updatePackageCode(
+    @Req() req: Request,
+    @Param('id') packageId: string,
+    @Body() body: UpdatePackageCodeDto,
+  ) {
+    // يمكن لاحقًا ربط التحقق بالـ tenant إن لزم:
+    return this.productsService.updatePackageCode(packageId, body.publicCode);
   }
 
   // 🔹 جلب أسعار باقات متعددة (Bulk)

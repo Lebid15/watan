@@ -222,7 +222,13 @@ export class CatalogImportService {
   }
 
   private buildPublicCode(): string {
-    return randomUUID().replace(/-/g, '').slice(0, 16).toUpperCase();
+    // حوّل جزءاً من UUID إلى عدد موجب ضمن نطاق 64‑bit ثم خذ modulo لضبط الطول (9 أرقام)
+    // الهدف: رقم فريد احتماليًا وقابل للقراءة / الإدخال اليدوي.
+    const hex = randomUUID().replace(/-/g, '').slice(0, 12); // 48 bits
+    const val = parseInt(hex, 16);
+    const code = val % 1_000_000_000; // 0 .. 999,999,999
+  const final = code === 0 ? 1 : code;
+  return String(final); // نعيده كسلسلة أرقام (ما زال صالحًا للعمود العددي الجديد في product_packages عبر التحويل لاحقًا)
   }
 
   /** يجلب تعريف المزوّد من قاعدة البيانات مباشرة — مع فرض tenantId */

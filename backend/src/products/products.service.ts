@@ -312,6 +312,80 @@ export class ProductsService {
     };
   }
 
+  // ===== ✅ منتجات وباقات مرئية للمتجر فقط (publicCode != NULL) =====
+  async getTenantVisibleProducts(tenantId: string): Promise<any[]> {
+    const qb = this.productsRepo.createQueryBuilder('prod')
+      .leftJoinAndSelect('prod.packages', 'pkg')
+      .leftJoinAndSelect('pkg.prices', 'pp')
+      .leftJoinAndSelect('pp.priceGroup', 'pg')
+      .where('prod.tenantId = :tenantId', { tenantId })
+      .andWhere('pkg.publicCode IS NOT NULL')
+      .andWhere('pkg.isActive = TRUE');
+
+    const products = await qb.getMany();
+    const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
+
+    return products.map((product: any) => {
+      // أعد استخدام المنطق نفسه لإضافة الصورة الفعالة والأسعار بطريقة موحدة
+      const mapped = this.mapEffectiveImage(product);
+      return {
+        ...product,
+        ...mapped,
+        packages: (product.packages || []).filter((pkg: any) => pkg.publicCode != null && pkg.isActive).map((pkg: any) => ({
+          ...pkg,
+          basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+          prices: allPriceGroups.map((group) => {
+            const existingPrice = (pkg.prices || []).find(
+              (price: any) => price.priceGroup?.id === group.id,
+            );
+            return {
+              id: existingPrice?.id ?? null,
+              groupId: group.id,
+              groupName: group.name,
+              price: existingPrice?.price ?? 0,
+            };
+          }),
+        })),
+      };
+    });
+  }
+
+  async getTenantVisibleProductById(tenantId: string, productId: string): Promise<any> {
+    const qb = this.productsRepo.createQueryBuilder('prod')
+      .leftJoinAndSelect('prod.packages', 'pkg')
+      .leftJoinAndSelect('pkg.prices', 'pp')
+      .leftJoinAndSelect('pp.priceGroup', 'pg')
+      .where('prod.tenantId = :tenantId', { tenantId })
+      .andWhere('prod.id = :productId', { productId })
+      .andWhere('pkg.publicCode IS NOT NULL')
+      .andWhere('pkg.isActive = TRUE');
+
+    const product: any = await qb.getOne();
+    if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
+
+    const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
+    const mapped = this.mapEffectiveImage(product);
+    return {
+      ...product,
+      ...mapped,
+      packages: (product.packages || []).filter((pkg: any) => pkg.publicCode != null && pkg.isActive).map((pkg: any) => ({
+        ...pkg,
+        basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+        prices: allPriceGroups.map((group) => {
+          const existingPrice = (pkg.prices || []).find(
+            (price: any) => price.priceGroup?.id === group.id,
+          );
+          return {
+            id: existingPrice?.id ?? null,
+            groupId: group.id,
+            groupName: group.name,
+            price: existingPrice?.price ?? 0,
+          };
+        }),
+      })),
+    };
+  }
+
   async create(product: Product): Promise<Product> {
     return this.productsRepo.save(product);
   }
@@ -2039,5 +2113,31 @@ export class ProductsService {
       providerMessage: (order as any).providerMessage ?? (order as any).lastMessage ?? null,
       notes: Array.isArray((order as any).notes) ? (order as any).notes : [],
     };
+  }
+
+  // ===== ✅ تحديث publicCode لباقـة (فريد عالميًا) =====
+  async updatePackageCode(id: string, code: number | null | undefined) {
+    const pkg = await this.packagesRepo.findOne({ where: { id } as any });
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+
+    if (code == null) {
+      // مسح الكود
+      await this.packagesRepo.update({ id }, { publicCode: null });
+      return { ok: true, id, publicCode: null };
+    }
+
+    const trimmed = Number(code);
+    if (!Number.isInteger(trimmed) || trimmed < 1) {
+      throw new BadRequestException('publicCode يجب أن يكون رقمًا صحيحًا موجبًا');
+    }
+
+    // تحقق من التعارض (فريد عالميًا الآن)
+  const conflict = await this.packagesRepo.findOne({ where: { publicCode: trimmed } as any });
+    if (conflict && conflict.id !== id) {
+      throw new ConflictException('Public code already in use');
+    }
+
+  await this.packagesRepo.update({ id }, { publicCode: trimmed });
+  return { ok: true, id, publicCode: trimmed };
   }
 }

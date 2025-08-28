@@ -11,7 +11,8 @@ import { Product } from './product.entity';
 import { PackagePrice } from './package-price.entity';
 
 @Entity('product_packages')
-@Index('ux_product_packages_public_code_tenant', ['tenantId', 'publicCode'], { unique: true })
+// استبدال الفهرس المركب القديم (tenantId, publicCode) بفهرس عالمي على publicCode
+@Index('ux_product_packages_public_code', ['publicCode'], { unique: true })
 @Index('idx_product_packages_tenant_active', ['tenantId', 'isActive'])
 @Index('idx_product_packages_product_id', ['product']) // يُنشئ فهرسًا على product_id
 export class ProductPackage {
@@ -22,8 +23,8 @@ export class ProductPackage {
   @Index()
   tenantId: string;
 
-  @Column({ type: 'varchar', length: 40, nullable: true })
-  publicCode: string | null;
+  @Column({ type: 'integer', nullable: true })
+  publicCode: number | null; // بعد الترقية: رقم موجب فريد عالميًا (مسموح NULL)
 
   @Column({ type: 'varchar', length: 160, nullable: true })
   name: string | null;

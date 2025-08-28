@@ -168,8 +168,14 @@ export class CatalogAdminController {
       if (byName.has(cleanName)) { skipped++; continue; }
 
       // publicCode فريدة داخل نفس الـ tenant فقط
-      let publicCode: string | null = (c as any).publicCode ?? null;
-      if (publicCode) {
+      // السماح فقط بقيم رقمية موجبة، خلاف ذلك NULL
+      let rawPc: any = (c as any).publicCode;
+      let publicCode: number | null = null;
+      if (typeof rawPc === 'number' && Number.isInteger(rawPc) && rawPc > 0) publicCode = rawPc;
+      else if (typeof rawPc === 'string' && /^[0-9]+$/.test(rawPc)) {
+        const n = parseInt(rawPc, 10); if (n > 0) publicCode = n;
+      }
+      if (publicCode != null) {
         const conflict = await this.shopPackages.findOne({ where: { tenantId, publicCode } });
         if (conflict) publicCode = null;
       }
@@ -251,8 +257,13 @@ export class CatalogAdminController {
         const cleanName = normalizePkgName((c as any).name);
         if (byName.has(cleanName)) { totalSkipped++; continue; }
 
-        let publicCode: string | null = (c as any).publicCode ?? null;
-        if (publicCode) {
+        let rawPc: any = (c as any).publicCode;
+        let publicCode: number | null = null;
+        if (typeof rawPc === 'number' && Number.isInteger(rawPc) && rawPc > 0) publicCode = rawPc;
+        else if (typeof rawPc === 'string' && /^[0-9]+$/.test(rawPc)) {
+          const n = parseInt(rawPc, 10); if (n > 0) publicCode = n;
+        }
+        if (publicCode != null) {
           const conflict = await this.shopPackages.findOne({ where: { tenantId, publicCode } });
           if (conflict) publicCode = null;
         }
