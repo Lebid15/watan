@@ -246,6 +246,9 @@ export class ProductsController {
     @Body('capital') capitalStr?: string,
     @Body('basePrice') basePriceStr?: string,
     @Body('price') priceStr?: string,
+  @Body('publicCode') publicCodeRaw?: any,
+  @Body('isActive') isActiveRaw?: any,
+  @Body('providerName') providerName?: string,
   ): Promise<ProductPackage> {
     if (!name) throw new NotFoundException('اسم الباقة مطلوب');
 
@@ -274,6 +277,20 @@ export class ProductsController {
     const capital = parseMoney(capitalStr ?? basePriceStr ?? priceStr);
 
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId || '00000000-0000-0000-0000-000000000000';
+    // Parse optional fields
+    let publicCode: number | null = null;
+    if (publicCodeRaw != null && String(publicCodeRaw).trim() !== '') {
+      const pc = Number(publicCodeRaw);
+      if (Number.isInteger(pc) && pc > 0) publicCode = pc; else throw new BadRequestException('publicCode غير صالح');
+    }
+    const isActive = ((): boolean => {
+      if (isActiveRaw === undefined || isActiveRaw === null || isActiveRaw === '') return true;
+      if (typeof isActiveRaw === 'boolean') return isActiveRaw;
+      const s = String(isActiveRaw).toLowerCase();
+      return !(s === '0' || s === 'false' || s === 'no');
+    })();
+    const providerNameClean = providerName?.trim() || null;
+
     return this.productsService.addPackageToProduct(
       tenantId,
       productId,
@@ -282,6 +299,9 @@ export class ProductsController {
         imageUrl,
         capital,
         catalogLinkCode,
+        publicCode,
+        isActive,
+        providerName: providerNameClean,
       },
       { userId: (req as any).user?.id, finalRole: (req as any).user?.roleFinal },
     );

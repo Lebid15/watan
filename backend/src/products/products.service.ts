@@ -544,6 +544,7 @@ export class ProductsService {
       product,
       catalogLinkCode: (data as any).catalogLinkCode || null,
       createdByDistributorId: (data as any).createdByDistributorId || null,
+  providerName: (data as any).providerName || null,
     } as Partial<ProductPackage>) as ProductPackage;
 
     // اختيارياً: ضبط publicCode أثناء الإنشاء إن وُفّر

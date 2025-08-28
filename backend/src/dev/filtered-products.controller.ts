@@ -166,6 +166,64 @@ export class DevFilteredProductsController {
     return { items: grouped };
   }
 
+  // استيراد منتجات الكتالوج (المفلترة) إلى الجدول الفعلي product + product_packages داخل الحاوية العالمية
+  @Post('import-catalog')
+  async importCatalog() {
+    const PSEUDO_TENANT = '00000000-0000-0000-0000-000000000000';
+    const MAX_PRODUCTS = 25;
+    const MAX_PACKAGES_PER = 100; // استيراد أكبر عدد معقول
+    const products: any[] = await this.productsRepo.manager.query(
+      `SELECT p.id, p.name,
+        (SELECT count(*) FROM catalog_package cp WHERE cp."catalogProductId" = p.id) AS pkg_count
+       FROM catalog_product p
+       ORDER BY p.name
+       LIMIT $1`, [MAX_PRODUCTS]);
+    const filtered = products.filter(p => Number(p.pkg_count) >= 2);
+    if (filtered.length === 0) return { imported: 0, packages: 0, note: 'no eligible catalog products' };
+    let importedProducts = 0;
+    let importedPackages = 0;
+    for (const row of filtered) {
+      // هل المنتج موجود مسبقاً (بالـ catalogProductId أو الاسم)؟
+      let existing: any = await this.productsRepo.findOne({ where: [{ catalogProductId: row.id }, { name: row.name, tenantId: PSEUDO_TENANT }] as any });
+      if (!existing) {
+        const created: any = this.productsRepo.create({
+          tenantId: PSEUDO_TENANT,
+          name: row.name,
+          description: null,
+          isActive: true,
+          useCatalogImage: true,
+          catalogProductId: row.id,
+        } as any);
+        existing = await this.productsRepo.save(created);
+        importedProducts++;
+      }
+      // اجلب باقات الكتالوج
+      const pkgs: any[] = await this.productsRepo.manager.query(
+        `SELECT cp.id, cp.name FROM catalog_package cp WHERE cp."catalogProductId" = $1 ORDER BY cp.name LIMIT $2`,
+        [row.id, MAX_PACKAGES_PER],
+      );
+      for (const cpk of pkgs) {
+        // تحقق إذا كانت الباقة موجودة بالاسم لنفس المنتج
+  const dup = await this.packagesRepo.findOne({ where: { product: { id: existing.id }, name: cpk.name } as any });
+        if (dup) continue;
+        const newPkg = this.packagesRepo.create({
+          id: randomUUID(),
+          tenantId: PSEUDO_TENANT,
+          product: existing,
+          name: cpk.name,
+          basePrice: 0,
+          capital: 0,
+          isActive: true,
+          publicCode: null,
+          catalogLinkCode: null,
+        } as any);
+        await this.packagesRepo.save(newPkg as any);
+        importedPackages++;
+      }
+    }
+    return { imported: importedProducts, packages: importedPackages };
+  }
+
   // LOCAL TEST ONLY (not public path list) create ad-hoc demo product with packages
   @Post('local-test-force')
   async localTestForce() {

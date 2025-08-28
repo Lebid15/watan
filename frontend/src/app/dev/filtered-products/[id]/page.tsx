@@ -3,7 +3,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import api from '@/utils/api';
 
-interface Pkg { id:string; name:string|null; publicCode:number|null; basePrice?:number; isActive?:boolean; }
+interface Pkg { id:string; name:string|null; publicCode:number|null; basePrice?:number; isActive?:boolean; providerName?:string|null; }
 interface Product { id:string; name:string; description?:string; packages:Pkg[] }
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +18,8 @@ export default function DevEditProductPage(){
   const [adding,setAdding]=useState(false);
   const [newPkgName,setNewPkgName]=useState('');
   const [newPkgCode,setNewPkgCode]=useState('');
+  const [newPkgProvider,setNewPkgProvider]=useState('');
+  const [newPkgActive,setNewPkgActive]=useState(true);
   const [uploading,setUploading]=useState(false);
   const [imageFile,setImageFile]=useState<File|null>(null);
   const [loading,setLoading]=useState(false);
@@ -85,16 +87,20 @@ export default function DevEditProductPage(){
           <div className="p-3 border rounded bg-white">
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-semibold text-sm">الباقات ({product.packages.length})</h2>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 <input value={newPkgName} onChange={e=>setNewPkgName(e.target.value)} placeholder="اسم باقة" className="border rounded px-2 py-1" />
                 <input value={newPkgCode} onChange={e=> setNewPkgCode(e.target.value.replace(/[^0-9]/g,''))} placeholder="كود" className="border rounded px-2 py-1 w-24" maxLength={9} />
+                <input value={newPkgProvider} onChange={e=> setNewPkgProvider(e.target.value)} placeholder="المزوّد" className="border rounded px-2 py-1 w-32" maxLength={50} />
+                <label className="flex items-center gap-1 select-none">
+                  <input type="checkbox" checked={newPkgActive} onChange={e=> setNewPkgActive(e.target.checked)} /> نشطة
+                </label>
                 <button disabled={adding||!newPkgName.trim()} onClick={async()=>{
                   if(!product) return; setAdding(true);
                   try {
-                    const payload: any = { name: newPkgName.trim() };
+                    const payload: any = { name: newPkgName.trim(), providerName: newPkgProvider.trim()||undefined, isActive: newPkgActive };
                     if(newPkgCode){ const n=Number(newPkgCode); if(Number.isInteger(n) && n>0) payload.publicCode = n; }
                     await api.post(`/products/${product.id}/packages`, payload);
-                    setNewPkgName(''); setNewPkgCode(''); await load();
+                    setNewPkgName(''); setNewPkgCode(''); setNewPkgProvider(''); setNewPkgActive(true); await load();
                   }catch(e:any){ alert(e?.response?.data?.message||e?.message||'فشل إضافة الباقة'); }
                   finally { setAdding(false);} }} className="px-3 py-1 rounded bg-emerald-600 text-white disabled:opacity-50">+ باقة</button>
               </div>
@@ -105,7 +111,7 @@ export default function DevEditProductPage(){
                   <th className="px-2 py-1 text-right">#</th>
                   <th className="px-2 py-1 text-right">الاسم</th>
                   <th className="px-2 py-1 text-right">الكود</th>
-                  <th className="px-2 py-1 text-right">السعر</th>
+                  <th className="px-2 py-1 text-right">المزوّد</th>
                   <th className="px-2 py-1 text-right">نشط</th>
                   <th className="px-2 py-1"></th>
                 </tr>
@@ -124,7 +130,11 @@ export default function DevEditProductPage(){
                         } catch(err:any){ alert(err?.response?.data?.message||err?.message||'فشل حفظ الكود'); }
                       }} className="border rounded px-2 py-0.5 w-full text-xs"/>
                     </td>
-                    <td className="px-2 py-1">{pk.basePrice ?? '-'}</td>
+                    <td className="px-2 py-1 w-32">
+                      <input defaultValue={(pk as any).providerName||''} onBlur={async(e)=>{
+                        const v=e.target.value.trim(); if(!v) return; try { await api.patch(`/products/packages/${pk.id}/provider`, { providerName: v }); await load(); } catch(err:any){ alert(err?.response?.data?.message||err?.message||'فشل حفظ المزود'); }
+                      }} className="border rounded px-2 py-0.5 w-full text-xs" />
+                    </td>
                     <td className="px-2 py-1">{pk.isActive ? '✓':'✗'}</td>
                     <td className="px-2 py-1 text-center">
                       <button onClick={async()=>{ if(!confirm('حذف الباقة؟')) return; try { await api.delete(`/products/packages/${pk.id}`); await load(); } catch(err:any){ alert(err?.response?.data?.message||err?.message||'فشل الحذف'); } }} className="text-[10px] px-2 py-0.5 rounded bg-red-600 text-white">حذف</button>
