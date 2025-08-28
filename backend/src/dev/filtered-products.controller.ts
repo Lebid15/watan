@@ -21,6 +21,16 @@ export class DevFilteredProductsController {
     // Diagnostics: counts before
     const beforeProducts = await this.productsRepo.count();
     const beforePackages = await this.packagesRepo.count();
+    // Extra diagnostics: check presence of catalog tables
+    let catalogDiag: any = {};
+    try {
+      const tables = await this.productsRepo.manager.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name LIKE 'catalog_%' ORDER BY 1`);
+      const catProdCnt = await this.productsRepo.manager.query(`SELECT COUNT(*)::int AS c FROM catalog_product` ).catch(()=>[{c:-1}]);
+      const catPkgCnt = await this.productsRepo.manager.query(`SELECT COUNT(*)::int AS c FROM catalog_package` ).catch(()=>[{c:-1}]);
+      catalogDiag = { tables: tables.map((t:any)=>t.table_name), catalog_product: catProdCnt[0]?.c, catalog_package: catPkgCnt[0]?.c };
+    } catch(e:any) {
+      catalogDiag = { error: e?.message || String(e) };
+    }
     // 1. Fetch catalog products with their packages count >1
     const rows: Array<{ id: string; name: string; pkg_count: number }> = await this.productsRepo.manager.query(`
       SELECT cp.id, COALESCE(cp.name, 'Catalog Product') as name, COUNT(cpk.id) as pkg_count
@@ -119,6 +129,7 @@ export class DevFilteredProductsController {
       beforePackages,
       afterProducts,
       afterPackages,
+      catalogDiag,
     };
   }
 
