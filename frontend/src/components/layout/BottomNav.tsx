@@ -3,6 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { performLogout } from '@/utils/logout';
 import { useEffect, useState } from 'react';
 import api, { API_ROUTES } from '@/utils/api';
 import {
@@ -29,6 +30,7 @@ export default function BottomNav() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const billingEnabled = process.env.NEXT_PUBLIC_FEATURE_BILLING_V1 === 'true';
   const items: NavItem[] = [
     { key: 'home', href: '/', Icon: HiHome },
     { key: 'orders', href: '/orders', Icon: HiShoppingCart },
@@ -77,17 +79,16 @@ export default function BottomNav() {
       { label: 'إضافة رصيد', href: '/payments/deposits', Icon: HiCurrencyDollar },
       { label: 'تعليمات', href: '/user/infoes', Icon: HiCog },
       { label: 'من نحن', href: '/user/about', Icon: HiInformationCircle },
+      ...(billingEnabled ? [
+        { label: 'الفوترة - نظرة عامة', href: '/billing/overview', Icon: HiCurrencyDollar },
+        { label: 'الفوترة - الفواتير', href: '/billing/invoices', Icon: HiCurrencyDollar },
+        { label: 'دفع فاتورة', href: '/billing/pay', Icon: HiCurrencyDollar },
+      ] : []),
       {
         label: 'تسجيل خروج',
         href: '/login',
         Icon: HiLogout,
-        onClick: () => {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            localStorage.removeItem('userPriceGroupId');
-          }
-        },
+  onClick: () => performLogout(),
       },
     ];
 

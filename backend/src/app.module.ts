@@ -82,19 +82,24 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
         // Detect runtime form: if current file ends with .ts we are in ts-node/dev; otherwise in compiled dist.
         const runningTs = __filename.endsWith('.ts');
         const explicitProd = (config.get<string>('NODE_ENV') || '').toLowerCase() === 'production';
-        const isProd = explicitProd || !runningTs; // treat compiled runtime as production even if NODE_ENV missing
-
-        if (!explicitProd && !runningTs) {
-          // Helpful hint once.
-          console.warn('[TypeORM] NODE_ENV not set to production; inferring production because running from dist.');
+        const forceDev = process.env.FORCE_DEV === 'true';
+        const isProd = !forceDev && (explicitProd || !runningTs);
+        console.log('[TypeORM] flags explicitProd=%s runningTs=%s forceDev=%s isProd=%s', explicitProd, runningTs, forceDev, isProd);
+        if (forceDev) {
+          console.log('[TypeORM] FORCE_DEV active -> disabling SSL and using dev-style entities/migrations.');
         }
 
-        // Auto SSL only when not localhost
+        // Decide SSL need (disable for localhost, sslmode=disable, or forceDev)
         let needSsl = isProd;
         try {
           const u = new URL(databaseUrl);
-            if (['localhost', '127.0.0.1'].includes(u.hostname)) needSsl = false;
-        } catch (_) {}
+          if (['localhost', '127.0.0.1', 'db'].includes(u.hostname)) needSsl = false;
+          const params = new URLSearchParams(u.search);
+          const sslMode = params.get('sslmode');
+          if (['disable', 'off', 'false', '0'].includes((sslMode || '').toLowerCase())) needSsl = false;
+          if (process.env.DB_DISABLE_SSL === 'true') needSsl = false;
+          if (forceDev) needSsl = false;
+        } catch (_) { if (forceDev) needSsl = false; }
 
         const autoEnv = process.env.AUTO_MIGRATIONS;
         const migrationsRun = autoEnv === 'false' ? false : (autoEnv === 'true' ? true : isProd);

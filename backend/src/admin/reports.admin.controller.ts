@@ -68,7 +68,6 @@ export class ReportsAdminController {
     private readonly accounting: AccountingPeriodsService,
   ) {}
 
-  /* ============== Helpers ============== */
   private getTenantId(req: Request): string {
     const fromUser = (req as any)?.user?.tenantId as string | undefined;
   const fromTenant = (req as any)?.tenant?.id as string | undefined;
@@ -120,7 +119,6 @@ export class ReportsAdminController {
     }
     return [];
   }
-  /* ===================================== */
 
   /** بحث المستخدمين (ID + label) */
   @Get('users')

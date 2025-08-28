@@ -43,9 +43,7 @@ function getCloud() {
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  // =====================================
-  // 🔹 مجموعات الأسعار
-  // =====================================
+
   @Get('price-groups')
   async getPriceGroups(@Req() req: Request): Promise<PriceGroup[]> {
     // ✅ استخدم tenant context من middleware
@@ -71,9 +69,7 @@ export class ProductsController {
     return this.productsService.getUsersPriceGroups((req as any).tenant?.id || (req as any).user?.tenantId);
   }
 
-  // =====================================
-  // 🔹 المنتجات
-  // =====================================
+
   @Get()
   async findAll(@Req() req: Request): Promise<any[]> {
     // ✅ استخدم tenant context من middleware
@@ -161,7 +157,6 @@ export class ProductsController {
   }
 
   // 🔹 رفع صورة المنتج إلى Cloudinary
-  // =====================================
   @Post(':id/image')
   @UseInterceptors(
     FileInterceptor('image', {
@@ -201,9 +196,7 @@ export class ProductsController {
     }
   }
 
-  // =====================================
   // 🔹 إنشاء باقة جديدة مع رفع صورة + تمرير السعر
-  // =====================================
   @Post(':id/packages')
   @UseInterceptors(
     FileInterceptor('image', {
@@ -294,9 +287,7 @@ export class ProductsController {
     };
   }
 
-  // =====================================
   // 🔹 جلب أسعار باقات متعددة (Bulk)
-  // =====================================
   @Post('packages/prices')
   async getPackagesPricesBulk(
     @Req() req: Request,
@@ -325,9 +316,7 @@ export class ProductsController {
     });
   }
 
-  // =====================================
   // 🔹 واجهات للمستخدم (JWT)
-  // =====================================
   @UseGuards(AuthGuard('jwt'))
   @Get('user')
   async getAllForUser(@Req() req) {

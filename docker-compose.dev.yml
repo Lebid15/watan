@@ -8,8 +8,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: watan
+    # Changed host port to avoid conflict if a local Postgres already binds 5432
     ports:
-      - '5432:5432'
+      - '55432:5432'
     volumes:
       - pg_data_dev:/var/lib/postgresql/data
     healthcheck:
@@ -31,18 +32,27 @@ services:
 
   backend:
     # Optional: run backend inside compose for consistent network
-    build: ./backend
+    image: node:20-alpine
+    working_dir: /app
     container_name: watan-backend-dev
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgres://postgres:postgres@db:5432/watan
+      DATABASE_URL: postgres://postgres:postgres@db:5432/watan?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: local-dev-secret
       PUBLIC_TENANT_BASE_DOMAIN: localhost
       AUTO_MIGRATIONS: 'true'
       HOST: 0.0.0.0
       PORT: 3000
-    command: ["npm", "run", "start:dev"]
+      DB_DISABLE_SSL: 'true'
+      FORCE_DEV: 'true'
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: postgres
+      DB_NAME: watan
+    # Install dev deps (nest CLI) each start (cache in named volume) then run watch
+    command: sh -c "rm -rf dist && npm install --include=dev --no-audit --no-fund && npx ts-node -r tsconfig-paths/register src/main.ts"
     volumes:
       - ./backend:/app
       - backend_node_modules_dev:/app/node_modules
@@ -55,14 +65,16 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ./frontend
+    image: node:20-alpine
     container_name: watan-frontend-dev
+    working_dir: /app
     environment:
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:3000/api
       NEXT_PUBLIC_FEATURE_BILLING_V1: "true"
       PORT: 3000
-    command: ["npm", "run", "dev"]
+      WATCHPACK_POLLING: 'true'
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
     volumes:
       - ./frontend:/app
       - frontend_node_modules_dev:/app/node_modules

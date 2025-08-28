@@ -8,14 +8,23 @@ interface CatalogListResponse { items?: CatalogProduct[]; [k:string]: any }
 export default function CatalogImportPage(){
   const [rows,setRows]=useState<CatalogProduct[]>([]); const [loading,setLoading]=useState(true); const [err,setErr]=useState<any>(null);
   const [selected,setSelected]=useState<Record<string,boolean>>({});
+  // Runtime type guard (very lightweight)
+  const isCatalogProduct = (v:any): v is CatalogProduct => !!v && typeof v === 'object' && typeof v.id === 'string' && typeof v.name === 'string';
+  const normalizeCatalogProducts = (raw: unknown): CatalogProduct[] => {
+    // Case: array directly
+    if (Array.isArray(raw)) return raw.filter(isCatalogProduct);
+    // Case: wrapped object with items
+    if (raw && typeof raw === 'object' && Array.isArray((raw as any).items)) {
+      return (raw as any).items.filter(isCatalogProduct);
+    }
+    return [];
+  };
+
   useEffect(()=>{(async()=>{
     try {
       const r = await api.get(API_ROUTES.admin.catalog.listProducts(true));
-      const raw: CatalogListResponse | CatalogProduct[] = r?.data;
-      const list: CatalogProduct[] = Array.isArray(raw)
-        ? raw
-        : Array.isArray(raw?.items) ? raw.items as CatalogProduct[] : [];
-      const filtered = list.filter((p:any)=> (p?.packages?.length||0) >= 2);
+      const list = normalizeCatalogProducts((r as any)?.data);
+      const filtered = list.filter(p=> (p?.packages?.length||0) >= 2);
       setRows(filtered);
     } catch(e:any){
       setErr(e);

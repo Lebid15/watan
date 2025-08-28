@@ -23,18 +23,22 @@ export default function TenantProductDetails(){
       const [prodRes, groupsRes] = await Promise.all([
         api.get(API_ROUTES.products.byId(id)),
         // Attempt product-specific price groups endpoint; fallback later
-        api.get(`/products/${id}/price-groups`).catch(async (e:any)=>{
-          // Fallback generic list then map (TODO: replace with backend endpoint) 
+        api.get(`/products/${id}/price-groups`).catch(async (_e:any)=>{
+          // Fallback generic list (TODO: replace when backend endpoint ready)
           const generic = await api.get(API_ROUTES.priceGroups.base);
-          return { data: (generic.data||[]).map((g:any)=>({ priceGroupId:g.id, priceGroupName:g.name, sellPriceUsd:null })) };
+          const genRaw = (generic as any)?.data;
+          const genArr = Array.isArray(genRaw) ? genRaw : Array.isArray(genRaw?.items) ? genRaw.items : [];
+          return { data: genArr.map((g:any)=>({ priceGroupId:g.id, priceGroupName:g.name, sellPriceUsd:null })) };
         })
       ]);
       setP(prodRes.data);
-  const rows = (groupsRes.data||[]).map((g:any)=>({
-        priceGroupId: g.priceGroupId || g.id,
-        priceGroupName: g.priceGroupName || g.name,
-        sellPriceUsd: g.sellPriceUsd ?? g.priceUsd ?? null,
-      }));
+      const rawGroups = (groupsRes as any)?.data;
+      const groupsArray = Array.isArray(rawGroups) ? rawGroups : Array.isArray(rawGroups?.items) ? rawGroups.items : [];
+  const rows: PriceGroupPrice[] = groupsArray.map((g:any)=>({
+          priceGroupId: g.priceGroupId || g.id,
+          priceGroupName: g.priceGroupName || g.name,
+          sellPriceUsd: g.sellPriceUsd ?? g.priceUsd ?? null,
+        }));
       setGroupPrices(rows);
   // snapshot originals for dirty tracking
   const snap: Record<string, number|null> = {};
@@ -113,4 +117,11 @@ export default function TenantProductDetails(){
     </div>
   </div>;
 }
-function Info({label,value}:{label:string;value:any}){return <div className="bg-bg-surface-alt p-3 rounded border border-border"><div className="text-xs opacity-60 mb-1">{label}</div><div className="font-mono" dir="ltr">{value}</div></div>;}
+function Info({ label, value }: { label: string; value: any }) {
+    return (
+      <div className="bg-bg-surface-alt p-3 rounded border border-border">
+        <div className="text-xs opacity-60 mb-1">{label}</div>
+        <div className="font-mono" dir="ltr">{value}</div>
+      </div>
+    );
+  }

@@ -4,6 +4,8 @@ export class AddPayments1754823000000 implements MigrationInterface {
   name = 'AddPayments1754823000000'
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+  // Ensure uuid extension (needed for uuid_generate_v4())
+  await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`);
     // ✅ أنشئ ENUM فقط إذا لم يكن موجودًا
     await queryRunner.query(`
 DO $$

@@ -11,8 +11,9 @@ export default function DistributorLayout({ children }:{children:React.ReactNode
   useEffect(()=>{refreshUser();},[]);
   useEffect(()=>{
     if(loading) return; if(!user){ router.replace(`/login?next=${encodeURIComponent(pathname)}`); return; }
-    const role = (user.role||'').toLowerCase();
-    if(role !== 'distributor'){ if(role==='tenant_owner') router.replace('/tenant'); else if(role==='instance_owner') router.replace('/owner'); else router.replace('/403'); return; }
+  const raw = (user.role||'').toLowerCase();
+  const role = ['instance_owner','owner','admin'].includes(raw)?'tenant_owner':raw;
+  if(role !== 'distributor'){ if(role==='tenant_owner') router.replace('/tenant'); else router.replace('/403'); return; }
     setReady(true);
   },[user,loading,router,pathname]);
   if(!ready) return null;

@@ -9,6 +9,7 @@ import { Tenant } from '../tenants/tenant.entity';
 import { Deposit } from '../payments/deposit.entity';
 import { PaymentMethod } from '../payments/payment-method.entity';
 import { computePeriodAndIssuance, isFirstMonthFree, computeDueAt, computeNextDueAt, nextIssuanceTimestampAfter, buildMonthlyPeriod, toIsoDate } from './billing-utils';
+import { billingCounters } from './billing.metrics';
 
 @Injectable()
 export class BillingService {
@@ -65,7 +66,6 @@ export class BillingService {
     return inv;
   }
 
-  /* ================== Phase5 Core Public Methods (Feature Flag Protected) ================== */
 
   /**
    * إصدار الفواتير الشهرية (EOM anchor)
@@ -101,6 +101,7 @@ export class BillingService {
       try {
   await this.invRepo.save(invoice);
   this.logger.log(`invoice.created tenant=${tenant.id} id=${invoice.id} amount=${invoice.amountUsd}`);
+  billingCounters.invoicesCreated();
         subscription.nextDueAt = nextDueAt;
         await this.subRepo.save(subscription);
         created++;
@@ -173,7 +174,8 @@ export class BillingService {
           sub.suspendAt = nowUTC;
           sub.suspendReason = 'billing_overdue';
           await this.subRepo.save(sub);
-          this.logger.log(`subscription.suspended tenant=${sub.tenantId} invoice=${inv.id}`);
+          this.logger.log(`enforcement.suspended tenant=${sub.tenantId} invoice=${inv.id}`);
+          billingCounters.enforcementSuspended();
           suspended++;
         }
       }
@@ -236,6 +238,7 @@ export class BillingService {
       });
       const saved = await manager.save(dep);
   this.logger.log(`deposit.created tenant=${tenantId} deposit=${saved.id} amount=${amountUsd.toFixed(6)} invoice=${opts.invoiceId||'none'}`);
+  billingCounters.paymentDeposits();
       return { depositId: saved.id, status: saved.status };
     });
   }
@@ -331,7 +334,6 @@ export class BillingService {
     return { items: slice, total, limit: boundedLimit, offset: safeOffset };
   }
 
-  /* ================== Private Helpers ================== */
 
   /** جلب المتاجر مع configs والاشتراك (بدون تصفية إضافية حالياً) */
   private async getTenantConfigsForBilling(): Promise<Array<{ tenant: Tenant; config: TenantBillingConfig; subscription: TenantSubscription }>> {

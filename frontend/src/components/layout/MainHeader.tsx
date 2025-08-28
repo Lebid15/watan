@@ -157,11 +157,7 @@ export default function MainHeader() {
             <Link className="hover:underline" href="/distributor/price-groups">Price Groups</Link>
             <Link className="hover:underline" href="/distributor/orders">Orders</Link>
           </nav>}
-          {user?.role === 'instance_owner' && <nav className="hidden md:flex gap-3">
-            <Link className="hover:underline" href="/owner/catalog/import">Import</Link>
-            <Link className="hover:underline" href="/owner/catalog/new">Manual</Link>
-            <Link className="hover:underline" href="/owner/catalog/review">Review</Link>
-          </nav>}
+          {/* تمت إزالة instance_owner (مُطبَّع إلى tenant_owner) */}
         </div>
       </div>
     </header>

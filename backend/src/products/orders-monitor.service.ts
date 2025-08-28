@@ -77,7 +77,6 @@ export class OrdersMonitorService {
       );
         const first = Array.isArray(res) ? res[0] : (res as any);
 
-        // ===================== استخراج الحالة/الملاحظة/PIN =====================
         // أولوية للماب الجاهز من الدرايفر: success|pending|failed
         let statusRaw: string | undefined = first?.mappedStatus;
 
@@ -120,7 +119,6 @@ export class OrdersMonitorService {
           (first?.raw && ((first.raw as any).message || (first.raw as any).desc || (first.raw as any).raw || (first.raw as any).text)) ||
           'sync';
 
-        // ===================== تحديث حقول الطلب =====================
         const extStatus = this.normalizeExternalStatus(statusRaw || 'processing');
 
         order.externalStatus = extStatus;

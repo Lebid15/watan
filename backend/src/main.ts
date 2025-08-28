@@ -413,7 +413,6 @@ async function bootstrap() {
     console.log('⏭ Skipping auto migrations (AUTO_MIGRATIONS=false)');
   }
 
-  // ================= Bootstrap Root (Instance Owner) =================
   if ((process.env.BOOTSTRAP_ENABLED || 'true').toLowerCase() === 'true') {
     try {
       const userRepo = dataSource.getRepository(User);
@@ -473,7 +472,6 @@ async function bootstrap() {
     console.warn('[BOOTSTRAP][GLOBAL-STATS] Failed to read stats:', e.message || e);
   }
 
-  // ================= Bootstrap Developer (Global) =================
   // مفعّل افتراضياً مع BOOTSTRAP_ENABLED، ويستخدم INITIAL_DEV_EMAIL + INITIAL_DEV_PASSWORD
   // (أزيل من التشغيل التلقائي) تم تعطيل إنشاء المطوّر تلقائياً.
   // الآن الإنشاء يتم فقط عبر endpoint: POST /api/auth/bootstrap-developer

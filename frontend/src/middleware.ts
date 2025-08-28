@@ -1,31 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-function redirect(path: string, req: NextRequest) {
-  const url = req.nextUrl.clone();
-  url.pathname = path;
-  url.search = '';
+// Apex (المنصة الرئيسية) يؤخذ من متغير البيئة أو يُستنتج لاحقاً
+const CONFIGURED_APEX = (process.env.NEXT_PUBLIC_APEX_DOMAIN || '').toLowerCase().replace(/\/$/, '');
+
+function redirect(target: string, req: NextRequest) {
+  let url: URL | any;
+  if (/^https?:\/\//i.test(target)) {
+    // Absolute URL (possibly different host)
+    url = new URL(target);
+  } else {
+    url = req.nextUrl.clone();
+    url.pathname = target;
+    url.search = '';
+  }
   const res = NextResponse.redirect(url, 302);
   res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   return res;
 }
 
-function extractTenantHost(host: string | null): string | null {
-  if (!host) return null;
-  const base = host.toLowerCase().split(':')[0];
-  const parts = base.split('.');
-  if (parts.length < 2) return null;
+function parseHost(hostHeader: string | null) {
+  if (!hostHeader) return { base: null as string | null, isSub: false, full: null as string | null, sub: null as string | null, apex: null as string | null };
+  const full = hostHeader.toLowerCase().split(':')[0];
+  const parts = full.split('.');
   if (parts[parts.length - 1] === 'localhost') {
-    if (parts.length === 2) {
-      const sub = parts[0];
-      if (sub && sub !== 'www' && sub !== 'localhost') return `${sub}.localhost`;
+    // localhost or sub.localhost
+    if (parts.length === 1) return { base: 'localhost', isSub: false, full, sub: null, apex: 'localhost' };
+    if (parts.length >= 2) {
+      const sub = parts.slice(0, parts.length - 1).join('.');
+      return { base: 'localhost', isSub: parts.length > 1, full, sub, apex: 'localhost' };
     }
-    return null;
   }
   if (parts.length >= 3) {
     const sub = parts[0];
-    if (sub && !['www','app'].includes(sub)) return base;
+    if (sub && !['www','app'].includes(sub)) {
+      const apex = parts.slice(parts.length - 2).join('.');
+      return { base: apex, isSub: true, full, sub, apex };
+    }
   }
-  return null;
+  // apex domain (root platform)
+  const apex = parts.slice(-2).join('.');
+  return { base: apex, isSub: false, full, sub: null, apex };
 }
 
 export function middleware(req: NextRequest) {
@@ -33,8 +47,9 @@ export function middleware(req: NextRequest) {
   const path = nextUrl.pathname;
 
   // set tenant_host cookie once
+  const hostInfo = parseHost(headers.get('host'));
   const existingTenant = cookies.get('tenant_host')?.value;
-  const derived = extractTenantHost(headers.get('host'));
+  const derived = hostInfo.isSub ? hostInfo.full : null;
   let response: NextResponse | null = null;
   if (!existingTenant && derived) {
     response = NextResponse.next();
@@ -61,42 +76,124 @@ export function middleware(req: NextRequest) {
   const isNavigate = mode === 'navigate' && (dest === 'document' || dest === 'empty');
   if (!isHtml || !isNavigate) return response ?? NextResponse.next();
 
-  const token = cookies.get('access_token')?.value || '';
+  const token = cookies.get('access_token')?.value || cookies.get('auth')?.value || '';
   const rawRole = (cookies.get('role')?.value || '').toLowerCase();
-  // Normalize legacy role names
-  const role = rawRole === 'owner' ? 'instance_owner' : rawRole; // 'owner' legacy → instance_owner
+
+  // Decode JWT payload (best-effort) to extract email for developer whitelist
+  let email: string | null = null;
+  if (token.includes('.')) {
+    try {
+      const payloadPart = token.split('.')[1];
+      const b64 = payloadPart.replace(/-/g,'+').replace(/_/g,'/');
+      const json = JSON.parse(atob(b64));
+      email = (json.email || json.user?.email || json.sub || '').toLowerCase();
+    } catch {}
+  }
+  // Normalize legacy role names: instance_owner → tenant_owner (hierarchy merge), owner → tenant_owner
+  let role = rawRole;
+  if (role === 'instance_owner' || role === 'owner' || role === 'admin') role = 'tenant_owner';
+
+  // Enforce developer email whitelist: only listed emails keep developer privileges.
+  // إذا لم تُحدد قائمة في env نستخدم القائمة الافتراضية (الحساب الوحيد للمطور).
+  if (role === 'developer') {
+    const envList = (process.env.DEVELOPER_EMAILS || process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || '')
+      .split(',')
+      .map(s=>s.trim().toLowerCase())
+      .filter(Boolean);
+    const DEFAULT_DEV_EMAILS = ['alayatl.tr@gmail.com'];
+    const whitelist = envList.length ? envList : DEFAULT_DEV_EMAILS;
+    if (!email || !whitelist.includes(email)) {
+      role = 'user'; // downgrade
+    }
+  }
 
   // مسارات عامة لا تتطلب تسجيل دخول (أضفنا /nginx-healthz لمسار فحص Nginx فقط)
   const publicPaths = new Set(['/login','/register','/password-reset','/verify-email','/nginx-healthz']);
-  if (publicPaths.has(path)) return response ?? NextResponse.next();
+  if (publicPaths.has(path)) {
+    // حماية إضافية: إذا كنا على النطاق الرئيسي (apex) والمستخدم ليس مطوّراً مُخوّلاً امنع حتى صفحة /login من الاستمرار بعد تسجيل سابق
+    if (hostInfo && !hostInfo.isSub && token) {
+      if (role !== 'developer') {
+        // إزالة الكوكيز وإعادة التوجيه لنفس الصفحة لإظهار نموذج نظيف (مع عدم استخدام التوكن)
+        const res = response ?? NextResponse.next();
+        res.cookies.set('access_token','',{path:'/',maxAge:0});
+        res.cookies.set('role','',{path:'/',maxAge:0});
+        return res;
+      }
+      if (role === 'developer') {
+        // تحقق whitelist ثانيةً
+        const envList = (process.env.DEVELOPER_EMAILS || process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || '')
+          .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+        const wl = envList.length ? envList : ['alayatl.tr@gmail.com'];
+        if (!email || !wl.includes(email)) {
+          const res = response ?? NextResponse.next();
+          res.cookies.set('access_token','',{path:'/',maxAge:0});
+          res.cookies.set('role','',{path:'/',maxAge:0});
+          return res;
+        }
+      }
+    }
+    return response ?? NextResponse.next();
+  }
 
   if (!token) {
     if (path === '/') return response ?? NextResponse.next();
     return redirect('/login', req);
   }
 
-  // Role-based landing redirects from root (avoid falling into /dev etc.)
+  // Root path routing according to clarified matrix
   if (path === '/') {
-    if (role === 'tenant_owner') return redirect('/tenant', req);
-    if (role === 'distributor') return redirect('/distributor', req);
-    if (role === 'instance_owner') return redirect('/owner', req);
-    if (role === 'developer') return redirect('/dev', req);
+    if (hostInfo.isSub) {
+      if (role === 'tenant_owner') return redirect('/admin/dashboard', req);
+      if (role === 'distributor') return redirect('/admin/distributor', req);
+      if (role === 'user') return redirect('/app', req);
+      if (role === 'developer') {
+        const apex = CONFIGURED_APEX || hostInfo.apex; // fallback إلى المستنتج
+        const proto = req.nextUrl.protocol;
+        return redirect(`${proto}//${apex}/dev`, req); // absolute to apex
+      }
+    } else { // apex platform
+      if (role === 'developer') return redirect('/dev', req);
+    }
   }
 
   if (path.startsWith('/admin')) {
-    const allowed = new Set(['admin','supervisor','owner','instance_owner']);
-    if (!allowed.has(role)) {
-      if (role === 'developer') return redirect('/dev', req);
-      return redirect('/', req);
+    // Admin area valid only on subdomains
+    if (!hostInfo.isSub) return redirect('/', req);
+    const isDistributorSection = path.startsWith('/admin/distributor');
+    if (role === 'tenant_owner') {
+      // تأكيد أن /admin نفسها تعيد التوجيه إلى /admin/dashboard لتوقع UX
+      if (path === '/admin') return redirect('/admin/dashboard', req);
+      return response ?? NextResponse.next();
     }
-    return response ?? NextResponse.next();
+    if (role === 'distributor') {
+      if (isDistributorSection) return response ?? NextResponse.next();
+      // distributor trying to access owner-only area
+      return redirect('/admin/distributor', req);
+    }
+    if (role === 'developer') {
+      const apex = CONFIGURED_APEX || hostInfo.apex;
+      return redirect(`${req.nextUrl.protocol}//${apex}/dev`, req);
+    }
+    // user or unknown
+    return redirect('/app', req);
   }
 
   if (path.startsWith('/dev')) {
-    const ok = role === 'developer' || role === 'instance_owner';
-    if (!ok) {
-      if (['admin','supervisor','owner'].includes(role)) return redirect('/admin/dashboard', req);
-      return redirect('/', req);
+    // Only developer on apex domain; إذا وُجد على subdomain أعده إلى apex
+    if (hostInfo.isSub) {
+      const apex = CONFIGURED_APEX || hostInfo.apex;
+      return redirect(`${req.nextUrl.protocol}//${apex}/dev`, req);
+    }
+    if (role !== 'developer') return redirect('/', req);
+    return response ?? NextResponse.next();
+  }
+
+  if (path.startsWith('/app')) {
+    // Storefront on subdomains only; allow public & user & distributor & tenant_owner (owner might preview) but never developer
+    if (!hostInfo.isSub) return redirect('/', req);
+    if (role === 'developer') {
+      const apex = CONFIGURED_APEX || hostInfo.apex;
+      return redirect(`${req.nextUrl.protocol}//${apex}/dev`, req);
     }
     return response ?? NextResponse.next();
   }

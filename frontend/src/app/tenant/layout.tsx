@@ -20,10 +20,10 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
       return;
     }
     const role = (user.role||'').toLowerCase();
-    if (role !== 'tenant_owner') {
-      // redirect to distributor / user dashboards if possible
-      if (role === 'distributor') router.replace('/distributor');
-      else if (role === 'instance_owner') router.replace('/owner');
+    // تطبيع الأدوار القديمة إلى tenant_owner مسبقاً (middleware) لكن نضيف حماية دفاعية هنا
+    const normalized = ['instance_owner','owner','admin'].includes(role) ? 'tenant_owner' : role;
+    if (normalized !== 'tenant_owner') {
+      if (normalized === 'distributor') router.replace('/distributor');
       else router.replace('/403');
       return;
     }

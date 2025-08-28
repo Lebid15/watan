@@ -51,9 +51,6 @@ export class CatalogAdminController {
   private readonly auditService: AuditService,
   ) {}
 
-  /* =======================
-     قائمة منتجات الكتالوج (عالمي)
-     ======================= */
   @Get('products')
   async listProducts(
     @Query('q') q?: string,
@@ -99,9 +96,7 @@ export class CatalogAdminController {
     return { items };
   }
 
-  /* =======================
-     منتج كتالوج واحد بحسب المعرّف
-     ======================= */
+
   @Get('products/:id')
   async getCatalogProduct(@Param('id') id: string) {
     const p = await this.productsRepo.findOne({ where: { id } });
@@ -109,9 +104,6 @@ export class CatalogAdminController {
     return { item: p };
   }
 
-  /* =======================
-     باقات منتج كتالوج (عالمي)
-     ======================= */
   @Get('products/:id/packages')
   async listPackages(@Param('id') productId: string) {
     try {
@@ -128,9 +120,6 @@ export class CatalogAdminController {
     }
   }
 
-  /* ===========================================
-     1) تفعيل كل باقات "كتالوج منتج" في متجر المشرف (Tenant)
-     =========================================== */
   @Post('products/:id/enable-all')
   async enableAllForCatalogProduct(@Param('id') catalogProductId: string, @Req() req: Request) {
     const tenantId = (req as any)?.user?.tenantId as string | undefined;
@@ -207,9 +196,7 @@ export class CatalogAdminController {
     };
   }
 
-  /* ===========================================
-     2) تفعيل كل منتجات/باقات مزوّد في المتجر (Tenant)
-     =========================================== */
+
   @Post('providers/:providerId/enable-all')
   async enableAllForProvider(@Param('providerId') providerId: string, @Req() req: Request) {
     const tenantId = (req as any)?.user?.tenantId as string | undefined;
@@ -294,9 +281,7 @@ export class CatalogAdminController {
     };
   }
 
-  /* ===========================================
-     3) تحديث صورة منتج كتالوج (مع نشر للصنف في المتجر/tenant)
-     =========================================== */
+
   @Put('products/:id/image')
   @UseInterceptors(FileInterceptor('file', {
     storage: multer.memoryStorage(),
@@ -364,9 +349,7 @@ export class CatalogAdminController {
     return { ok: true, id, imageUrl: (p as any).imageUrl ?? null, changed: previousUrl !== (p as any).imageUrl };
   }
 
-  /* ===========================================
-     تعديل رابط صورة منتج كتالوج (PATCH نفس المسار)
-     =========================================== */
+
   @Patch('products/:id/image')
   async patchCatalogProductImage(
     @Param('id') id: string,
@@ -409,9 +392,7 @@ export class CatalogAdminController {
     return { ok: true, id, imageUrl: (p as any).imageUrl ?? null, changed: previousUrl !== (p as any).imageUrl };
   }
 
-  /* ===========================================
-     3b) رفع وربط صورة المنتج مباشرة (upload + assign)
-     =========================================== */
+
   @Post('products/:id/image/upload')
   @UseInterceptors(FileInterceptor('file', {
     storage: multer.memoryStorage(),
@@ -480,9 +461,7 @@ export class CatalogAdminController {
     return { ok: true, id, imageUrl: (product as any).imageUrl, previousUrl, changed: previousUrl !== (product as any).imageUrl };
   }
 
-  /* ===========================================
-     3c) قائمة الأصول مع فلاتر بسيطة
-     =========================================== */
+
   @Get('assets')
   async listAssets(
     @Query('purpose') purpose?: string,
@@ -510,9 +489,6 @@ export class CatalogAdminController {
     return { ok: true, total, count: rows.length, items: rows };
   }
 
-  /* ===========================================
-     حذف أصل (مع تحقق الصلاحيات) + محاولة حذف Cloudinary
-     =========================================== */
   @Delete('assets/:id')
   async deleteAsset(@Param('id') id: string, @Req() req: any) {
     const user = req?.user || {};
@@ -544,9 +520,7 @@ export class CatalogAdminController {
     return { success: true, id, cloudinary: { result: cloudinaryResult } };
   }
 
-  /* ===========================================
-     4) تحديث الأسعار من الكتالوج → متجر المشرف (USD) (Tenant)
-     =========================================== */
+
   @Post('providers/:providerId/refresh-prices')
   async refreshPricesForProvider(
     @Param('providerId') providerId: string,

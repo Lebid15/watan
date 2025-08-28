@@ -11,11 +11,28 @@ export default function TenantUsersPage(){
   const [loading,setLoading]=useState(true);
   const [err,setErr]=useState<any>(null);
   const [assigning,setAssigning]=useState<string|null>(null);
-
-  useEffect(()=>{(async()=>{try{const [u,pg]=await Promise.all([
-      api.get(API_ROUTES.users.withPriceGroup),
-      api.get(API_ROUTES.priceGroups.base),
-    ]); setUsers(u.data||[]); setPriceGroups(pg.data||[]); }catch(e:any){setErr(e);}finally{setLoading(false);} })();},[]);
+  const isUser = (v:any): v is TenantUser => !!v && typeof v==='object' && typeof v.id==='string' && typeof v.email==='string';
+  const isPriceGroup = (v:any): v is PriceGroup => !!v && typeof v==='object' && typeof v.id==='string' && typeof v.name==='string';
+  const normUsers = (raw:unknown):TenantUser[] => {
+    if(Array.isArray(raw)) return raw.filter(isUser);
+    if(raw && typeof raw==='object' && Array.isArray((raw as any).items)) return (raw as any).items.filter(isUser);
+    return [];
+  };
+  const normPriceGroups = (raw:unknown):PriceGroup[] => {
+    if(Array.isArray(raw)) return raw.filter(isPriceGroup);
+    if(raw && typeof raw==='object' && Array.isArray((raw as any).items)) return (raw as any).items.filter(isPriceGroup);
+    return [];
+  };
+  useEffect(()=>{(async()=>{
+    try {
+      const [u,pg]=await Promise.all([
+        api.get(API_ROUTES.users.withPriceGroup),
+        api.get(API_ROUTES.priceGroups.base),
+      ]);
+      setUsers(normUsers((u as any)?.data));
+      setPriceGroups(normPriceGroups((pg as any)?.data));
+    } catch(e:any){ setErr(e); } finally { setLoading(false); }
+  })();},[]);
 
   const assign = async (userId:string, priceGroupId:string|null)=>{
     setAssigning(userId);

@@ -16,7 +16,6 @@ export class NotificationsService {
     private readonly usersRepo: Repository<User>,
   ) {}
 
-  // ========== أدوات عامة ==========
 
   /** يجلب المستخدم ويتحقق من انتمائه للمستأجر */
   private async mustGetUserInTenant(userId: string, tenantId: string): Promise<User> {
@@ -49,7 +48,6 @@ export class NotificationsService {
     return s === 'approved' ? 'قبول' : s === 'rejected' ? 'رفض' : 'قيد المراجعة';
   }
 
-  // ========== مُنشئ تنبيه عام (مع فرض المستأجر) ==========
   private async createTyped(
     userId: string,
     tenantId: string,
@@ -92,7 +90,6 @@ export class NotificationsService {
     const saved = await this.notificationsRepo.save<Notification>(notification);
     return saved;
   }
-  // ========== APIs أساسية مع فرض tenantId ==========
 
   /** جميع التنبيهات لمستخدم ضمن نفس المستأجر (بسيط) */
   async findByUser(userId: string, tenantId: string): Promise<Notification[]> {
@@ -196,7 +193,6 @@ export class NotificationsService {
       .execute();
   }
 
-  // ========== سيناريوهات منفصلة (أضفنا tenantId لكل دالة) ==========
 
   /** خصم محفظة عام */
   async walletDebit(
@@ -290,7 +286,6 @@ export class NotificationsService {
     );
   }
 
-  // ========== تنبيه مدمج (غير إلزامي لكن مفيد) ==========
   async orderOutcome(
     userId: string,
     tenantId: string,
@@ -347,7 +342,6 @@ export class NotificationsService {
     );
   }
 
-  // ========== توافق خلفي: تغيير حالة الطلب ==========
   async orderStatusChanged(
     userId: string,
     tenantId: string,
@@ -420,7 +414,6 @@ export class NotificationsService {
     );
   }
 
-  // ========== إعلان عام (على مستوى المستأجر فقط) ==========
   async announceForAll(
     tenantId: string,
     title: string,

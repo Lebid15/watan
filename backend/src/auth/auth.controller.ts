@@ -83,7 +83,6 @@ export class AuthController {
     return { token: access_token };
   }
 
-  // ================= Developer Bootstrap Endpoint =================
   // يسمح بإنشاء حساب مطوّر (tenantId NULL) مرة واحدة عبر سر بيئة BOOTSTRAP_DEV_SECRET.
   // الاستخدام: POST /api/auth/bootstrap-developer { secret, email, password }
   // الحماية:
@@ -151,7 +150,6 @@ export class AuthController {
     return { ok: true };
   }
 
-  // ================= Impersonation (assume-tenant) =================
   @Post('assume-tenant')
   @UseGuards(JwtAuthGuard)
   async assumeTenant(@Req() req: any, @Body() body: { tenantId: string }) {
@@ -169,7 +167,6 @@ export class AuthController {
     return { token, tenantId: tenant.id, impersonated: true, expiresIn: 1800 };
   }
 
-  // ================= Email Verification =================
   @Post('request-email-verification')
   @UseGuards(JwtAuthGuard)
   @RateLimit({ windowMs: 10*60*1000, max: 5, id: 'emailverify' })
@@ -205,7 +202,6 @@ export class AuthController {
     return { ok: true };
   }
 
-  // ================= Password Reset =================
   @Post('request-password-reset')
   @RateLimit({ windowMs: 10*60*1000, max: 5, id: 'pwdresetreq' })
   async requestPasswordReset(@Body() body: { emailOrUsername: string; tenantCode?: string }) {

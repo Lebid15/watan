@@ -39,8 +39,6 @@ export class ProvidersAdminController {
     return String(fromUser ?? fromHeader ?? '').trim();
   }
 
-  // ================== مزوّدو المطوّر (scope = 'dev') ==================
-
   /** إنشاء مزوّد مطوّر (scope=dev) */
   @Post('dev')
   @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
@@ -155,7 +153,6 @@ export class ProvidersAdminController {
     throw new BadRequestException('Unsupported role for import');
   }
 
-  // ================== مزوّدو التينانت (scope = 'tenant') ==================
 
   /** قائمة مزوّدي المستأجر للفحص */
   @Get('tenant')

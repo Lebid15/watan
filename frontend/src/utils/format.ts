@@ -45,6 +45,12 @@ export function formatMoney(
     : `${formatted} ${sym}`.trim();
 }
 
+// ✅ 3-decimal fixed formatting (مستخدمة بالتقارير / الفواتير / الطلبات)
+export function formatMoney3(amount: number | string) {
+  const v = typeof amount === 'string' ? Number(amount) : amount;
+  return (isNaN(v) ? 0 : v).toFixed(3);
+}
+
 export function useDebounce<T>(value: T, delay = 300): T {
   const [debounced, setDebounced] = useState(value);
 
@@ -56,12 +62,12 @@ export function useDebounce<T>(value: T, delay = 300): T {
   return debounced;
 }
 
-// 3-decimal fixed formatting (used in reports/billing)
-export function formatMoney3(amount: number | string) {
-  const v = typeof amount === 'string' ? Number(amount) : amount;
-  const safe = isNaN(v) ? 0 : v;
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(safe);
-}
+// ✅ Default export لتسهيل الاستيراد
+const formatUtils = {
+  formatGroupsDots,
+  currencySymbol,
+  formatMoney,
+  formatMoney3,
+  useDebounce,
+};
+export default formatUtils;

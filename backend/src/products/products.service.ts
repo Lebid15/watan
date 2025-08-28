@@ -357,9 +357,7 @@ export class ProductsService {
     );
   }
 
-  // =====================================
   // 🔹 مجموعات الأسعار
-  // =====================================
 
   async getPriceGroups(tenantId: string): Promise<PriceGroup[]> {
     return this.priceGroupsRepo.find({ where: { tenantId } as any });
@@ -509,7 +507,6 @@ export class ProductsService {
     }));
   }
 
-  // ================== التسعير الأساس (بالدولار) ==================
   private async getEffectivePriceUSD(packageId: string, userId: string): Promise<number> {
     const [pkg, user] = await Promise.all([
       this.packagesRepo.findOne({ where: { id: packageId } as any, relations: ['prices', 'prices.priceGroup'] }),
@@ -1196,7 +1193,6 @@ export class ProductsService {
     });
   }
 
-  // =============== ✅ تجميد FX عند الاعتماد (Idempotent) ===============
   private async freezeFxOnApprovalIfNeeded(orderId: string): Promise<void> {
     const order = await this.ordersRepo.findOne({
       where: { id: orderId } as any,
@@ -1386,7 +1382,6 @@ export class ProductsService {
     return saved;
   }
 
-  // ================== أدوات مساعدة للعرض ==================
   private async getUserDisplayContext(userId: string, tenantId?: string) {
     const user = await this.usersRepo.findOne({
       where: { id: userId } as any,
@@ -1487,7 +1482,6 @@ export class ProductsService {
     };
   }
 
-  // ================== Image Fallback Helper ==================
   /**
    * Compute effective image for product.
    * Priority: if customImageUrl present & useCatalogImage=false => effective = customImageUrl (imageSource='custom')

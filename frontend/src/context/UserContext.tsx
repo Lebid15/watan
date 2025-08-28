@@ -62,12 +62,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
       const json = JSON.parse(typeof atob !== 'undefined' ? atob(b64) : Buffer.from(b64, 'base64').toString());
       if (json?.sub) {
-        decodedRole = (json.role || 'user').toLowerCase();
+  decodedRole = (json.role || 'user').toLowerCase();
+  if (decodedRole && ['instance_owner','owner','admin'].includes(decodedRole)) decodedRole = 'tenant_owner';
         fallback = {
           id: json.sub,
           email: json.email || '',
           name: json.fullName || json.email || 'User',
-          role: (json.role || 'user').toLowerCase(),
+          role: decodedRole || 'user',
           balance: 0,
           currency: 'USD', // افتراضي للمطور أو أي مستخدم بلا بيانات تفصيلية
         } as User;
@@ -78,7 +79,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     // وغالباً ما يسبب الطلب 401 لعدم وجود tenant_host صالح. لذلك نستخدم fallback مباشرةً.
     if (typeof window !== 'undefined') {
       const pth = window.location.pathname || '';
-      if (pth.startsWith('/dev') && decodedRole && ['developer','instance_owner'].includes(decodedRole)) {
+  if (pth.startsWith('/dev') && decodedRole && decodedRole === 'developer') {
         if (fallback) {
           setUser(fallback as User);
           setLoading(false);
@@ -91,7 +92,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (typeof document !== 'undefined') {
       const noTenantCookie = !document.cookie.split('; ').some(c => c.startsWith('tenant_host='));
       // وسّعنا الشرط ليشمل /admin كذلك لحالات المالك أو المطوّر بدون اختيار تينانت بعد التحديث
-      if ((path.startsWith('/dev') || path.startsWith('/admin')) && noTenantCookie && decodedRole && ['developer','instance_owner'].includes(decodedRole)) {
+  if ((path.startsWith('/dev') || path.startsWith('/admin')) && noTenantCookie && decodedRole && decodedRole === 'developer') {
         if (fallback) {
           setUser(fallback as User);
           setLoading(false);
