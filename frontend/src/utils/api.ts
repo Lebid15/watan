@@ -11,19 +11,27 @@ let RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001
 // Dynamic production fallback: if env not provided (still localhost) but we're on a real domain, derive https://api.<root>/api
 if (typeof window !== 'undefined') {
   try {
+    const host = window.location.hostname; // e.g. syrz1.com, sham.syrz1.com, api.syrz1.com
+    // 1) Dev fallback: derive api.<root> if still pointing to localhost
     if (/localhost:3001\/api$/.test(RAW_API_BASE_URL)) {
-      const host = window.location.hostname; // e.g. syrz1.com or www.syrz1.com
       const parts = host.split('.');
       if (parts.length >= 2 && !/^api\./i.test(host)) {
         const root = parts.slice(-2).join('.');
-        // Avoid using www as subdomain base twice
         const apiHost = `api.${root}`;
         const proto = window.location.protocol === 'https:' ? 'https' : 'http';
         RAW_API_BASE_URL = `${proto}://${apiHost}/api`;
         console.log('[API][AUTO-FALLBACK] Derived API base URL =>', RAW_API_BASE_URL);
       }
     }
-  } catch {}
+    // 2) If we're on a tenant (non-api) subdomain under syrz1.com, use same-origin relative /api to avoid CORS & extra DNS
+    if (/syrz1\.com$/i.test(host) && !/^api\./i.test(host) && RAW_API_BASE_URL.startsWith('http')) {
+      // Only switch if env pointed elsewhere (api.syrz1.com or syrz1.com) to minimize surprises
+      RAW_API_BASE_URL = '/api';
+      console.log('[API][RELATIVE] Using same-origin /api base for host', host);
+    }
+  } catch {
+    // ignore
+  }
 }
 
 // Prefer relative /api when on a tenant subdomain (non api/www) of syrz1.com to eliminate cross-origin & CORS preflight.
