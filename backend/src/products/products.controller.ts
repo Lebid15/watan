@@ -85,6 +85,7 @@ export class ProductsController {
     const products = wantAll
       ? await this.productsService.findAllWithPackages(tenantId)
       : await this.productsService.getTenantVisibleProducts(tenantId);
+  console.log('[PRODUCTS] findAll count=', products.length, 'first.packages?', products[0]?.packages?.length);
     return products.map((product) => ({
       ...product,
       packagesCount: product.packages?.length ?? 0,
