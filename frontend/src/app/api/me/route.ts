@@ -22,10 +22,12 @@ export async function GET(req: NextRequest) {
     }
 
     // نمرّر التوكن للباك إند عبر Authorization
+    const originalHost = req.headers.get('host') || '';
     const r = await fetch(`${API_BASE_URL}/users/profile`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'X-Tenant-Host': originalHost,
       },
       // مهم: الباك إند على بورت آخر، فلا ترسل كوكي المتصفح له (يكفي Authorization)
       // credentials: 'omit' (الافتراضي)

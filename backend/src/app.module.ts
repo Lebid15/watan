@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { PasskeysModule } from './auth/passkeys/passkeys.module';
 import { AdminModule } from './admin/admin.module';
 import { ProductsModule } from './products/products.module';
+import { AdminCountsController } from './admin/admin-counts.controller';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -137,7 +138,7 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
   DevToolsModule,
   TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot]),
   ],
-  controllers: [HealthController, MetricsController],
+  controllers: [HealthController, MetricsController, AdminCountsController],
   providers: [
   { provide: APP_GUARD, useClass: TenantGuard },
   { provide: APP_GUARD, useClass: FinalRolesGuard },
