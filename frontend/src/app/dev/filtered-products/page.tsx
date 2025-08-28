@@ -34,6 +34,9 @@ export default function DevFilteredProductsPage(){
   const [selectedName,setSelectedName]=useState<string|undefined>(undefined);
   // لم نعد نعرض أقسام منفصلة للكتالوج؛ سيتم دمج أي جلب مستقبلي في المنتجات الحالية
   const [catalogPreview,setCatalogPreview]=useState<any[]>([]); // احتفاظ فقط لو احتجناه لاحقًا
+  // استيراد الكتالوج
+  const [importing,setImporting]=useState(false);
+  const [importStats,setImportStats]=useState<{imported?:number;packages?:number;note?:string}|null>(null);
   const dropdownRef = useRef<HTMLDivElement|null>(null);
 
   const load = useCallback(async()=>{
@@ -155,6 +158,21 @@ export default function DevFilteredProductsPage(){
           disabled={loading}
           className="px-4 py-1.5 rounded text-sm bg-blue-600 text-white disabled:opacity-50"
         >تحديث</button>
+        {/* زر استيراد منتجات الكتالوج المؤهلة (>=2 باقات) */}
+        <button
+          onClick={async()=>{
+            setImporting(true); setImportStats(null);
+            try {
+              const r = await api.post('/dev/filtered-products-sync/import-catalog');
+              setImportStats(r.data);
+              await load();
+            } catch(e:any){
+              alert(e?.response?.data?.message || e?.message || 'فشل الاستيراد');
+            } finally { setImporting(false); }
+          }}
+          disabled={loading || importing}
+          className="px-4 py-1.5 rounded text-sm bg-purple-600 text-white disabled:opacity-50"
+        >{importing? 'جاري...' : 'استيراد الكتالوج'}</button>
         {showRefreshConfirm && (
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 px-3 py-1 rounded text-xs">
             <span>تأكيد التحديث؟</span>
@@ -213,6 +231,11 @@ export default function DevFilteredProductsPage(){
   {loading && <span className="text-sm text-gray-500 animate-pulse">تحميل...</span>}
   <span className="text-xs text-gray-600">المنتجات: {filtered.length} | الباقات: {activePackages}/{totalPackages} نشطة</span>
         {error && <span className="text-sm text-red-600">{error}</span>}
+        {importStats && (
+          <span className="text-xs text-purple-700">
+            مستورد: {importStats.imported??0} | باقات: {importStats.packages??0} {importStats.note? `| ${importStats.note}`:''}
+          </span>
+        )}
       </div>
       <div className="space-y-6">
         {filtered.map(prod=> (
