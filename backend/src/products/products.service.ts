@@ -257,7 +257,30 @@ export class ProductsService {
     return this.productsRepo.save(product);
   }
 
-  async findAllWithPackages(tenantId: string): Promise<any[]> {
+  async findAllWithPackages(tenantId?: string): Promise<any[]> {
+    // Dev fallback: إذا لم يوجد tenantId (صفحة /dev من الدومين الرئيسي أو بدون تسجيل دخول)
+    // أعرض كل المنتجات مع الباقات بشكل مبسّط (بدون أسعار المجموعات) حتى يتم التحديد لاحقًا.
+    if (!tenantId) {
+      const products = await this.productsRepo.find({
+        relations: ['packages'],
+        take: 500, // حِد أمان بسيط لمنع انفجار النتائج
+        order: { name: 'ASC' } as any,
+      });
+      return products.map((product: any) => {
+        const mapped = this.mapEffectiveImage(product);
+        return {
+          ...product,
+          ...mapped,
+          packages: (product.packages || []).map((pkg: any) => ({
+            ...pkg,
+            basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+            prices: [], // لا نسترجع أسعار المجموعات في وضع (بدون تينانت)
+          })),
+        };
+      });
+    }
+
+    // السياق الطبيعي: مقيّد بالتينانت
     const products = await this.productsRepo.find({
       where: { tenantId } as any,
       relations: ['packages', 'packages.prices', 'packages.prices.priceGroup'],
@@ -271,18 +294,18 @@ export class ProductsService {
         ...mapped,
         packages: (product.packages || []).map((pkg) => ({
           ...pkg,
-            basePrice: pkg.basePrice ?? pkg.capital ?? 0,
-            prices: allPriceGroups.map((group) => {
-              const existingPrice = (pkg.prices || []).find(
-                (price) => price.priceGroup?.id === group.id,
-              );
-              return {
-                id: existingPrice?.id ?? null,
-                groupId: group.id,
-                groupName: group.name,
-                price: existingPrice?.price ?? 0,
-              };
-            }),
+          basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+          prices: allPriceGroups.map((group) => {
+            const existingPrice = (pkg.prices || []).find(
+              (price) => price.priceGroup?.id === group.id,
+            );
+            return {
+              id: existingPrice?.id ?? null,
+              groupId: group.id,
+              groupName: group.name,
+              price: existingPrice?.price ?? 0,
+            };
+          }),
         })),
       };
     });
