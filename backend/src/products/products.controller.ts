@@ -88,6 +88,10 @@ export class ProductsController {
   console.log('[PRODUCTS] findAll count=', products.length, 'first.packages?', products[0]?.packages?.length);
     return products.map((product) => ({
       ...product,
+      packages: (product.packages||[]).map((pk:any)=> ({
+        ...pk,
+        providerName: pk.providerName || null,
+      })),
       packagesCount: product.packages?.length ?? 0,
       // expose image meta consistently
   imageUrl: product.imageUrl, // effective (computed; legacy column dropped)
@@ -112,6 +116,10 @@ export class ProductsController {
     if (!product) throw new NotFoundException('معرف المنتج غير صالح');
     return {
       ...product,
+      packages: (product.packages||[]).map((pk:any)=> ({
+        ...pk,
+        providerName: pk.providerName || null,
+      })),
   imageUrl: product.imageUrl, // effective (computed; legacy column dropped)
       imageSource: product.imageSource,
       useCatalogImage: product.useCatalogImage,
@@ -319,6 +327,18 @@ export class ProductsController {
   ) {
     // يمكن لاحقًا ربط التحقق بالـ tenant إن لزم:
     return this.productsService.updatePackageCode(packageId, body.publicCode);
+  }
+
+  // ✅ تحديث اسم المزود
+  @Patch('packages/:id/provider')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  async updatePackageProvider(
+    @Param('id') packageId: string,
+    @Body('providerName') providerName: string,
+  ) {
+    if (!providerName || !providerName.trim()) throw new BadRequestException('providerName مطلوب');
+    return this.productsService.updatePackageProvider(packageId, providerName.trim());
   }
 
   // ✅ إتاحة جلب الكود الحالي لباقة واحدة (مفيد للـ UI للتحديث اللحظي)

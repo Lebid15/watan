@@ -51,6 +51,10 @@ export class ProductPackage {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   capital: number;
 
+  // اسم المزود (barakat, apstore, znet, local, ...)
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  providerName?: string | null;
+
   @Column({ default: true })
   isActive: boolean;
 

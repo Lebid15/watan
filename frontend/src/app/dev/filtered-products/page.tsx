@@ -8,8 +8,8 @@ import api from '@/utils/api';
 interface DevPackage {
   id: string;
   name: string | null;
-  publicCode: string | null; // محفوظ كنص للعرض حتى لو API يرجع رقم
-  basePrice?: number;
+  publicCode: string | null; // كود الربط (نحن نُدخله يدويًا)
+  providerName?: string | null; // اسم المزود اليدوي (local / barakat ...)
   isActive?: boolean;
 }
 interface DevProduct {
@@ -32,8 +32,8 @@ export default function DevFilteredProductsPage(){
   const [productSearch,setProductSearch]=useState('');
   // اسم المنتج أو البادئة المختارة من القائمة (بدلاً من ID كي يعمل أيضاً مع عناصر الكتالوج)
   const [selectedName,setSelectedName]=useState<string|undefined>(undefined);
-  const [catalogPreview,setCatalogPreview]=useState<{id:string;name:string;packagesCount:number}[]>([]);
-  const [catalogGrouped,setCatalogGrouped]=useState<{id:string;name:string;packages:{id:string;name:string;publicCode?:string|null;providerId?:string|null;costPrice?:number|null;isActive?:boolean}[]}[]>([]);
+  // لم نعد نعرض أقسام منفصلة للكتالوج؛ سيتم دمج أي جلب مستقبلي في المنتجات الحالية
+  const [catalogPreview,setCatalogPreview]=useState<any[]>([]); // احتفاظ فقط لو احتجناه لاحقًا
   const dropdownRef = useRef<HTMLDivElement|null>(null);
 
   const load = useCallback(async()=>{
@@ -61,12 +61,7 @@ export default function DevFilteredProductsPage(){
       api.get('/health').then(r=>{
         setBackendMeta({gitSha:r.data.gitSha, buildTime:r.data.buildTime, version:r.data.version});
       }).catch(()=>{});
-      api.get('/dev/filtered-products-sync/catalog-preview').then(r=>{
-        if(r.data?.items) setCatalogPreview(r.data.items);
-      }).catch(()=>{});
-      api.get('/dev/filtered-products-sync/catalog-preview-grouped').then(r=>{
-        if(r.data?.items) setCatalogGrouped(r.data.items);
-      }).catch(()=>{});
+  // أوقفنا جلب الكتالوج المنفصل هنا مؤقتًا
     }catch(e:any){ setError(e?.message||'فشل التحميل'); }
     finally{ setLoading(false); }
   },[]);
@@ -132,18 +127,14 @@ export default function DevFilteredProductsPage(){
 
   const nameFiltered = products.filter(p=> !textFilter.trim() || p.name.toLowerCase().includes(textFilter.toLowerCase()));
   const filtered = selectedName ? nameFiltered.filter(p=> p.name.toLowerCase().startsWith(selectedName.toLowerCase())) : nameFiltered;
-  const productOptions = [
-    ...products,
-    // دمج أسماء منتجات الكتالوج المجمعة للفلترة (بدون تكرار IDs المحلية)
-    ...catalogGrouped.map(g=>({ id: `catalog-${g.id}`, name: g.name, packages: [] as any[] }))
-  ];
+  const productOptions = products; // أصبحت القائمة تعتمد فقط على المنتجات المدمجة
   const totalPackages = filtered.reduce((acc,p)=> acc + p.packages.length, 0);
   const activePackages = filtered.reduce((acc,p)=> acc + p.packages.filter(pk=>pk.isActive).length, 0);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold">المنتجات 2 (Dev / All)</h1>
+        <h1 className="text-2xl font-bold">المنتجات 3 (Dev / All)</h1>
         <div className="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="font-mono" title="Frontend Git SHA">F:{process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}</span>
@@ -229,7 +220,7 @@ export default function DevFilteredProductsPage(){
             <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
               <div className="font-semibold text-sm">{prod.name} <span className="text-xs text-gray-400">({prod.packages.length} باقات)</span></div>
               <div className="flex gap-2">
-                <button onClick={()=> router.push(`/dev/filtered-products/${prod.id}`)} className="text-xs px-2 py-1 rounded bg-sky-600 text-white">تعديل</button>
+                <button onClick={()=> router.push(`/dev/filtered-products/${prod.id}`)} className="text-xs px-2 py-1 rounded bg-sky-600 text-white">تعديل المنتج</button>
                 <button onClick={()=>deleteProduct(prod.id)} disabled={!!deleting[prod.id]} className="text-xs px-2 py-1 rounded bg-red-600 text-white disabled:opacity-50">حذف المنتج</button>
               </div>
             </div>
@@ -241,9 +232,8 @@ export default function DevFilteredProductsPage(){
                     <th className="px-2 py-1 text-right">الباقة</th>
                     <th className="px-2 py-1 text-right">الكود</th>
                     <th className="px-2 py-1 text-right">المزوّد</th>
-                    <th className="px-2 py-1 text-right">السعر الأساس</th>
                     <th className="px-2 py-1 text-right">نشطة</th>
-                    <th className="px-2 py-1"></th>
+                    <th className="px-2 py-1 text-center">حذف</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -261,8 +251,22 @@ export default function DevFilteredProductsPage(){
                           disabled={!!saving[pkg.id]}
                         />
                       </td>
-                      <td className="px-2 py-1">-</td>
-                      <td className="px-2 py-1">{pkg.basePrice}</td>
+                      <td className="px-2 py-1 w-36">
+                        <input
+                          defaultValue={pkg.providerName || ''}
+                          onBlur={async e=> {
+                            const val = e.target.value.trim();
+                            if(!val) return; // تجاهل الفارغ (يمكن مستقبلاً السماح بمسح المزود)
+                            try {
+                              await api.patch(`/products/packages/${pkg.id}/provider`, { providerName: val });
+                              setProducts(ps=> ps.map(p=> p.id===prod.id ? ({...p, packages: p.packages.map(pk=> pk.id===pkg.id ? {...pk, providerName: val}: pk)}) : p));
+                            }catch(err:any){ alert(err?.response?.data?.message || err?.message || 'فشل حفظ المزود'); }
+                          }}
+                          placeholder="المزوّد"
+                          maxLength={50}
+                          className="w-full border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring"
+                        />
+                      </td>
                       <td className="px-2 py-1">{pkg.isActive? '✓':'✗'}</td>
                       <td className="px-2 py-1 text-center">
                         <button onClick={()=>deletePackage(pkg.id)} disabled={!!deleting[pkg.id]} className="text-xs px-2 py-0.5 rounded bg-red-500 text-white disabled:opacity-50">حذف</button>
@@ -280,65 +284,7 @@ export default function DevFilteredProductsPage(){
   {!loading && filtered.length===0 && <div className="text-center text-gray-500 py-10">لا توجد منتجات</div>}
         {loading && <div className="text-center text-gray-400 py-10 animate-pulse">تحميل...</div>}
       </div>
-      <div className="space-y-4">
-        {catalogGrouped.length>0 && (
-          <div className="space-y-4">
-            {catalogGrouped.map(cg=> (
-              <div key={cg.id} className="border rounded shadow-sm bg-white">
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-800 text-white text-sm font-semibold rounded-t">
-                  <span>{cg.name} <span className="text-xs opacity-70">({cg.packages.length} باقات)</span></span>
-                </div>
-                <div className="overflow-auto">
-                  <table className="min-w-full text-xs">
-                    <thead className="bg-gray-100">
-                      <tr>
-                        <th className="px-2 py-1 text-right">#</th>
-                        <th className="px-2 py-1 text-right">الباقة</th>
-                        <th className="px-2 py-1 text-right">الكود</th>
-                        <th className="px-2 py-1 text-right">المزوّد</th>
-                        <th className="px-2 py-1 text-right">السعر الأساس</th>
-                        <th className="px-2 py-1 text-right">نشطة</th>
-                        <th className="px-2 py-1"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cg.packages.map((pk,i)=> (
-                        <tr key={pk.id} className={`odd:bg-white even:bg-gray-50 ${pk.isActive===false?'opacity-60':''}`}>
-                          <td className="px-2 py-1">{i+1}</td>
-                          <td className="px-2 py-1 font-medium">{pk.name}</td>
-                          <td className="px-2 py-1">{pk.publicCode || '-'}</td>
-                          <td className="px-2 py-1 text-xs">{pk.providerId?.slice(0,8) || '-'}</td>
-                          <td className="px-2 py-1">{pk.costPrice ?? '-'}</td>
-                          <td className="px-2 py-1">{pk.isActive? '✓':'✗'}</td>
-                          <td className="px-2 py-1 text-center">
-                            <button disabled className="text-xs px-2 py-0.5 rounded bg-gray-300 text-white opacity-60 cursor-not-allowed">تعديل</button>
-                          </td>
-                        </tr>
-                      ))}
-                      {cg.packages.length===0 && (
-                        <tr><td colSpan={7} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {catalogPreview.length>0 && catalogGrouped.length===0 && (
-          <div className="p-3 border rounded bg-white">
-            <div className="text-sm font-semibold mb-2">معاينة الكتالوج (أول {catalogPreview.length})</div>
-            <div className="grid md:grid-cols-3 gap-2 text-xs">
-              {catalogPreview.map(c=> (
-                <div key={c.id} className="px-2 py-1 rounded border bg-gray-50 flex justify-between">
-                  <span className="truncate" title={c.name}>{c.name}</span>
-                  <span className="text-gray-500">{c.packagesCount}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+  {/* أزلنا أقسام الكتالوج المنفصلة */}
     </div>
   );
 }

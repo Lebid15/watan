@@ -577,6 +577,15 @@ export class ProductsService {
     return saved as ProductPackage;
   }
 
+  // ✅ تحديث اسم المزود لباقات المنتج
+  async updatePackageProvider(packageId: string, providerName: string) {
+    const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any });
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+    (pkg as any).providerName = providerName;
+    await this.packagesRepo.save(pkg);
+    return { id: pkg.id, providerName };
+  }
+
   /** ✅ حذف باقة (مع أسعارها) */
   async deletePackage(tenantId: string, id: string): Promise<void> {
     const pkg = await this.packagesRepo.findOne({ where: { id, tenantId } as any, relations: ['prices'] });
