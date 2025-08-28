@@ -275,6 +275,26 @@ export const API_ROUTES = {
     },
   },
 
+  billing: {
+    overview: `${EFFECTIVE_API_BASE_URL}/tenant/billing/overview`,
+    invoices: (p?: { status?: string; overdue?: boolean }) => {
+      const base = `${EFFECTIVE_API_BASE_URL}/tenant/billing/invoices`;
+      if (!p) return base;
+      const qs = new URLSearchParams();
+      if (p.status) qs.set('status', p.status);
+      if (p.overdue) qs.set('overdue', 'true');
+      const s = qs.toString();
+      return s ? `${base}?${s}` : base;
+    },
+    pay: `${EFFECTIVE_API_BASE_URL}/tenant/billing/payments/request`,
+  },
+  adminBilling: {
+    tenants: (limit=20, offset=0) => `${EFFECTIVE_API_BASE_URL}/admin/billing/tenants?limit=${limit}&offset=${offset}`,
+    invoices: (tenantId: string) => `${EFFECTIVE_API_BASE_URL}/admin/billing/tenants/${tenantId}/invoices`,
+    markPaid: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/billing/invoices/${id}/mark-paid`,
+    health: `${EFFECTIVE_API_BASE_URL}/admin/billing/health`,
+  },
+
   /* ===== ØµÙØ­Ø§Øª Ø¹Ø§Ù…Ø© ÙŠÙØ­Ø±Ø±Ù‡Ø§ Ø§Ù„Ø£Ø¯Ù…Ù† (Ù…Ù† Ù†Ø­Ù† / ØªØ¹Ù„ÙŠÙ…Ø§Øª) ===== */
   site: {
     public: {
