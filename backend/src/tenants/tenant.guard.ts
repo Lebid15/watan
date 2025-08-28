@@ -22,6 +22,7 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/dev\/filtered-products-sync\/status$/, // GET status
   /^\/api\/dev\/filtered-products-sync\/repair$/, // POST/GET repair
   /^\/api\/dev\/filtered-products-sync\/catalog-preview$/, // GET catalog preview
+  /^\/api\/dev\/filtered-products-sync\/catalog-preview-grouped$/, // GET grouped catalog preview
   /^\/api\/dev\/seed-products$/, // POST seed demo products
   // Public catalog product listing (image fallback test)
   /^\/api\/products$/,
