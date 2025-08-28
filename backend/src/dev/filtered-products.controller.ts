@@ -144,12 +144,24 @@ export class DevFilteredProductsController {
     if (filtered.length === 0) return { items: [] };
     const ids = filtered.map(p => p.id);
     const pkgs: any[] = await this.productsRepo.manager.query(
-      `SELECT cp.id, cp.name, cp."catalogProductId", cp."publicCode" FROM catalog_package cp
-        WHERE cp."catalogProductId" = ANY($1) ORDER BY cp.name`, [ids]);
+      `SELECT cp.id, cp.name, cp."catalogProductId", cp."publicCode", cp."sourceProviderId", cp."costPrice", cp."isActive"
+         FROM catalog_package cp
+        WHERE cp."catalogProductId" = ANY($1)
+        ORDER BY cp.name`, [ids]);
     const grouped = filtered.map(p => ({
       id: p.id,
       name: p.name,
-      packages: pkgs.filter(k => k.catalogProductId === p.id).slice(0, MAX_PACKAGES_PER)
+      packages: pkgs
+        .filter(k => k.catalogProductId === p.id)
+        .slice(0, MAX_PACKAGES_PER)
+        .map(k => ({
+          id: k.id,
+          name: k.name,
+          publicCode: k.publicCode,
+          providerId: k.sourceProviderId,
+          costPrice: k.costPrice == null ? null : Number(k.costPrice),
+          isActive: k.isActive,
+        }))
     }));
     return { items: grouped };
   }

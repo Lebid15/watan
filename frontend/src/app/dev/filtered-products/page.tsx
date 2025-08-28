@@ -30,9 +30,10 @@ export default function DevFilteredProductsPage(){
   const [showRefreshConfirm,setShowRefreshConfirm]=useState(false);
   const [showProductDropdown,setShowProductDropdown]=useState(false);
   const [productSearch,setProductSearch]=useState('');
-  const [selectedProductId,setSelectedProductId]=useState<string|undefined>(undefined);
+  // اسم المنتج أو البادئة المختارة من القائمة (بدلاً من ID كي يعمل أيضاً مع عناصر الكتالوج)
+  const [selectedName,setSelectedName]=useState<string|undefined>(undefined);
   const [catalogPreview,setCatalogPreview]=useState<{id:string;name:string;packagesCount:number}[]>([]);
-  const [catalogGrouped,setCatalogGrouped]=useState<{id:string;name:string;packages:{id:string;name:string;publicCode?:string|null}[]}[]>([]);
+  const [catalogGrouped,setCatalogGrouped]=useState<{id:string;name:string;packages:{id:string;name:string;publicCode?:string|null;providerId?:string|null;costPrice?:number|null;isActive?:boolean}[]}[]>([]);
   const dropdownRef = useRef<HTMLDivElement|null>(null);
 
   const load = useCallback(async()=>{
@@ -130,7 +131,7 @@ export default function DevFilteredProductsPage(){
   };
 
   const nameFiltered = products.filter(p=> !textFilter.trim() || p.name.toLowerCase().includes(textFilter.toLowerCase()));
-  const filtered = selectedProductId ? nameFiltered.filter(p=>p.id===selectedProductId) : nameFiltered;
+  const filtered = selectedName ? nameFiltered.filter(p=> p.name.toLowerCase().startsWith(selectedName.toLowerCase())) : nameFiltered;
   const productOptions = [
     ...products,
     // دمج أسماء منتجات الكتالوج المجمعة للفلترة (بدون تكرار IDs المحلية)
@@ -188,7 +189,7 @@ export default function DevFilteredProductsPage(){
             type="button"
             onClick={()=> setShowProductDropdown(s=>!s)}
             className="px-3 py-1.5 text-sm border rounded bg-white hover:bg-gray-50"
-          >{selectedProductId ? (products.find(p=>p.id===selectedProductId)?.name || 'منتج') : 'كل المنتجات ▼'}</button>
+          >{selectedName ? (selectedName + ' ×') : 'كل المنتجات ▼'}</button>
           {showProductDropdown && (
             <div className="absolute z-20 mt-1 w-64 max-h-80 overflow-auto bg-white border rounded shadow-lg p-2 space-y-2">
               <input
@@ -199,7 +200,7 @@ export default function DevFilteredProductsPage(){
                 className="w-full border rounded px-2 py-1 text-xs"
               />
               <button
-                onClick={()=> { setSelectedProductId(undefined); setShowProductDropdown(false); }}
+                onClick={()=> { setSelectedName(undefined); setShowProductDropdown(false); }}
                 className="w-full text-right text-xs px-2 py-1 rounded hover:bg-gray-100 font-medium"
               >كل المنتجات</button>
               <div className="divide-y divide-gray-100"></div>
@@ -208,8 +209,8 @@ export default function DevFilteredProductsPage(){
                 .map(p=> (
                   <button
                     key={p.id}
-                    onClick={()=> { setSelectedProductId(p.id); setShowProductDropdown(false); }}
-                    className={`w-full text-right text-xs px-2 py-1 rounded hover:bg-gray-100 ${p.id===selectedProductId? 'bg-sky-50 font-semibold':''}`}
+                    onClick={()=> { setSelectedName(p.name); setShowProductDropdown(false); }}
+                    className={`w-full text-right text-xs px-2 py-1 rounded hover:bg-gray-100 ${p.name===selectedName? 'bg-sky-50 font-semibold':''}`}
                   >{p.name}</button>
                 ))}
               {productOptions.filter(p=> !productSearch.trim() || p.name.toLowerCase().includes(productSearch.toLowerCase())).length===0 && (
@@ -292,20 +293,30 @@ export default function DevFilteredProductsPage(){
                     <thead className="bg-gray-100">
                       <tr>
                         <th className="px-2 py-1 text-right">#</th>
-                        <th className="px-2 py-1 text-right">الاسم</th>
+                        <th className="px-2 py-1 text-right">الباقة</th>
                         <th className="px-2 py-1 text-right">الكود</th>
+                        <th className="px-2 py-1 text-right">المزوّد</th>
+                        <th className="px-2 py-1 text-right">السعر الأساس</th>
+                        <th className="px-2 py-1 text-right">نشطة</th>
+                        <th className="px-2 py-1"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {cg.packages.map((pk,i)=> (
-                        <tr key={pk.id} className="odd:bg-white even:bg-gray-50">
+                        <tr key={pk.id} className={`odd:bg-white even:bg-gray-50 ${pk.isActive===false?'opacity-60':''}`}>
                           <td className="px-2 py-1">{i+1}</td>
                           <td className="px-2 py-1 font-medium">{pk.name}</td>
                           <td className="px-2 py-1">{pk.publicCode || '-'}</td>
+                          <td className="px-2 py-1 text-xs">{pk.providerId?.slice(0,8) || '-'}</td>
+                          <td className="px-2 py-1">{pk.costPrice ?? '-'}</td>
+                          <td className="px-2 py-1">{pk.isActive? '✓':'✗'}</td>
+                          <td className="px-2 py-1 text-center">
+                            <button disabled className="text-xs px-2 py-0.5 rounded bg-gray-300 text-white opacity-60 cursor-not-allowed">تعديل</button>
+                          </td>
                         </tr>
                       ))}
                       {cg.packages.length===0 && (
-                        <tr><td colSpan={3} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
+                        <tr><td colSpan={7} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
                       )}
                     </tbody>
                   </table>
