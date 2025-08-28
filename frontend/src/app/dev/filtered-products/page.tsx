@@ -32,6 +32,7 @@ export default function DevFilteredProductsPage(){
   const [productSearch,setProductSearch]=useState('');
   const [selectedProductId,setSelectedProductId]=useState<string|undefined>(undefined);
   const [catalogPreview,setCatalogPreview]=useState<{id:string;name:string;packagesCount:number}[]>([]);
+  const [catalogGrouped,setCatalogGrouped]=useState<{id:string;name:string;packages:{id:string;name:string;publicCode?:string|null}[]}[]>([]);
   const dropdownRef = useRef<HTMLDivElement|null>(null);
 
   const load = useCallback(async()=>{
@@ -61,6 +62,9 @@ export default function DevFilteredProductsPage(){
       }).catch(()=>{});
       api.get('/dev/filtered-products-sync/catalog-preview').then(r=>{
         if(r.data?.items) setCatalogPreview(r.data.items);
+      }).catch(()=>{});
+      api.get('/dev/filtered-products-sync/catalog-preview-grouped').then(r=>{
+        if(r.data?.items) setCatalogGrouped(r.data.items);
       }).catch(()=>{});
     }catch(e:any){ setError(e?.message||'فشل التحميل'); }
     finally{ setLoading(false); }
@@ -271,8 +275,42 @@ export default function DevFilteredProductsPage(){
   {!loading && filtered.length===0 && <div className="text-center text-gray-500 py-10">لا توجد منتجات</div>}
         {loading && <div className="text-center text-gray-400 py-10 animate-pulse">تحميل...</div>}
       </div>
-      <div className="space-y-2">
-        {catalogPreview.length>0 && (
+      <div className="space-y-4">
+        {catalogGrouped.length>0 && (
+          <div className="space-y-4">
+            {catalogGrouped.map(cg=> (
+              <div key={cg.id} className="border rounded shadow-sm bg-white">
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-800 text-white text-sm font-semibold rounded-t">
+                  <span>{cg.name} <span className="text-xs opacity-70">({cg.packages.length} باقات)</span></span>
+                </div>
+                <div className="overflow-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-2 py-1 text-right">#</th>
+                        <th className="px-2 py-1 text-right">الاسم</th>
+                        <th className="px-2 py-1 text-right">الكود</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cg.packages.map((pk,i)=> (
+                        <tr key={pk.id} className="odd:bg-white even:bg-gray-50">
+                          <td className="px-2 py-1">{i+1}</td>
+                          <td className="px-2 py-1 font-medium">{pk.name}</td>
+                          <td className="px-2 py-1">{pk.publicCode || '-'}</td>
+                        </tr>
+                      ))}
+                      {cg.packages.length===0 && (
+                        <tr><td colSpan={3} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {catalogPreview.length>0 && catalogGrouped.length===0 && (
           <div className="p-3 border rounded bg-white">
             <div className="text-sm font-semibold mb-2">معاينة الكتالوج (أول {catalogPreview.length})</div>
             <div className="grid md:grid-cols-3 gap-2 text-xs">

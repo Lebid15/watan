@@ -125,12 +125,14 @@ export class ProductsController {
   @Post()
   async create(@Req() req: Request, @Body() body: Partial<Product>): Promise<Product> {
     // ✅ استخدم tenant context من middleware
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    console.log('[PRODUCTS] create tenantId=', tenantId, 'body=', body);
+    let tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    // حاوية المنتجات العالمية (catalog container) لاستعمال المطوّر قبل أن يقوم المستأجر بالاستيراد لاحقًا
+    const PSEUDO_TENANT = '00000000-0000-0000-0000-000000000000';
     if (!tenantId) {
-      // اجعل الرسالة واضحة لسهولة التشخيص بدل 500 غامض
-      throw new BadRequestException('Missing tenant context (X-Tenant-Host header or auth token with tenant)');
+      // السماح بالإنشاء في الحاوية العالمية بدل رفض الطلب – هذا هو "المخزن" الذي سيُستورد لاحقًا للمستأجرين
+      tenantId = PSEUDO_TENANT;
     }
+    console.log('[PRODUCTS] create effectiveTenantId=', tenantId, 'body=', body);
     const product = new Product();
     product.name = body.name ?? 'منتج بدون اسم';
     product.description = body.description ?? '';

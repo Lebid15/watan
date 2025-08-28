@@ -127,6 +127,27 @@ export class DevFilteredProductsController {
     return { count: rows.length, items: rows };
   }
 
+  // Grouped preview: لكل منتج => باقاته (أول N منتجات + أول M باقات لكل منتج لتخفيف الحجم)
+  @Get('catalog-preview-grouped')
+  async catalogPreviewGrouped() {
+    // حدود أمان
+    const MAX_PRODUCTS = 15;
+    const MAX_PACKAGES_PER = 25;
+    const products: any[] = await this.productsRepo.manager.query(
+      `SELECT id, name FROM catalog_product ORDER BY name LIMIT $1`, [MAX_PRODUCTS]);
+    if (products.length === 0) return { items: [] };
+    const ids = products.map(p => p.id);
+    const pkgs: any[] = await this.productsRepo.manager.query(
+      `SELECT cp.id, cp.name, cp."catalogProductId", cp."publicCode" FROM catalog_package cp
+        WHERE cp."catalogProductId" = ANY($1) ORDER BY cp.name`, [ids]);
+    const grouped = products.map(p => ({
+      id: p.id,
+      name: p.name,
+      packages: pkgs.filter(k => k.catalogProductId === p.id).slice(0, MAX_PACKAGES_PER)
+    }));
+    return { items: grouped };
+  }
+
   // LOCAL TEST ONLY (not public path list) create ad-hoc demo product with packages
   @Post('local-test-force')
   async localTestForce() {
