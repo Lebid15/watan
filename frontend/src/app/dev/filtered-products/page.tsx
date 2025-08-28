@@ -31,6 +31,7 @@ export default function DevFilteredProductsPage(){
   const [showProductDropdown,setShowProductDropdown]=useState(false);
   const [productSearch,setProductSearch]=useState('');
   const [selectedProductId,setSelectedProductId]=useState<string|undefined>(undefined);
+  const [catalogPreview,setCatalogPreview]=useState<{id:string;name:string;packagesCount:number}[]>([]);
   const dropdownRef = useRef<HTMLDivElement|null>(null);
 
   const load = useCallback(async()=>{
@@ -57,6 +58,9 @@ export default function DevFilteredProductsPage(){
       // fetch backend meta in parallel (non-blocking)
       api.get('/health').then(r=>{
         setBackendMeta({gitSha:r.data.gitSha, buildTime:r.data.buildTime, version:r.data.version});
+      }).catch(()=>{});
+      api.get('/dev/filtered-products-sync/catalog-preview').then(r=>{
+        if(r.data?.items) setCatalogPreview(r.data.items);
       }).catch(()=>{});
     }catch(e:any){ setError(e?.message||'فشل التحميل'); }
     finally{ setLoading(false); }
@@ -130,7 +134,7 @@ export default function DevFilteredProductsPage(){
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold">المنتجات والباقات12 (Dev / All)</h1>
+        <h1 className="text-2xl font-bold">المنتجات والباقات13 (Dev / All)</h1>
         <div className="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="font-mono" title="Frontend Git SHA">F:{process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}</span>
@@ -265,6 +269,21 @@ export default function DevFilteredProductsPage(){
         ))}
   {!loading && filtered.length===0 && <div className="text-center text-gray-500 py-10">لا توجد منتجات</div>}
         {loading && <div className="text-center text-gray-400 py-10 animate-pulse">تحميل...</div>}
+      </div>
+      <div className="space-y-2">
+        {catalogPreview.length>0 && (
+          <div className="p-3 border rounded bg-white">
+            <div className="text-sm font-semibold mb-2">معاينة الكتالوج (أول {catalogPreview.length})</div>
+            <div className="grid md:grid-cols-3 gap-2 text-xs">
+              {catalogPreview.map(c=> (
+                <div key={c.id} className="px-2 py-1 rounded border bg-gray-50 flex justify-between">
+                  <span className="truncate" title={c.name}>{c.name}</span>
+                  <span className="text-gray-500">{c.packagesCount}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

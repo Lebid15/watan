@@ -105,6 +105,28 @@ export class DevFilteredProductsController {
     return this.repair();
   }
 
+  // Preview a slice of catalog (raw) for dev page (not persisted into products yet)
+  @Get('catalog-preview')
+  async catalogPreview() {
+    // Limit slice to avoid heavy payload
+    const rows: any[] = await this.productsRepo.manager.query(`
+      WITH p AS (
+        SELECT id, name
+        FROM catalog_product
+        ORDER BY name
+        LIMIT 30
+      )
+      SELECT p.id, p.name,
+        (
+          SELECT count(*) FROM catalog_package cp
+          WHERE cp."catalogProductId" = p.id
+        ) AS packagesCount
+      FROM p
+      ORDER BY p.name;
+    `);
+    return { count: rows.length, items: rows };
+  }
+
   // LOCAL TEST ONLY (not public path list) create ad-hoc demo product with packages
   @Post('local-test-force')
   async localTestForce() {
