@@ -8,6 +8,7 @@ import {
   NotFoundException,
   Delete,
   Put,
+  Patch,
   UseInterceptors,
   UploadedFile,
   UseGuards,
@@ -25,6 +26,7 @@ import { ProductPackage } from './product-package.entity';
 import { PriceGroup } from './price-group.entity';
 import { AuthGuard } from '@nestjs/passport';
 import { configureCloudinary } from '../utils/cloudinary';
+import { UpdatePackageCodeDto } from './dto/update-package-code.dto';
 
 
 function parseMoney(input?: any): number {
@@ -320,14 +322,24 @@ export class ProductsController {
   @UseGuards(AuthGuard('jwt'))
   @Get('user')
   async getAllForUser(@Req() req) {
-    // ✅ استخدم tenant context من middleware
-    return this.productsService.findAllForUser((req as any).tenant?.id || (req as any).user?.tenantId, req.user.id);
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    const raw = await this.productsService.getTenantVisibleProducts(tenantId);
+    // إبقاء نفس الشكل السابق تقريباً (currencyCode وغيره كان يأتي من findAllForUser)
+    // TODO: دمج سياق العملة لاحقاً إن لزم
+    return { items: raw };
   }
 
   @UseGuards(AuthGuard('jwt'))
   @Get('user/:id')
   async getOneForUser(@Req() req, @Param('id') id: string) {
-    // ✅ استخدم tenant context من middleware
-    return this.productsService.findOneForUser((req as any).tenant?.id || (req as any).user?.tenantId, id, req.user.id);
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    const product = await this.productsService.getTenantVisibleProductById(tenantId, id);
+    if (!product) throw new NotFoundException('معرف المنتج غير صالح أو غير متاح');
+    return product;
+  }
+
+  @Patch('packages/:id/code')
+  async updatePackageCode(@Param('id') id: string, @Body() dto: UpdatePackageCodeDto) {
+    return this.productsService.updatePackageCode(id, dto.publicCode);
   }
 }

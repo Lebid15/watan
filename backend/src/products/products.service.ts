@@ -1771,10 +1771,8 @@ export class ProductsService {
     const TRY_RATE = getRate('TRY') ?? 1;
     const toTRY = (amount: number, code?: string) => {
       const c = (code || 'TRY').toUpperCase();
-      if (c === 'TRY') return amount;
       const r = getRate(c);
-      if (!r || !Number.isFinite(r) || r <= 0) return amount;
-      return amount * (TRY_RATE / r);
+      return r && r > 0 ? amount * (TRY_RATE / r) : amount;
     };
 
     const pickImage = (obj: any): string | null =>
@@ -1982,62 +1980,34 @@ export class ProductsService {
     };
   }
 
-  // ✅ إضافة/قراءة ملاحظات الطلب
-  async addOrderNote(orderId: string, by: 'admin' | 'system' | 'user', text: string, tenantId?: string) {
-    const order = await this.ordersRepo.findOne({
-      where: { id: orderId } as any,
-      relations: ['user'],
-    });
-    if (!order) throw new NotFoundException('الطلب غير موجود');
-    this.ensureSameTenant((order as any).user?.tenantId, tenantId);
-
-    const now = new Date().toISOString();
-    const note = { by, text: String(text || '').slice(0, 500), at: now };
-
-    const current: any[] = Array.isArray((order as any).notes) ? (order as any).notes : [];
-    (order as any).notes = [...current, note];
-    (order as any).notesCount = (order as any).notes.length;
-
-    await this.ordersRepo.save(order);
-    return (order as any).notes;
+  // ====================
+  async getTenantVisibleProducts(tenantId: string) {
+    // استخدام QueryBuilder لإرجاع المنتجات مع الباقات ذات publicCode فقط
+    const products = await this.productsRepo
+      .createQueryBuilder('prod')
+      .leftJoinAndSelect('prod.packages', 'pkg')
+      .where('prod.tenantId = :tenantId', { tenantId })
+      .andWhere('pkg.publicCode IS NOT NULL')
+      .orderBy('prod.name', 'ASC')
+      .getMany();
+    return products;
   }
 
-  async getOrderDetailsForUser(orderId: string, userId: string, tenantId?: string) {
-    const order = await this.ordersRepo.findOne({
-      where: { id: orderId, user: { id: userId } as any } as any,
-      relations: ['product', 'package', 'user', 'user.currency'],
-    });
-    if (!order) throw new NotFoundException('الطلب غير موجود');
+  async getTenantVisibleProductById(tenantId: string, productId: string) {
+    return this.productsRepo
+      .createQueryBuilder('prod')
+      .leftJoinAndSelect('prod.packages', 'pkg')
+      .where('prod.tenantId = :tenantId', { tenantId })
+      .andWhere('prod.id = :productId', { productId })
+      .andWhere('pkg.publicCode IS NOT NULL')
+      .getOne();
+  }
 
-    // 🔐 تأكيد انتماء الطلب لنفس المستأجر
-    this.ensureSameTenant((order as any).user?.tenantId, tenantId);
-
-    const priceUSD = Number(order.price) || 0;
-    const rate = order.user?.currency ? Number(order.user.currency.rate) : 1;
-    const code = order.user?.currency ? order.user.currency.code : 'USD';
-
-    return {
-      id: order.id,
-      status: order.status,
-      quantity: order.quantity,
-      createdAt: order.createdAt,
-      userIdentifier: order.userIdentifier ?? null,
-      extraField: (order as any).extraField ?? null,
-
-      priceUSD,
-      unitPriceUSD: order.quantity ? priceUSD / Number(order.quantity) : priceUSD,
-      display: {
-        currencyCode: code,
-        unitPrice: (order.quantity ? priceUSD / Number(order.quantity) : priceUSD) * rate,
-        totalPrice: priceUSD * rate,
-      },
-
-      product: { id: order.product?.id, name: order.product?.name, imageUrl: (order as any).product?.imageUrl ?? null },
-      package: { id: order.package?.id, name: order.package?.name, imageUrl: (order as any).package?.imageUrl ?? null },
-
-      manualNote: (order as any).manualNote ?? null,
-      providerMessage: (order as any).providerMessage ?? (order as any).lastMessage ?? null,
-      notes: Array.isArray((order as any).notes) ? (order as any).notes : [],
-    };
+  async updatePackageCode(id: string, code: number) {
+    const codeStr = String(code);
+    const exists = await this.packagesRepo.exists({ where: { publicCode: codeStr } });
+    if (exists) throw new ConflictException('Public code already in use');
+    await this.packagesRepo.update({ id }, { publicCode: codeStr });
+    return { ok: true };
   }
 }
