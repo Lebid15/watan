@@ -312,6 +312,16 @@ export class ProductsController {
     return this.productsService.updatePackageCode(packageId, body.publicCode);
   }
 
+  // ✅ إتاحة جلب الكود الحالي لباقة واحدة (مفيد للـ UI للتحديث اللحظي)
+  @Get('packages/:id/code')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  async getPackageCode(@Param('id') packageId: string) {
+    const pkg = await this.productsService.findPackageById(packageId);
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+    return { id: pkg.id, publicCode: pkg.publicCode };
+  }
+
   // 🔹 جلب أسعار باقات متعددة (Bulk)
   @Post('packages/prices')
   async getPackagesPricesBulk(

@@ -62,6 +62,12 @@ export class ProductsService {
     private readonly accounting: AccountingPeriodsService,
   ) {}
 
+  // --- Helper: fetch single package by id (lightweight, no relations) ---
+  async findPackageById(id: string): Promise<ProductPackage | null> {
+    if (!id) return null;
+    return this.packagesRepo.findOne({ where: { id } as any });
+  }
+
   // Phase2: تفعيل منتج من الكتالوج للـ tenant
   async activateCatalogProduct(tenantId: string, catalogProductId: string): Promise<Product> {
     if (!catalogProductId) throw new BadRequestException('catalogProductId مطلوب');
@@ -2132,12 +2138,20 @@ export class ProductsService {
     }
 
     // تحقق من التعارض (فريد عالميًا الآن)
-  const conflict = await this.packagesRepo.findOne({ where: { publicCode: trimmed } as any });
+    let finalCode = trimmed;
+    const conflict = await this.packagesRepo.findOne({ where: { publicCode: finalCode } as any });
     if (conflict && conflict.id !== id) {
-      throw new ConflictException('Public code already in use');
+      // محاولة واحدة لتوليد كود بديل تلقائي (زيادة بسيطة) لتقليل إحباط المطور
+      const alt = finalCode + 1;
+      const altConflict = await this.packagesRepo.findOne({ where: { publicCode: alt } as any });
+      if (!altConflict) {
+        finalCode = alt;
+      } else {
+        throw new ConflictException('الكود مستخدم بالفعل (Conflict)');
+      }
     }
 
-  await this.packagesRepo.update({ id }, { publicCode: trimmed });
-  return { ok: true, id, publicCode: trimmed };
+    await this.packagesRepo.update({ id }, { publicCode: finalCode });
+    return { ok: true, id, publicCode: finalCode };
   }
 }
