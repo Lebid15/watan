@@ -32,15 +32,21 @@ export class DevFilteredProductsController {
       catalogDiag = { error: e?.message || String(e) };
     }
     // 1. Fetch catalog products with their packages count >1
-    const rows: Array<{ id: string; name: string; pkg_count: number }> = await this.productsRepo.manager.query(`
-      SELECT cp.id, COALESCE(cp.name, 'Catalog Product') as name, COUNT(cpk.id) as pkg_count
-      FROM catalog_product cp
-      LEFT JOIN catalog_package cpk ON cpk."catalogProductId" = cp.id
-      GROUP BY cp.id
-      HAVING COUNT(cpk.id) > 1
-      ORDER BY cp.created_at DESC NULLS LAST
-      LIMIT 500;
-    `);
+    let rows: Array<{ id: string; name: string; pkg_count: number }> = [];
+    let catalogQueryError: string | null = null;
+    try {
+      rows = await this.productsRepo.manager.query(`
+        SELECT cp.id, COALESCE(cp.name, 'Catalog Product') as name, COUNT(cpk.id) as pkg_count
+        FROM catalog_product cp
+        LEFT JOIN catalog_package cpk ON cpk."catalogProductId" = cp.id
+        GROUP BY cp.id
+        HAVING COUNT(cpk.id) > 1
+        ORDER BY cp.created_at DESC NULLS LAST
+        LIMIT 500;
+      `);
+    } catch(e:any){
+      catalogQueryError = e?.message || String(e);
+    }
 
     let createdProducts = 0;
     let createdPackages = 0;
@@ -86,7 +92,7 @@ export class DevFilteredProductsController {
       }
     }
     // Fallback seeding if no catalog rows matched AND database empty
-    if (rows.length === 0 && beforeProducts === 0) {
+  if ((rows.length === 0 || catalogQueryError) && beforeProducts === 0) {
       const demo = this.productsRepo.create({
         name: 'Demo Product',
         description: 'Fallback demo product (no catalog data found)',
@@ -116,6 +122,8 @@ export class DevFilteredProductsController {
         beforePackages,
         afterProducts: beforeProducts + 1,
         message: 'No catalog data -> seeded demo product',
+    catalogQueryError,
+    catalogDiag,
       };
     }
 
@@ -129,7 +137,7 @@ export class DevFilteredProductsController {
       beforePackages,
       afterProducts,
       afterPackages,
-      catalogDiag,
+  catalogDiag: { ...catalogDiag, catalogQueryError },
     };
   }
 
