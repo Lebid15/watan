@@ -10,6 +10,8 @@ function redirect(target: string, req: NextRequest) {
   if (/^https?:\/\//i.test(target)) {
     url = new URL(target);
   } else {
+  // Avoid redirect loop: if target equals current path -> just continue
+  if (current.pathname === target) return NextResponse.next();
     url = current.clone();
     url.pathname = target;
     url.search = '';

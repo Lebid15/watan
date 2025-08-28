@@ -335,6 +335,10 @@ export const API_ROUTES = {
       resolve: (id: string) => `${EFFECTIVE_API_BASE_URL}/dev/errors/${id}/resolve`,
       delete: (id: string) => `${EFFECTIVE_API_BASE_URL}/dev/errors/${id}`,
     }
+  ,
+  seed: `${EFFECTIVE_API_BASE_URL}/dev/seed-products`,
+  filteredSync: `${EFFECTIVE_API_BASE_URL}/dev/filtered-products-sync`,
+  filteredStatus: `${EFFECTIVE_API_BASE_URL}/dev/filtered-products-sync/status`,
   },
 };
 

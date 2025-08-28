@@ -1,9 +1,20 @@
 // frontend/src/app/api/me/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+// Use api.<root>/api always in production to avoid hitting same subdomain frontend which 404s for /api/users/profile
+function deriveApiBase(req: NextRequest): string {
+  const envBase = process.env.NEXT_PUBLIC_API_URL;
+  if (envBase && /^https?:\/\//i.test(envBase)) return envBase.replace(/\/$/, '');
+  const host = req.headers.get('host') || '';
+  if (/\.syrz1\.com$/i.test(host)) {
+    const root = host.split('.').slice(-2).join('.');
+    return `https://api.${root}/api`;
+  }
+  return 'http://localhost:3000/api'; // backend dev port
+}
 
 export async function GET(req: NextRequest) {
+  const API_BASE_URL = deriveApiBase(req);
   try {
     const token = req.cookies.get('access_token')?.value;
     if (!token) {
