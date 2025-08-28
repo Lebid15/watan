@@ -1,4 +1,5 @@
 import { Body, Controller, Post, UnauthorizedException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../products/product.entity';
@@ -43,6 +44,7 @@ export class DevSeedProductsController {
       createdIds.push(prod.id);
       for (const p of spec.packages) {
         await this.packagesRepo.save(this.packagesRepo.create({
+          id: randomUUID(),
           product: prod,
           tenantId: pseudoTenant,
           name: p.name,

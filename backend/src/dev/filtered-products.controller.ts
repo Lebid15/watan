@@ -1,4 +1,5 @@
 import { Controller, Post, Get } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../products/product.entity';
@@ -22,29 +23,33 @@ export class DevFilteredProductsController {
     const beforePackages = await this.packagesRepo.count();
 
     // Helper to insert demo packages (publicCode kept NULL to avoid uniqueness conflicts in prod data)
-  const insertDemoPackages = async (product: Product) => {
-    let created = 0;
-    const errors: any[] = [];
+    const insertDemoPackages = async (product: Product, force = false) => {
+      let created = 0;
+      const errors: any[] = [];
       for (let i = 1; i <= 2; i++) {
-        const exists = await this.packagesRepo.findOne({ where: { product: { id: product.id }, name: `Demo Package ${i}` } as any });
-        if (exists) continue;
-        const pkg = this.packagesRepo.create({
-          product,
-          tenantId: pseudoTenant,
-          name: `Demo Package ${i}`,
-          basePrice: 10 * i,
-          capital: 10 * i,
-          isActive: true,
-          publicCode: null, // null => let future manual assignment happen without conflicts
-        } as any);
         try {
+          let exists: ProductPackage | null = null;
+          if (!force) {
+            exists = await this.packagesRepo.findOne({ where: { product: { id: product.id }, name: `Demo Package ${i}` } as any });
+          }
+          if (exists) continue;
+          const pkg = this.packagesRepo.create({
+            id: randomUUID(),
+            product,
+            tenantId: pseudoTenant,
+            name: `Demo Package ${i}`,
+            basePrice: 10 * i,
+            capital: 10 * i,
+            isActive: true,
+            publicCode: null,
+          } as any);
           await this.packagesRepo.save(pkg as any);
           created++;
         } catch (e: any) {
-      errors.push({ i, message: e?.message, code: e?.code });
+          errors.push({ i, message: e?.message, code: e?.code });
         }
       }
-    return { created, errors };
+      return { created, errors };
     };
 
     if (beforeProducts === 0) {
@@ -62,9 +67,9 @@ export class DevFilteredProductsController {
 
     // Backfill scenario: product exists (e.g., first attempt failed mid-way) but packages missing
     if (beforeProducts > 0 && beforePackages === 0) {
-      const demoExisting = await this.productsRepo.findOne({ where: { tenantId: pseudoTenant, name: 'Demo Product' } as any });
+      const demoExisting = await this.productsRepo.findOne({ where: { tenantId: pseudoTenant } as any });
       if (demoExisting) {
-        const { created: createdPkgs, errors } = await insertDemoPackages(demoExisting);
+        const { created: createdPkgs, errors } = await insertDemoPackages(demoExisting, true);
         return { packagesBackfilled: true, createdPkgs, errors, beforeProducts, beforePackages };
       }
     }
@@ -98,5 +103,34 @@ export class DevFilteredProductsController {
   @Get('repair')
   async repairGet() {
     return this.repair();
+  }
+
+  // LOCAL TEST ONLY (not public path list) create ad-hoc demo product with packages
+  @Post('local-test-force')
+  async localTestForce() {
+    if (process.env.NODE_ENV === 'production') {
+      return { blocked: true };
+    }
+    const pseudoTenant = '00000000-0000-0000-0000-000000000000';
+    const p = await this.productsRepo.save(this.productsRepo.create({
+      name: 'Local Test Product ' + Date.now(),
+      tenantId: pseudoTenant,
+      isActive: true,
+      useCatalogImage: true,
+    }) as any);
+    for (let i = 1; i <= 2; i++) {
+      await this.packagesRepo.save(this.packagesRepo.create({
+        id: randomUUID(),
+        product: p,
+        tenantId: pseudoTenant,
+        name: 'LTPK ' + i,
+        basePrice: 5 * i,
+        capital: 5 * i,
+        isActive: true,
+        publicCode: null,
+      }) as any);
+    }
+    const withPkgs = await this.productsRepo.findOne({ where: { id: p.id } as any, relations: ['packages'] });
+    return { created: p.id, packages: withPkgs?.packages?.length };
   }
 }
