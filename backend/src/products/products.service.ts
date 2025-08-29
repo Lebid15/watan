@@ -737,19 +737,30 @@ export class ProductsService {
         const existing = await this.packagesRepo.findOne({ where: { tenantId, publicCode: pc } as any });
         if (existing) {
           console.warn('[PKG][CREATE][ERR] publicCode already used', { publicCode: pc });
-          throw new ConflictException('الكود مستخدم مسبقًا');
+          const err: any = new ConflictException('الكود مستخدم مسبقًا');
+          (err as any).code = 'PKG_PUBLIC_CODE_CONFLICT';
+          throw err;
         }
         // إن كان المنتج مرتبطًا بالكتالوج: قَيِّد الكود بقائمة المطور
         if (product && product.catalogProductId) {
           const { available, used } = await this.getAvailableBridges(tenantId, productId);
-            const allPotential = [...available, ...used];
-            if (!allPotential.includes(pc)) {
-              throw new BadRequestException('publicCode غير ضمن الأكواد المرجعية');
+          const allPotential = [...available, ...used];
+      if (!allPotential.includes(pc)) {
+            // إذا كان السياق دور مطوّر اسمح بالتمديد (إضافة كود جديد للمصدر لاحقًا)
+            const devLike = (ctx?.finalRole || '').toLowerCase() === 'developer' || tenantId === this.DEV_TENANT_ID;
+            if (devLike) {
+              console.warn('[PKG][CREATE][WARN] developer adding NEW publicCode outside pool', { pc, productId: product.id });
+              // السماح، ويمكن لاحقًا إدراج الكود في مصدر المطوّر ضمن عملية sync
+            } else {
+        const err: any = new BadRequestException('publicCode غير ضمن الأكواد المرجعية');
+        err.code = 'PKG_PUBLIC_CODE_OUT_OF_POOL';
+        throw err;
             }
-            // في حال لم يُرسل catalogLinkCode وحُدد publicCode نحاول توليد linkCode مساويًا للكود
-            if (isFeatureEnabled('catalogLinking') && !(data as any).catalogLinkCode) {
-              (data as any).catalogLinkCode = String(pc);
-            }
+          }
+          // في حال لم يُرسل catalogLinkCode وحُدد publicCode نحاول توليد linkCode مساويًا للكود
+          if (isFeatureEnabled('catalogLinking') && !(data as any).catalogLinkCode) {
+            (data as any).catalogLinkCode = String(pc);
+          }
         } else {
           // منتج غير كتالوجي: لا نتحقق من التجمع، فقط نسمح بالكود طالما غير مكرر في التينانت
           console.log('[PKG][CREATE][INFO] assigning publicCode to non-catalog product', { pc });
@@ -757,7 +768,9 @@ export class ProductsService {
         (newPackage as any).publicCode = pc;
       } else if (data.publicCode !== null) {
         console.warn('[PKG][CREATE][ERR] invalid publicCode value', { value: data.publicCode });
-        throw new BadRequestException('publicCode غير صالح (يجب أن يكون رقمًا موجبًا)');
+  const err: any = new BadRequestException('publicCode غير صالح (يجب أن يكون رقمًا موجبًا)');
+  err.code = 'PKG_PUBLIC_CODE_INVALID';
+  throw err;
       }
     }
 
