@@ -103,6 +103,29 @@ export class TenantGuard implements CanActivate {
       throw new UnauthorizedException('Auth required');
     }
 
+    // If we have both a resolved tenant (via domain/header) and a JWT user whose tenantId differs,
+    // treat it as a tenant context mismatch (e.g., developer/global token reused on a storefront subdomain).
+    // We allow developer / instance_owner to proceed (global scope) so they can access global pages without forced logout.
+    if (tenant && user) {
+      const userTenantId = user.tenantId ?? null;
+      const roleLower = (user.role || '').toLowerCase();
+      const isGlobalRole = roleLower === 'developer' || roleLower === 'instance_owner';
+      if (userTenantId && tenant.id !== userTenantId && !isGlobalRole) {
+        if (process.env.DEBUG_TENANT_GUARD === '1') {
+          // eslint-disable-next-line no-console
+          console.log('[TenantGuard][DEBUG] TENANT_MISMATCH user.tenantId=%s req.tenant.id=%s role=%s path=%s', userTenantId, tenant.id, roleLower, path);
+        }
+        throw new UnauthorizedException('TENANT_MISMATCH');
+      }
+      if (!userTenantId && tenant.id && !isGlobalRole) {
+        if (process.env.DEBUG_TENANT_GUARD === '1') {
+          // eslint-disable-next-line no-console
+          console.log('[TenantGuard][DEBUG] TENANT_MISMATCH (user has null tenantId) req.tenant.id=%s role=%s path=%s', tenant.id, roleLower, path);
+        }
+        throw new UnauthorizedException('TENANT_MISMATCH');
+      }
+    }
+
     // Enforce tenant ownership/distributor constraints only on tenant paths
     if (isTenantPath) {
       if (isExternalTenantPath && req.externalToken) {
