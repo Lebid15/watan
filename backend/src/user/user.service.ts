@@ -278,6 +278,11 @@ export class UserService {
         console.warn('[PROFILE] currency lookup failed – fallback USD:', e?.code || e?.message);
       }
     }
+    // If forcing USD for tenant storefronts: environment flag FORCE_TENANT_USD = true
+    // Applies only when tenantId is present (storefront user) not for global developer/owner.
+    if (tenantId && process.env.FORCE_TENANT_USD === 'true') {
+      currencyCode = 'USD';
+    }
     console.log('[PROFILE][SIMPLIFIED] success', { id: user.id, email: user.email, currencyCode });
     return {
       id: user.id,

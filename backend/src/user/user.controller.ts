@@ -145,7 +145,9 @@ export class UserController {
   @UseGuards(AuthGuard('jwt'))
   @Get('profile-with-currency')
   async getProfileWithCurrency(@Req() req) {
-    const tenantId = req.tenant?.id;
+    // Allow fallback to tenantId carried inside JWT if middleware could not resolve domain.
+    const tokenTenantId: string | null = req.user?.tenantId ?? null;
+    const tenantId: string | null = req.tenant?.id ?? tokenTenantId;
     const userId = req.user.id ?? req.user.sub;
     if (!userId) throw new BadRequestException('User ID is missing in token');
     try {
@@ -160,7 +162,7 @@ export class UserController {
             email: req.user.email,
             fullName: req.user.fullName ?? null,
             balance: 0,
-            currencyCode: 'USD',
+            currencyCode: 'USD', // ثابت افتراضياً
             role,
             fallback: true,
         };
