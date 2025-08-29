@@ -132,16 +132,9 @@ export default function ProductsPage() {
                 </div>
                 <div className="mt-1.5 md:mt-2 text-center text-[11px] sm:text-[12px] md:text-sm text-[rgb(var(--color-text-primary))] truncate w-16 sm:w-20 md:w-24 flex flex-col items-center gap-0.5">
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={async (e)=>{
-                        e.preventDefault(); e.stopPropagation();
-                        const newVal = !(product.isActive !== false);
-                        setProducts(ps=> ps.map(p=> p.id===product.id? {...p, isActive:newVal}:p));
-                        try { await api.put(`/products/${product.id}`, { isActive: newVal }); }
-                        catch(err:any){ alert(err?.response?.data?.message||err?.message||'فشل تحديث الحالة'); setProducts(ps=> ps.map(p=> p.id===product.id? {...p, isActive:!newVal}:p)); }
-                      }}
-                      title={(product.isActive!==false)?'نشط - انقر للتعطيل':'معطل - انقر للتفعيل'}
-                      className={`w-3.5 h-3.5 rounded-full border transition-colors ${ (product.isActive!==false) ? 'bg-green-500 border-green-600':'bg-red-500 border-red-600' }`}
+                    <span
+                      className={`w-3.5 h-3.5 rounded-full border ${ (product.isActive!==false) ? 'bg-green-500 border-green-600':'bg-red-500 border-red-600' }`}
+                      title={(product.isActive!==false)?'نشط':'معطل'}
                     />
                     <span>{product.name}</span>
                   </div>
