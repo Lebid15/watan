@@ -13,6 +13,9 @@ interface ProductPackage {
   publicCode?: number | null;
 }
 
+// قائمة الأكواد/الجسور الافتراضية (المطور وضعها مسبقًا)
+const DEFAULT_CODE_OPTIONS = [60, 325, 660, 1800, 3850, 8100];
+
 interface Product {
   id: string;
   name: string;
@@ -215,7 +218,8 @@ export default function AdminProductDetailsPage() {
           name: pkgName,
           description: pkgDesc,
           basePrice: pkgPrice,
-      publicCode: pkgBridge,
+  publicCode: pkgBridge, // نرسله ليتوافق مع واجهة التحديث العامة
+  catalogLinkCode: pkgBridge, // لضمان عدم فشل التحقق في حالة تفعيل ميزة ربط الكتالوج
           isActive: true,
         }),
       });
@@ -475,17 +479,17 @@ function PackageRow({ pkg, onChanged, onDelete }: { pkg: ProductPackage; onChang
   const [desc, setDesc] = useState(pkg.description || "");
   const [basePrice, setBasePrice] = useState<number>(pkg.basePrice);
   const [isActive, setIsActive] = useState<boolean>(pkg.isActive);
-  const [codeOptions, setCodeOptions] = useState<number[]>([]); // متاح لاحقًا لو احتجنا لجلب خارجي
+  const [codeOptions, setCodeOptions] = useState<number[]>([]);
   const [code, setCode] = useState<string>(pkg.publicCode ? String(pkg.publicCode) : "");
   const [saving, setSaving] = useState(false);
   const token = (typeof window !== 'undefined') ? localStorage.getItem('token') || '' : '';
 
   // يمكن لاحقًا جلب قائمة أكواد من API، الآن نولد نطاق مريح حول الكود الحالي
   useEffect(() => {
-    const base = pkg.publicCode && pkg.publicCode > 0 ? pkg.publicCode : 0;
-    const arr: number[] = [];
-    for (let i = 1; i <= 15; i++) arr.push(base + i); // نطاق بسيط
-    setCodeOptions(arr);
+    // استخدم القائمة الافتراضية + أي أكواد أخرى ظهرت (للموثوقية)
+    const union = new Set<number>(DEFAULT_CODE_OPTIONS);
+    if (pkg.publicCode && pkg.publicCode > 0) union.add(pkg.publicCode);
+    setCodeOptions(Array.from(union).sort((a,b)=>a-b));
   }, [pkg.publicCode]);
 
   const saveBasic = async () => {
@@ -529,9 +533,10 @@ function PackageRow({ pkg, onChanged, onDelete }: { pkg: ProductPackage; onChang
         {editing ? (
           <select className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={code} onChange={e => setCode(e.target.value)}>
             <option value="">اختر</option>
-            {codeOptions.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
+            {codeOptions.map(c => {
+              const usedByOther = c === pkg.publicCode ? false : false; // يمكن لاحقًا تمرير قائمة للحجز
+              return <option key={c} value={c} disabled={usedByOther}>{c}</option>;
+            })}
           </select>
         ) : (
           pkg.publicCode ? <span>{pkg.publicCode}</span> : <span className="text-text-secondary">—</span>
