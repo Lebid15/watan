@@ -142,8 +142,11 @@ export class ProductsController {
       tenantId = PSEUDO_TENANT;
     }
     console.log('[PRODUCTS] create effectiveTenantId=', tenantId, 'body=', body);
+    const AUTO_DEFAULT_BASE = 'منتج جديد';
     const product = new Product();
-    product.name = body.name ?? 'منتج بدون اسم';
+    const providedName = (body.name || '').trim();
+    const usingAuto = !providedName;
+    product.name = providedName || AUTO_DEFAULT_BASE; // اسم افتراضي مبدئي
     product.description = body.description ?? '';
     product.isActive = body.isActive ?? true;
     product.tenantId = tenantId;
@@ -153,6 +156,27 @@ export class ProductsController {
     } catch (err: any) {
       // Postgres unique violation
       if (err?.code === '23505') {
+        // إن كان الاسم مولَّداً تلقائياً نجرب إعادة المحاولة مع لاحقة
+        if (usingAuto) {
+          for (let i = 2; i <= 6; i++) {
+            const trial = `${AUTO_DEFAULT_BASE}-${i}`;
+            product.name = trial;
+            try {
+              const saved = await this.productsService.create(product);
+              console.warn('[PRODUCTS][CTRL][CREATE][AUTO-RETRY-SUCCESS]', { tenantId, name: trial });
+              return saved;
+            } catch (e2: any) {
+              if (e2?.code === '23505') {
+                continue; // جرّب اسم آخر
+              }
+              // خطأ آخر أثناء إعادة المحاولة
+              console.error('[PRODUCTS][CTRL][CREATE][AUTO-RETRY-ERROR]', { tenantId, trial, message: e2?.message, code: e2?.code });
+              throw new InternalServerErrorException('فشل إنشاء المنتج (محاولة تلقائية)');
+            }
+          }
+          console.error('[PRODUCTS][CTRL][CREATE][AUTO-FAILED-ALL]', { tenantId });
+          throw new ConflictException('تعذّر إيجاد اسم افتراضي متاح للمنتج، يرجى اختيار اسم يدوي');
+        }
         console.error('[PRODUCTS][CTRL][CREATE][UNIQUE]', { tenantId, name: product.name, code: err.code, detail: err?.detail });
         throw new ConflictException('اسم المنتج موجود مسبقاً داخل هذا المستأجر');
       }

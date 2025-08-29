@@ -91,14 +91,22 @@ export class AuthController {
     // Clear the auth cookie using same attributes (domain/path) so browser actually removes it.
     const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.syrz1.com';
     try {
-      res.cookie('auth', '', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        domain: cookieDomain,
-        path: '/',
-        maxAge: 0,
-      });
+      const clearDefs: Array<{ name: string; httpOnly?: boolean }> = [
+        { name: 'auth', httpOnly: true },
+        { name: 'access_token' },
+        { name: 'role' },
+        { name: 'tenant_host' },
+      ];
+      for (const c of clearDefs) {
+        res.cookie(c.name, '', {
+          httpOnly: !!c.httpOnly,
+          secure: true,
+          sameSite: 'none',
+          domain: cookieDomain,
+          path: '/',
+          maxAge: 0,
+        });
+      }
     } catch (e) {
       console.warn('[AUTH] failed to clear auth cookie:', (e as any)?.message);
     }
