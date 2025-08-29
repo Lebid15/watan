@@ -66,7 +66,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ حارس إداري يعتمد على /api/me (الكوكيز) بدل localStorage
+  // ✅ حارس إداري يعتمد على Api.me() (الكوكيز عبر backend) بدل localStorage
   const router = useRouter();
   useEffect(() => {
     let mounted = true;
