@@ -19,15 +19,18 @@ function deriveApiBase(req: NextRequest): string {
 export async function GET(req: NextRequest) {
   const API_BASE_URL = deriveApiBase(req);
   try {
+    console.log('[api/me] start', { host: req.headers.get('host'), apiBase: API_BASE_URL });
   // Accept either access_token (client) or auth (httpOnly from backend) cookie.
   const token = req.cookies.get('access_token')?.value || req.cookies.get('auth')?.value;
     if (!token) {
+      console.warn('[api/me] no token cookie');
       return NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
     }
 
     // نمرّر التوكن للباك إند عبر Authorization
   const originalHost = req.headers.get('host') || '';
   const profileUrl = API_BASE_URL === '/api' ? '/api/users/profile' : `${API_BASE_URL}/users/profile`;
+  console.log('[api/me] fetching profile', { profileUrl, hasToken: !!token });
   const r = await fetch(profileUrl, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -40,14 +43,18 @@ export async function GET(req: NextRequest) {
 
     if (!r.ok) {
       if (r.status === 401) {
+        console.warn('[api/me] upstream 401');
         return NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
       }
+      console.error('[api/me] upstream error', r.status);
       return NextResponse.json({ ok: false, error: 'UPSTREAM_ERROR', status: r.status }, { status: 500 });
     }
 
     const data = await r.json();
+  console.log('[api/me] success');
   return NextResponse.json({ ok: true, user: data });
   } catch (e) {
+  console.error('[api/me] exception', (e as any)?.message);
   return NextResponse.json({ ok: false, error: 'INTERNAL' }, { status: 500 });
   }
 }
