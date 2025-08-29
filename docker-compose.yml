@@ -54,6 +54,8 @@ services:
       DEBUG_TENANT_GUARD: "1"
       REQUEST_LOGGING: "1"
       FEATURE_BILLING_V1: "true"
+      FORCE_TENANT_USD: "true"
+      JWT_DEBUG: "0"
     expose:
       - "3000"
     volumes:
@@ -110,5 +112,3 @@ volumes:
   frontend_logs:
   nginx_logs:
   # (Optional) redis persistence volume could be added later
-
-  
