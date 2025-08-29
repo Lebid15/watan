@@ -90,6 +90,10 @@ export class TenantGuard implements CanActivate {
       // This avoids ordering issues where this global guard runs before controller-level JwtAuthGuard.
       const hasAuthHeader = !!(req.headers && req.headers.authorization);
       const hasAuthCookie = !!(req.cookies && req.cookies.auth);
+      if (process.env.JWT_DEBUG === '1') {
+        // eslint-disable-next-line no-console
+        console.log('[TenantGuard][DEBUG] pre-defer check path=%s hasAuthHeader=%s hasAuthCookie=%s rawCookieLen=%s', path, hasAuthHeader, hasAuthCookie, (req.headers && (req.headers.cookie||'')).length);
+      }
       if (hasAuthHeader || hasAuthCookie) {
         if (process.env.JWT_DEBUG === '1') {
           // eslint-disable-next-line no-console
