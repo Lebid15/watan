@@ -337,6 +337,17 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// Convenience high-level methods (avoid scattering relative /api calls)
+export const Api = {
+  client: api,
+  me: () => api.get(API_ROUTES.users.me),
+  logout: () => api.post('/auth/logout'),
+  admin: {
+    pendingOrders: () => api.get('/admin/pending-orders-count'),
+    pendingDeposits: () => api.get('/admin/pending-deposits-count'),
+  },
+};
+
 // helper Ø¨Ø³ÙŠØ· Ù„Ù‚Ø±Ø§Ø¡Ø© ÙƒÙˆÙƒÙŠ Ø¨Ø§Ù„Ø§Ø³Ù…
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;

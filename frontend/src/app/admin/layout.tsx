@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminNavbar from './AdminNavbar';
 import AdminTopBar from './AdminTopBar';
+import { Api } from '@/utils/api';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const DESIGN_WIDTH = 1280;
@@ -71,10 +72,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     let mounted = true;
     (async () => {
       try {
-        const r = await fetch('/api/me', { method: 'GET' });
-        if (!mounted) return;
-
-        if (r.status === 401) {
+  const r = await Api.me().catch((e) => e?.response);
+  if (!mounted) return;
+  if (!r || r.status === 401) {
           // غير مسجّل → أعده للّوجين مع next
           const next = typeof window !== 'undefined' ? window.location.pathname : '/admin/dashboard';
           router.replace(`/login?next=${encodeURIComponent(next)}`);
@@ -99,9 +99,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // زر الخروج — يمسح الكوكيز عبر الراوت الداخلي
   const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch {}
+  try { await Api.logout(); } catch {}
     // (اختياري) تنظيف أي تخزين محلي قديم
     try {
       localStorage.removeItem('user');

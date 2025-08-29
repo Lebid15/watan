@@ -1,21 +1,11 @@
 // frontend/src/app/api/me/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-// Derive backend API base. On tenant subdomains we prefer relative '/api' so nginx proxies directly (avoids CORS and extra DNS hop).
-function deriveApiBase(req: NextRequest): string {
-  const host = req.headers.get('host') || '';
+// Always use central NEXT_PUBLIC_API_URL (no relative fallback) to avoid hitting tenant host.
+function deriveApiBase(_req: NextRequest): string {
   const envBase = process.env.NEXT_PUBLIC_API_URL;
-  // اعتمد دومين الـ API المركزي إن وُجد
   if (envBase && /^https?:\/\//i.test(envBase)) return envBase.replace(/\/$/, '');
-  // خلاف ذلك جرّب relative proxy على التينانت
-  if (/\.syrz1\.com$/i.test(host) && !/^api\./i.test(host)) {
-    return '/api';
-  }
-  if (/\.syrz1\.com$/i.test(host)) {
-    const root = host.split('.').slice(-2).join('.');
-    return `https://api.${root}/api`;
-  }
-  return 'http://localhost:3000/api'; // backend dev port
+  return 'http://localhost:3000/api';
 }
 
 export async function GET(req: NextRequest) {
@@ -31,7 +21,7 @@ export async function GET(req: NextRequest) {
 
     // نمرّر التوكن للباك إند عبر Authorization
   const originalHost = req.headers.get('host') || '';
-  const profileUrl = API_BASE_URL === '/api' ? '/api/users/profile' : `${API_BASE_URL}/users/profile`;
+  const profileUrl = `${API_BASE_URL}/users/profile`;
   console.log('[api/me] fetching profile', { profileUrl, hasToken: !!token });
   const r = await fetch(profileUrl, {
       headers: {
