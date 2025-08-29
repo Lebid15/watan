@@ -13,7 +13,6 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/auth\/request-email-verification$/,
   /^\/api\/auth\/verify-email$/,
   /^\/api\/auth\/bootstrap-developer$/,
-  /^\/(api\/)?auth\/debug-token$/, // TEMP public debug route (optional global prefix)
   /^\/api\/auth\/assume-tenant$/,
   /^\/api\/auth\/passkeys\/options\/register$/,
   /^\/api\/auth\/passkeys\/register$/,
