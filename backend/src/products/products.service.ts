@@ -440,6 +440,11 @@ export class ProductsService {
 
   async create(product: Product): Promise<Product> {
     try {
+  // تأكد من وجود قيم افتراضية لكل الحقول لتجنّب أي قيود مستقبلية
+  if (!product.name) product.name = 'منتج جديد';
+  if (product.useCatalogImage === undefined) product.useCatalogImage = true;
+  if (product.isActive === undefined) product.isActive = true;
+  // حافظ على nulls الاختيارية كما هي
       const saved = await this.productsRepo.save(product);
       console.log('[PRODUCTS][SERVICE] created product id=', saved.id, 'tenantId=', saved.tenantId);
       return saved;

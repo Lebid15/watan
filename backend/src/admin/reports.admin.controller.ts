@@ -186,6 +186,7 @@ export class ReportsAdminController {
     @Query('end') end?: string,
     @Query('userId') userId?: string,
     @Query('provider') provider?: string,
+  @Query('view') view?: string, // optional: 'usd_only'
   ) {
     const tenantId = this.getTenantId(req);
 
@@ -283,30 +284,58 @@ export class ReportsAdminController {
     const profitTRY     = Number(totalsRow?.profitTry ?? (totalSalesTRY - totalCostTRY));
     const profitUSD     = Number(totalsRow?.profitUsd ?? (tryPerUsd > 0 ? (profitTRY / tryPerUsd) : 0));
 
-    return {
-      filters: {
-        range,
-        start: formatDateIstanbul(startAt),
-        end:   formatDateIstanbul(endAt),
-        userId: userUUID ?? null,
-        provider: provider ?? null,
-        basis: 'approvedLocalDate',
-      },
-      counts: {
-        total: Number(countsRow?.total ?? 0),
-        approved: Number(countsRow?.approved ?? 0),
-        rejected: Number(countsRow?.rejected ?? 0),
-      },
-      totalsTRY: {
-        cost: Number.isFinite(totalCostTRY) ? +totalCostTRY.toFixed(2) : 0,
-        sales: Number.isFinite(totalSalesTRY) ? +totalSalesTRY.toFixed(2) : 0,
-      },
-      profit: {
-        try: Number.isFinite(profitTRY) ? +profitTRY.toFixed(2) : 0,
-        usd: Number.isFinite(profitUSD) ? +profitUSD.toFixed(2) : 0,
+    if (view === 'usd_only') {
+      const salesUsd = tryPerUsd > 0 ? (totalSalesTRY / tryPerUsd) : 0;
+      const costUsd  = tryPerUsd > 0 ? (totalCostTRY / tryPerUsd) : 0;
+      return {
+        filters: {
+          range,
+          start: formatDateIstanbul(startAt),
+          end:   formatDateIstanbul(endAt),
+          userId: userUUID ?? null,
+          provider: provider ?? null,
+          basis: 'approvedLocalDate',
+          view: 'usd_only',
+        },
+        counts: {
+          total: Number(countsRow?.total ?? 0),
+          approved: Number(countsRow?.approved ?? 0),
+          rejected: Number(countsRow?.rejected ?? 0),
+        },
+        totalsUSD: {
+          cost: Number.isFinite(costUsd) ? +costUsd.toFixed(2) : 0,
+          sales: Number.isFinite(salesUsd) ? +salesUsd.toFixed(2) : 0,
+        },
+        profitUSD: Number.isFinite(profitUSD) ? +profitUSD.toFixed(2) : 0,
         rateTRY: tryPerUsd,
-      },
-    };
+      };
+    }
+
+    return {
+        filters: {
+          range,
+          start: formatDateIstanbul(startAt),
+          end:   formatDateIstanbul(endAt),
+          userId: userUUID ?? null,
+          provider: provider ?? null,
+          basis: 'approvedLocalDate',
+          view: 'default',
+        },
+        counts: {
+          total: Number(countsRow?.total ?? 0),
+          approved: Number(countsRow?.approved ?? 0),
+          rejected: Number(countsRow?.rejected ?? 0),
+        },
+        totalsTRY: {
+          cost: Number.isFinite(totalCostTRY) ? +totalCostTRY.toFixed(2) : 0,
+          sales: Number.isFinite(totalSalesTRY) ? +totalSalesTRY.toFixed(2) : 0,
+        },
+        profit: {
+          try: Number.isFinite(profitTRY) ? +profitTRY.toFixed(2) : 0,
+          usd: Number.isFinite(profitUSD) ? +profitUSD.toFixed(2) : 0,
+          rateTRY: tryPerUsd,
+        },
+      };
   }
 
   @Get('profits/by-provider')

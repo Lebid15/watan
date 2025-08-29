@@ -31,8 +31,12 @@ export class SiteSettingsAdminController {
   }
 
   @Get('about')
-  getAbout(@Req() req: Request) {
-    return this.service.get(this.getTenantId(req), 'about');
+  async getAbout(@Req() req: Request) {
+    try {
+      return await this.service.get(this.getTenantId(req), 'about');
+    } catch (e) {
+      return { value: null, error: 'failed', message: (e as any)?.message };
+    }
   }
 
   @Put('about')
@@ -41,8 +45,12 @@ export class SiteSettingsAdminController {
   }
 
   @Get('infoes')
-  getInfoes(@Req() req: Request) {
-    return this.service.get(this.getTenantId(req), 'infoes');
+  async getInfoes(@Req() req: Request) {
+    try {
+      return await this.service.get(this.getTenantId(req), 'infoes');
+    } catch (e) {
+      return { value: null, error: 'failed', message: (e as any)?.message };
+    }
   }
 
   @Put('infoes')
