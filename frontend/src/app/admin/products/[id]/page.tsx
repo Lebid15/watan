@@ -13,8 +13,8 @@ interface ProductPackage {
   publicCode?: number | null;
 }
 
-// قائمة الأكواد/الجسور الافتراضية (المطور وضعها مسبقًا)
-const DEFAULT_CODE_OPTIONS = [60, 325, 660, 1800, 3850, 8100];
+// لم يعد هناك قائمة ثابتة؛ نستخرج الأكواد المتاحة من باقات المنتج نفسها
+// بحيث لا يمكن للمستأجر إضافة كود جديد خارج ما وفره المطوّر مسبقًا.
 
 interface Product {
   id: string;
@@ -414,7 +414,13 @@ export default function AdminProductDetailsPage() {
             </thead>
             <tbody>
               {product.packages.map((pkg) => (
-                <PackageRow key={pkg.id} pkg={pkg} onChanged={() => fetchProduct()} onDelete={() => handleDeletePackage(pkg.id)} />
+                <PackageRow
+                  key={pkg.id}
+                  pkg={pkg}
+                  allPackages={product.packages || []}
+                  onChanged={() => fetchProduct()}
+                  onDelete={() => handleDeletePackage(pkg.id)}
+                />
               ))}
             </tbody>
           </table>
@@ -455,9 +461,12 @@ export default function AdminProductDetailsPage() {
               <option value="">-- اختر الجسر --</option>
               {bridgesLoading && <option value="" disabled>جاري التحميل...</option>}
               {!bridgesLoading && bridges.length === 0 && <option value="" disabled>لا توجد جسور متاحة</option>}
-              {bridges.map((b) => (
-                <option key={b} value={b}>{b}</option>
-              ))}
+              {/* الأكواد المتاحة = جميع publicCode الموجودة حاليًا (بدون null) والتي لم تُستخدم في باقة مضافة جديدة جاري إنشاؤها */}
+              {Array.from(new Set((product.packages || []).map(p => p.publicCode).filter(Boolean) as number[]))
+                .sort((a,b)=>a-b)
+                .map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
             </select>
           </div>
           <button
@@ -473,7 +482,7 @@ export default function AdminProductDetailsPage() {
 }
 
 // ===== صف الباقة =====
-function PackageRow({ pkg, onChanged, onDelete }: { pkg: ProductPackage; onChanged: () => void; onDelete: () => void }) {
+function PackageRow({ pkg, allPackages, onChanged, onDelete }: { pkg: ProductPackage; allPackages: ProductPackage[]; onChanged: () => void; onDelete: () => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(pkg.name);
   const [desc, setDesc] = useState(pkg.description || "");
@@ -484,13 +493,11 @@ function PackageRow({ pkg, onChanged, onDelete }: { pkg: ProductPackage; onChang
   const [saving, setSaving] = useState(false);
   const token = (typeof window !== 'undefined') ? localStorage.getItem('token') || '' : '';
 
-  // يمكن لاحقًا جلب قائمة أكواد من API، الآن نولد نطاق مريح حول الكود الحالي
+  // الأكواد المسموح اختيارها = كل الأكواد الحالية للباقات في هذا المنتج (بدون null)
   useEffect(() => {
-    // استخدم القائمة الافتراضية + أي أكواد أخرى ظهرت (للموثوقية)
-    const union = new Set<number>(DEFAULT_CODE_OPTIONS);
-    if (pkg.publicCode && pkg.publicCode > 0) union.add(pkg.publicCode);
-    setCodeOptions(Array.from(union).sort((a,b)=>a-b));
-  }, [pkg.publicCode]);
+    const list = Array.from(new Set(allPackages.map(p => p.publicCode).filter((v): v is number => typeof v === 'number'))).sort((a,b)=>a-b);
+    setCodeOptions(list);
+  }, [allPackages.map(p => p.publicCode).join(',')]);
 
   const saveBasic = async () => {
     setSaving(true);
