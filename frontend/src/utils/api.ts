@@ -13,7 +13,7 @@ const RAW_API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3
 // Disabled: relative /api caused 404 on tenant subdomains because frontend host doesn't serve backend endpoints.
 // Keeping absolute api.<root>/api base to avoid redirect loops & 404.
 
-// Ø­Ø§Ø±Ø³ Ø¯ÙØ§Ø¹ÙŠ: Ø¥Ø°Ø§ Ø§Ù„ØµÙØ­Ø© Ù†ÙØ³Ù‡Ø§ https Ù„ÙƒÙ† Ø§Ù„Ù€ API_BASE_URL ÙŠØ¨Ø¯Ø£ Ø¨Ù€ http Ù„Ù†ÙØ³ Ø§Ù„Ø¯ÙˆÙ…ÙŠÙ† Ø§Ù„Ø£Ø³Ø§Ø³ÙŠ -> Ø§Ø±ÙØ¹ Ù„Ù„Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ https Ù„ØªÙØ§Ø¯ÙŠ Mixed Content
+// Ø­Ø§Ø±Ø³ Ø¯ÙƒØ§Ø±Ø§Øª: Ø¥Ø°Ø§ Ø§Ù„ØµÙØ­Ø© Ù†ÙØ³Ù‡Ø§ https Ù„ÙƒÙ† Ø§Ù„Ù€ API_BASE_URL ÙŠØ¨Ø¯Ø£ Ø¨Ù€ http Ù„Ù†ÙØ³ Ø§Ù„Ø¯ÙˆÙ…ÙŠÙ† Ø§Ù„Ø£Ø³Ø§Ø³ÙŠ -> Ø§Ø±ÙØ¹ Ù„Ù„Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ https Ù„ØªÙØ§Ø¯ÙŠ Mixed Content
 function upgradeToHttpsIfNeeded(raw: string): string {
   try {
     if (typeof window === 'undefined') return raw; // Ø£Ø«Ù†Ø§Ø¡ Ø§Ù„Ù€ SSR Ù„Ø§ Ù†Ø¹Ø±Ù Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ Ø§Ù„Ù…ØªØµÙØ­
@@ -46,9 +46,9 @@ const isLocalhostApi = /^https?:\/\/localhost(?::\d+)?/i.test(
   API_BASE_URL.replace(/\/api\/?$/, '')
 );
 
-/** ÙÙ„Ø§Øº Ù„Ù„ØªØ­ÙƒÙ… Ø¨Ø·Ù„Ø¨ "ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø·Ù„Ø¨":
+/** ÙÙ„Ø§Øº Ù„Ù„ØªØ­ÙƒÙ… Ø¨Ø·Ù„Ø¨ "ØªÙƒØ§Ù„ Ø§Ù„Ø·Ù„Ø¨":
  * - ÙŠÙ‚Ø±Ø£ Ù…Ù† NEXT_PUBLIC_ORDERS_DETAILS_ENABLED
- * - Ø¥Ù† Ù„Ù… ÙŠØ­Ø¯ÙŽÙ‘Ø¯ØŒ Ù†Ø¹Ø·Ù„Ù‡Ø§ ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ø¹Ù†Ø¯Ù…Ø§ ÙŠÙƒÙˆÙ† Ø§Ù„Ù€ API Ù…Ø­Ù„ÙŠÙ‹Ø§ Ù„ØªØ¬Ù†Ù‘Ø¨ 404
+ * - Ø¥Ù† Ù„Ù… ÙŠØ­Ø¯ÙŽÙ‘Ø¯ØŒ Ù†Ø¹Ø·Ù„Ù‡Ø§ ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ù¹Ù†Ø¯Ù…Ø§ ÙŠÙƒÙˆÙ† Ø§Ù„Ù€ API Ù…Ø­Ù„ÙŠÙ‹Ø§ Ù„ØªØ¬Ù†Ù‘Ø¨ 404
  */
 export const ORDERS_DETAILS_ENABLED = (() => {
   const v = process.env.NEXT_PUBLIC_ORDERS_DETAILS_ENABLED;
@@ -350,7 +350,7 @@ function addTenantHeaders(config: any) {
     config.headers['X-Tenant-Host'] = tenantCookie;
   }
 
-  // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§Ø´Ø±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
+  // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§ØšØ±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
   if (typeof window !== 'undefined') {
     const currentHost = window.location.host;          // Ù…Ø«Ø§Ù„: saeed.localhost:3000
     if (currentHost.includes('.localhost')) {
@@ -453,14 +453,25 @@ if (!ANY_AXIOS.__TENANT_HEADERS_ATTACHED__) {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (error?.response?.status === 401 && typeof window !== 'undefined') {
-      const p = window.location.pathname || '';
-      const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
-      const onAuthPages  = p === '/login' || p === '/register';
-
-      if (!inBackoffice && !onAuthPages) {
-        localStorage.removeItem('token');
-        window.location.assign('/login');
+    const status = error?.response?.status;
+    const code = error?.response?.data?.code;
+    if (typeof window !== 'undefined') {
+      if (code === 'TENANT_MISMATCH') {
+        try { localStorage.removeItem('token'); } catch {}
+        try { document.cookie = 'tenant_host=; Max-Age=0; path=/'; } catch {}
+        const current = window.location.pathname || '/';
+        if (!/login/.test(current)) {
+          const url = '/login?cause=tenant_mismatch';
+          window.location.replace(url);
+        }
+      } else if (status === 401) {
+        const p = window.location.pathname || '';
+        const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
+        const onAuthPages  = p === '/login' || p === '/register';
+        if (!inBackoffice && !onAuthPages) {
+          try { localStorage.removeItem('token'); } catch {}
+          window.location.assign('/login');
+        }
       }
     }
     return Promise.reject(error);
