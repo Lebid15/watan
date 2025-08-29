@@ -437,6 +437,19 @@ export class ProductsController {
     return this.productsService.updatePackageBasic(tenantId, packageId, body);
   }
 
+  // دعم قديم: PUT /products/packages/:id لتحديث حقول بسيطة (الاسم / الحالة)
+  @Put('packages/:id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  async legacyUpdatePackage(
+    @Req() req: Request,
+    @Param('id') packageId: string,
+    @Body() body: { name?: string; isActive?: boolean; description?: string | null; basePrice?: number },
+  ) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    return this.productsService.updatePackageBasic(tenantId, packageId, body);
+  }
+
   // ✅ تحديث اسم المزود
   @Patch('packages/:id/provider')
   @UseGuards(AuthGuard('jwt'), RolesGuard)

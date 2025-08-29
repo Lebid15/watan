@@ -531,14 +531,13 @@ export class ProductsService {
   }
 
   async getTenantVisibleProductById(tenantId: string, productId: string): Promise<any> {
+    // لا تشترط وجود باقات نشطة لاعتبار المنتج موجودًا
     const qb = this.productsRepo.createQueryBuilder('prod')
       .leftJoinAndSelect('prod.packages', 'pkg')
       .leftJoinAndSelect('pkg.prices', 'pp')
       .leftJoinAndSelect('pp.priceGroup', 'pg')
       .where('prod.tenantId = :tenantId', { tenantId })
-      .andWhere('prod.id = :productId', { productId })
-      .andWhere('pkg.publicCode IS NOT NULL')
-      .andWhere('pkg.isActive = TRUE');
+      .andWhere('prod.id = :productId', { productId });
 
     const product: any = await qb.getOne();
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
@@ -664,21 +663,23 @@ export class ProductsService {
       const link = (data as any).catalogLinkCode?.trim();
       if (!link) {
         console.warn('[PKG][CREATE][ERR] catalogLinkCode missing');
-        throw new BadRequestException('catalogLinkCode مطلوب');
+        // محاولة اشتقاقه لاحقاً بعد التحقق من publicCode (سنؤجل الرمي الآن)
       }
       // تحقق وجود linkCode في catalog_package لنفس catalogProductId
-      const row = await this.productsRepo.manager.query(
-        'SELECT 1 FROM catalog_package WHERE "catalogProductId" = $1 AND "linkCode" = $2 LIMIT 1',
-        [product.catalogProductId, link],
-      );
-      if (!row || row.length === 0) {
-        console.warn('[PKG][CREATE][ERR] invalid catalogLinkCode for catalogProduct', {
-          productId: product.id,
-          link,
-        });
-        throw new BadRequestException('catalogLinkCode غير صالح لهذا المنتج الكتالوجي');
+      if (link) {
+        const row = await this.productsRepo.manager.query(
+          'SELECT 1 FROM catalog_package WHERE "catalogProductId" = $1 AND "linkCode" = $2 LIMIT 1',
+          [product.catalogProductId, link],
+        );
+        if (!row || row.length === 0) {
+          console.warn('[PKG][CREATE][ERR] invalid catalogLinkCode for catalogProduct', {
+            productId: product.id,
+            link,
+          });
+          throw new BadRequestException('catalogLinkCode غير صالح لهذا المنتج الكتالوجي');
+        }
+        (data as any).catalogLinkCode = link;
       }
-      (data as any).catalogLinkCode = link;
       // إن كان الدور موزّع سجل من أنشأ الباقة
       if (ctx?.finalRole === 'distributor' && ctx?.userId) {
         (data as any).createdByDistributorId = ctx.userId;
@@ -705,10 +706,23 @@ export class ProductsService {
     if (data.publicCode != null) {
       const pc = Number(data.publicCode);
       if (Number.isInteger(pc) && pc > 0) {
-        const existing = await this.packagesRepo.findOne({ where: { publicCode: pc } as any });
+        // تحقق أنه غير مستخدم داخل نفس المستأجر لهذا المنتج/الكتالوج
+        const existing = await this.packagesRepo.findOne({ where: { tenantId, publicCode: pc } as any });
         if (existing) {
           console.warn('[PKG][CREATE][ERR] publicCode already used', { publicCode: pc });
           throw new ConflictException('الكود مستخدم مسبقًا');
+        }
+        // إن كان المنتج مرتبطًا بالكتالوج: قَيِّد الكود بقائمة المطور
+        if (product.catalogProductId) {
+          const { available, used } = await this.getAvailableBridges(tenantId, productId);
+            const allPotential = [...available, ...used];
+            if (!allPotential.includes(pc)) {
+              throw new BadRequestException('publicCode غير ضمن الأكواد المرجعية');
+            }
+            // في حال لم يُرسل catalogLinkCode وحُدد publicCode نحاول توليد linkCode مساويًا للكود
+            if (isFeatureEnabled('catalogLinking') && !(data as any).catalogLinkCode) {
+              (data as any).catalogLinkCode = String(pc);
+            }
         }
         (newPackage as any).publicCode = pc;
       } else if (data.publicCode !== null) {

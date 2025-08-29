@@ -418,7 +418,8 @@ export default function AdminProductDetailsPage() {
                   key={pkg.id}
                   pkg={pkg}
                   allPackages={product.packages || []}
-                  onChanged={() => fetchProduct()}
+                  availableBridges={bridges}
+                  onChanged={() => { fetchProduct(); fetchBridges(); }}
                   onDelete={() => handleDeletePackage(pkg.id)}
                 />
               ))}
@@ -452,7 +453,15 @@ export default function AdminProductDetailsPage() {
             onChange={(e) => setPkgPrice(parseFloat(e.target.value))}
           />
           <div className="mb-2">
-            <label className="block text-text-secondary text-sm mb-1">الجسر (مطلوب)</label>
+            <label className="block text-text-secondary text-sm mb-1 flex items-center gap-2">
+              <span>الجسر (مطلوب)</span>
+              <button
+                type="button"
+                onClick={fetchBridges}
+                className="text-[11px] px-2 py-0.5 rounded bg-bg-surface border border-border hover:bg-bg-surface-alt"
+                disabled={bridgesLoading}
+              >تحديث</button>
+            </label>
             <select
               className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary"
               value={pkgBridge}
@@ -460,14 +469,15 @@ export default function AdminProductDetailsPage() {
             >
               <option value="">-- اختر الجسر --</option>
               {bridgesLoading && <option value="" disabled>جاري التحميل...</option>}
-              {!bridgesLoading && bridges.length === 0 && <option value="" disabled>لا توجد جسور متاحة</option>}
-              {/* الأكواد المتاحة = جميع publicCode الموجودة حاليًا (بدون null) والتي لم تُستخدم في باقة مضافة جديدة جاري إنشاؤها */}
-              {Array.from(new Set((product.packages || []).map(p => p.publicCode).filter(Boolean) as number[]))
+              {!bridgesLoading && bridges.length === 0 && <option value="" disabled>لا توجد جسور متاحة (اطلب من المطوّر إضافة كود)</option>}
+              {bridges
+                .filter(b => !isNaN(Number(b)))
                 .sort((a,b)=>a-b)
                 .map(b => (
                   <option key={b} value={b}>{b}</option>
                 ))}
             </select>
+            <div className="text-[11px] mt-1 text-text-secondary">يتم جلب الأكواد من مصدر المطوّر؛ لا يمكنك إدخال رقم جديد يدويًا.</div>
           </div>
           <button
             onClick={handleAddPackage}
@@ -482,7 +492,7 @@ export default function AdminProductDetailsPage() {
 }
 
 // ===== صف الباقة =====
-function PackageRow({ pkg, allPackages, onChanged, onDelete }: { pkg: ProductPackage; allPackages: ProductPackage[]; onChanged: () => void; onDelete: () => void }) {
+function PackageRow({ pkg, allPackages, availableBridges, onChanged, onDelete }: { pkg: ProductPackage; allPackages: ProductPackage[]; availableBridges: number[]; onChanged: () => void; onDelete: () => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(pkg.name);
   const [desc, setDesc] = useState(pkg.description || "");
@@ -493,11 +503,14 @@ function PackageRow({ pkg, allPackages, onChanged, onDelete }: { pkg: ProductPac
   const [saving, setSaving] = useState(false);
   const token = (typeof window !== 'undefined') ? localStorage.getItem('token') || '' : '';
 
-  // الأكواد المسموح اختيارها = كل الأكواد الحالية للباقات في هذا المنتج (بدون null)
+  // الأكواد المسموح اختيارها = (الكود الحالي) + الأكواد المتاحة غير المستخدمة من API
   useEffect(() => {
-    const list = Array.from(new Set(allPackages.map(p => p.publicCode).filter((v): v is number => typeof v === 'number'))).sort((a,b)=>a-b);
-    setCodeOptions(list);
-  }, [allPackages.map(p => p.publicCode).join(',')]);
+    const current = (pkg.publicCode && typeof pkg.publicCode === 'number') ? [pkg.publicCode] : [];
+    const union = Array.from(new Set([...current, ...availableBridges]))
+      .filter((v): v is number => typeof v === 'number')
+      .sort((a,b)=>a-b);
+    setCodeOptions(union);
+  }, [allPackages.map(p => p.publicCode).join(','), availableBridges.join(','), pkg.publicCode]);
 
   const saveBasic = async () => {
     setSaving(true);
@@ -540,10 +553,7 @@ function PackageRow({ pkg, allPackages, onChanged, onDelete }: { pkg: ProductPac
         {editing ? (
           <select className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={code} onChange={e => setCode(e.target.value)}>
             <option value="">اختر</option>
-            {codeOptions.map(c => {
-              const usedByOther = c === pkg.publicCode ? false : false; // يمكن لاحقًا تمرير قائمة للحجز
-              return <option key={c} value={c} disabled={usedByOther}>{c}</option>;
-            })}
+            {codeOptions.map(c => (<option key={c} value={c}>{c}</option>))}
           </select>
         ) : (
           pkg.publicCode ? <span>{pkg.publicCode}</span> : <span className="text-text-secondary">—</span>
