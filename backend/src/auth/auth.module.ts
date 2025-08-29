@@ -7,6 +7,7 @@ import { PassportModule } from '@nestjs/passport';
 import { UserModule } from '../user/user.module';  // تأكد من هذا السطر
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { DebugAuthController } from './debug-auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Tenant } from '../tenants/tenant.entity';
@@ -28,7 +29,7 @@ import { AuditModule } from '../audit/audit.module';
     AuditModule,
   ],
   providers: [AuthService, JwtStrategy, AuthTokenService, RateLimiterRegistry, RateLimitGuard],
-  controllers: [AuthController],
+  controllers: [AuthController, DebugAuthController],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}
