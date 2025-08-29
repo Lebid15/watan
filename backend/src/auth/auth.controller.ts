@@ -91,22 +91,28 @@ export class AuthController {
     // Clear the auth cookie using same attributes (domain/path) so browser actually removes it.
     const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.syrz1.com';
     try {
-      const clearDefs: Array<{ name: string; httpOnly?: boolean }> = [
-        { name: 'auth', httpOnly: true },
-        { name: 'access_token' },
-        { name: 'role' },
-        { name: 'tenant_host' },
-      ];
-      for (const c of clearDefs) {
-        res.cookie(c.name, '', {
-          httpOnly: !!c.httpOnly,
+      const names = ['auth', 'access_token', 'role', 'tenant_host'];
+      for (const n of names) {
+        // clearCookie ensures expiry header
+        res.clearCookie(n, {
+          httpOnly: n === 'auth',
           secure: true,
           sameSite: 'none',
           domain: cookieDomain,
           path: '/',
+        });
+        // Extra defensive explicit expired cookie (Safari quirk)
+        res.cookie(n, '', {
+          httpOnly: n === 'auth',
+          secure: true,
+          sameSite: 'none',
+          domain: cookieDomain,
+          path: '/',
+          expires: new Date(0),
           maxAge: 0,
         });
       }
+      console.log('[AUTH][LOGOUT] cleared cookies domain=', cookieDomain);
     } catch (e) {
       console.warn('[AUTH] failed to clear auth cookie:', (e as any)?.message);
     }

@@ -92,7 +92,7 @@ export default function AdminProductDetailsPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem("token") || "";
-      const res = await fetch(`${API_ROUTES.products.base}/${id}`, {
+  const res = await fetch(`${API_ROUTES.products.base}/${id}?all=1`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("فشل في جلب بيانات المنتج");
