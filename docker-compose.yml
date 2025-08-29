@@ -45,13 +45,16 @@ services:
       retries: 5
       start_period: 10s
     environment:
-      NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: postgres://watan:changeme@postgres:5432/watan?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET}
-      PUBLIC_TENANT_BASE_DOMAIN: syrz1.com
+      NODE_ENV: "production"
+      PORT: "3000"
+      DATABASE_URL: "postgres://watan:changeme@postgres:5432/watan?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      JWT_SECRET: "${JWT_SECRET}"
+      PUBLIC_TENANT_BASE_DOMAIN: "syrz1.com"
       DEBUG_TENANT_GUARD: "1"
+      DEBUG_TENANT_CTX: "1"
+      DEBUG_USER_PROFILE: "1"
+      DEBUG_ADMIN_COUNTS: "1"
       REQUEST_LOGGING: "1"
       FEATURE_BILLING_V1: "true"
       FORCE_TENANT_USD: "true"
