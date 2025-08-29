@@ -16,6 +16,7 @@ import {
   InternalServerErrorException,
   BadRequestException,
   Query,
+  ConflictException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -146,7 +147,25 @@ export class ProductsController {
     product.description = body.description ?? '';
     product.isActive = body.isActive ?? true;
     product.tenantId = tenantId;
-    return this.productsService.create(product);
+    try {
+      const created = await this.productsService.create(product);
+      return created;
+    } catch (err: any) {
+      // Postgres unique violation
+      if (err?.code === '23505') {
+        console.error('[PRODUCTS][CTRL][CREATE][UNIQUE]', { tenantId, name: product.name, code: err.code, detail: err?.detail });
+        throw new ConflictException('اسم المنتج موجود مسبقاً داخل هذا المستأجر');
+      }
+      console.error('[PRODUCTS][CTRL][CREATE][ERROR]', {
+        tenantId,
+        body,
+        message: err?.message,
+        code: err?.code,
+        detail: err?.detail,
+        stack: err?.stack?.split('\n')?.slice(0, 3).join(' | '),
+      });
+      throw new InternalServerErrorException('فشل إنشاء المنتج');
+    }
   }
 
   @Put(':id')
