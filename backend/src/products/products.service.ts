@@ -154,6 +154,10 @@ export class ProductsService {
 
   // ===== Snapshot Products Listing =====
   async listSnapshotProducts(tenantId: string, q?: string) {
+    if (!tenantId) {
+      console.warn('[SNAPSHOT][SVC] Missing tenantId in listSnapshotProducts');
+      throw new BadRequestException('missing tenant context');
+    }
     const DEV_TENANT = '00000000-0000-0000-0000-000000000000';
     const tenantProducts = await this.productsRepo.find({ where: { tenantId } as any });
     const existingCatalogIds = new Set(tenantProducts.filter(p => p.catalogProductId).map(p => p.catalogProductId));
@@ -165,6 +169,7 @@ export class ProductsService {
       qb = qb.andWhere('LOWER(p.name) LIKE :q', { q: `%${q.toLowerCase()}%` });
     }
     const rows = await qb.orderBy('p.name', 'ASC').getMany();
+    console.log('[SNAPSHOT][SVC] rows=%d tenantProducts=%d', rows.length, tenantProducts.length);
     return rows
       .filter(r => !(r.catalogProductId && existingCatalogIds.has(r.catalogProductId)) && !existingNames.has(r.name.toLowerCase()))
       .map(r => ({ id: r.id, name: r.name, packagesCount: (r.packages || []).length }));

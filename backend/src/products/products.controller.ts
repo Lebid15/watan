@@ -238,8 +238,9 @@ export class ProductsController {
   // ✅ قائمة الـ snapshot (مخزن المطوّر) لمنتجات قابلة للاستنساخ (لا تعتمد على isPublishable الآن)
   @Get('snapshot-available')
   async listSnapshot(@Req() req: Request, @Query('q') q?: string) {
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    return this.productsService.listSnapshotProducts(tenantId, q);
+  const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+  console.log('[SNAPSHOT][CTRL] listSnapshot tenantId=%s q=%s', tenantId, q);
+  return this.productsService.listSnapshotProducts(tenantId, q);
   }
 
   // ✅ استنساخ منتج من snapshot (مستودع المطوّر) إلى التينانت مع باقاته وأسعاره (basePrice=0)
