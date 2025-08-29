@@ -2358,4 +2358,22 @@ export class ProductsService {
     await this.packagesRepo.update({ id }, { publicCode: finalCode });
     return { ok: true, id, publicCode: finalCode };
   }
+
+  // ===== ✅ تعديل أساسي لحقول الباقة (الاسم، الوصف، basePrice، isActive) =====
+  async updatePackageBasic(tenantId: string | undefined, packageId: string, data: { name?: string; description?: string | null; basePrice?: number; isActive?: boolean }) {
+    const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any });
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+    if (tenantId && pkg.tenantId && pkg.tenantId !== tenantId) {
+      throw new BadRequestException('لا تملك صلاحية تعديل هذه الباقة');
+    }
+    const patch: any = {};
+    if (data.name !== undefined) patch.name = String(data.name).trim() || pkg.name;
+    if (data.description !== undefined) patch.description = data.description == null ? null : String(data.description).trim();
+    if (data.basePrice !== undefined && data.basePrice != null && Number.isFinite(Number(data.basePrice))) patch.basePrice = Number(data.basePrice);
+    if (data.isActive !== undefined) patch.isActive = !!data.isActive;
+    if (Object.keys(patch).length === 0) return { ok: true, id: pkg.id };
+    await this.packagesRepo.update({ id: packageId }, patch);
+    const updated = await this.packagesRepo.findOne({ where: { id: packageId } as any });
+    return { ok: true, id: packageId, package: updated };
+  }
 }

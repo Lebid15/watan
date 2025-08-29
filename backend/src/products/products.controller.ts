@@ -424,6 +424,19 @@ export class ProductsController {
     return this.productsService.updatePackageCode(packageId, body.publicCode);
   }
 
+  // ✅ تعديل أساسي لحقول الباقة (اسم، وصف، basePrice، isActive)
+  @Patch('packages/:id/basic')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  async updatePackageBasic(
+    @Req() req: Request,
+    @Param('id') packageId: string,
+    @Body() body: { name?: string; description?: string | null; basePrice?: number; isActive?: boolean },
+  ) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    return this.productsService.updatePackageBasic(tenantId, packageId, body);
+  }
+
   // ✅ تحديث اسم المزود
   @Patch('packages/:id/provider')
   @UseGuards(AuthGuard('jwt'), RolesGuard)

@@ -386,36 +386,38 @@ export default function AdminProductDetailsPage() {
         )}
       </div>
 
-      <h2 className="text-xl font-semibold mb-2">الباقات</h2>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold">الباقات</h2>
+        <button
+          onClick={() => setShowPackageForm((prev) => !prev)}
+          className="px-3 py-2 bg-primary text-primary-contrast rounded hover:bg-primary-hover text-sm"
+        >
+          {showPackageForm ? "إغلاق النموذج" : "+ إضافة باقة جديدة"}
+        </button>
+      </div>
       {product.packages && product.packages.length > 0 ? (
-        <ul className="space-y-3">
-          {product.packages.map((pkg) => (
-            <li key={pkg.id} className="flex justify-between items-center gap-3 bg-bg-surface-alt p-2 rounded border border-border">
-              <div>
-                <strong>{pkg.name}</strong> – {pkg.basePrice}
-                {pkg.description && (
-                  <p className="text-sm text-text-secondary">{pkg.description}</p>
-                )}
-              </div>
-              <button
-                onClick={() => handleDeletePackage(pkg.id)}
-                className="px-3 py-1 bg-danger text-text-inverse rounded hover:brightness-110 text-sm"
-              >
-                حذف
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-x-auto border border-border rounded mb-4">
+          <table className="min-w-full text-sm">
+            <thead className="bg-bg-surface-alt text-text-secondary text-xs">
+              <tr>
+                <th className="p-2 text-right">الاسم</th>
+                <th className="p-2 text-right">الكود / الجسر</th>
+                <th className="p-2 text-right">الوصف</th>
+                <th className="p-2 text-right">رأس المال</th>
+                <th className="p-2 text-right">الحالة</th>
+                <th className="p-2 text-right">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {product.packages.map((pkg) => (
+                <PackageRow key={pkg.id} pkg={pkg} onChanged={() => fetchProduct()} onDelete={() => handleDeletePackage(pkg.id)} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <p className="text-text-secondary">لا توجد باقات</p>
+        <p className="text-text-secondary mb-4">لا توجد باقات</p>
       )}
-
-      <button
-        onClick={() => setShowPackageForm((prev) => !prev)}
-        className="mt-6 px-4 py-2 bg-primary text-primary-contrast rounded hover:bg-primary-hover"
-      >
-        {showPackageForm ? "إغلاق النموذج" : "+ إضافة باقة جديدة"}
-      </button>
 
       {showPackageForm && (
         <div className="mt-4 p-4 border border-border rounded bg-bg-surface-alt">
@@ -463,5 +465,117 @@ export default function AdminProductDetailsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// ===== صف الباقة =====
+function PackageRow({ pkg, onChanged, onDelete }: { pkg: ProductPackage; onChanged: () => void; onDelete: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(pkg.name);
+  const [desc, setDesc] = useState(pkg.description || "");
+  const [basePrice, setBasePrice] = useState<number>(pkg.basePrice);
+  const [isActive, setIsActive] = useState<boolean>(pkg.isActive);
+  const [codeOptions, setCodeOptions] = useState<number[]>([]); // متاح لاحقًا لو احتجنا لجلب خارجي
+  const [code, setCode] = useState<string>(pkg.publicCode ? String(pkg.publicCode) : "");
+  const [saving, setSaving] = useState(false);
+  const token = (typeof window !== 'undefined') ? localStorage.getItem('token') || '' : '';
+
+  // يمكن لاحقًا جلب قائمة أكواد من API، الآن نولد نطاق مريح حول الكود الحالي
+  useEffect(() => {
+    const base = pkg.publicCode && pkg.publicCode > 0 ? pkg.publicCode : 0;
+    const arr: number[] = [];
+    for (let i = 1; i <= 15; i++) arr.push(base + i); // نطاق بسيط
+    setCodeOptions(arr);
+  }, [pkg.publicCode]);
+
+  const saveBasic = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_ROUTES.products.base}/packages/${pkg.id}/basic`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name, description: desc || null, basePrice, isActive })
+      });
+      if (!res.ok) throw new Error('فشل حفظ التعديلات');
+      // حفظ الكود (إن تغير)
+      if ((code || '').trim() !== String(pkg.publicCode || '')) {
+        const body: any = { publicCode: code ? Number(code) : null };
+        const r2 = await fetch(`${API_ROUTES.products.base}/packages/${pkg.id}/code`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(body)
+        });
+        if (!r2.ok) throw new Error('تم حفظ الباقة لكن فشل تحديث الكود');
+      }
+      setEditing(false);
+      onChanged();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr className="border-t border-border">
+      <td className="p-2 align-top">
+        {editing ? (
+          <input className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={name} onChange={e => setName(e.target.value)} />
+        ) : (
+          <span className="font-medium">{pkg.name}</span>
+        )}
+      </td>
+      <td className="p-2 align-top">
+        {editing ? (
+          <select className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={code} onChange={e => setCode(e.target.value)}>
+            <option value="">اختر</option>
+            {codeOptions.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        ) : (
+          pkg.publicCode ? <span>{pkg.publicCode}</span> : <span className="text-text-secondary">—</span>
+        )}
+      </td>
+      <td className="p-2 align-top max-w-[200px]">
+        {editing ? (
+          <textarea className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" rows={2} value={desc} onChange={e => setDesc(e.target.value)} />
+        ) : (
+          pkg.description ? (
+            <span title={pkg.description} className="line-clamp-2 whitespace-pre-wrap text-[12px] text-text-secondary">{pkg.description}</span>
+          ) : <span className="text-text-secondary">—</span>
+        )}
+      </td>
+      <td className="p-2 align-top">
+        {editing ? (
+          <input type="number" className="w-24 text-sm p-1 rounded bg-bg-surface-alt border border-border" value={basePrice} onChange={e => setBasePrice(Number(e.target.value))} />
+        ) : (
+          <span>{pkg.basePrice}</span>
+        )}
+      </td>
+      <td className="p-2 align-top">
+        {editing ? (
+          <label className="inline-flex items-center gap-1 text-xs">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
+            <span>{isActive ? 'فعال' : 'متوقف'}</span>
+          </label>
+        ) : (
+          <span className={`text-xs px-2 py-1 rounded-full ${pkg.isActive ? 'bg-emerald-600/20 text-emerald-500' : 'bg-gray-600/30 text-gray-400'}`}>{pkg.isActive ? 'فعال' : 'متوقف'}</span>
+        )}
+      </td>
+      <td className="p-2 align-top space-x-1 space-x-reverse flex gap-2">
+        {editing ? (
+          <>
+            <button disabled={saving} onClick={saveBasic} className="px-2 py-1 bg-success text-text-inverse rounded text-xs disabled:opacity-50">حفظ</button>
+            <button disabled={saving} onClick={() => { setEditing(false); setName(pkg.name); setDesc(pkg.description || ''); setBasePrice(pkg.basePrice); setIsActive(pkg.isActive); setCode(pkg.publicCode ? String(pkg.publicCode) : ''); }} className="px-2 py-1 bg-gray-600 text-text-inverse rounded text-xs">إلغاء</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setEditing(true)} className="px-2 py-1 bg-primary text-primary-contrast rounded text-xs">تعديل</button>
+            <button onClick={onDelete} className="px-2 py-1 bg-danger text-text-inverse rounded text-xs">حذف</button>
+          </>
+        )}
+      </td>
+    </tr>
   );
 }
