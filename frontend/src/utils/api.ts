@@ -5,34 +5,8 @@ import axios from 'axios';
    Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª ÙˆØ¨ÙŠØ¦Ø© Ø§Ù„ØªØ´ØºÙŠÙ„
    ========================= */
 
-// Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ù€ API (Ù…Ø«Ø§Ù„ Ù…Ø­Ù„ÙŠ: http://localhost:3001/api)
-// Ø§Ù„Ù‚ÙŠÙ…Ø© Ø§Ù„Ø®Ø§Ù… Ù…Ù† Ø§Ù„Ø¨ÙŠØ¦Ø© (Ù‚Ø¯ ØªÙƒÙˆÙ† Ø®Ø§Ø·Ø¦Ø© Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ÙŠÙ‹Ø§)
-let RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
-// Dynamic production fallback: if env not provided (still localhost) but we're on a real domain, derive https://api.<root>/api
-if (typeof window !== 'undefined') {
-  try {
-    const host = window.location.hostname; // e.g. syrz1.com, sham.syrz1.com, api.syrz1.com
-    // 1) Dev fallback: derive api.<root> if still pointing to localhost
-    if (/localhost:3001\/api$/.test(RAW_API_BASE_URL)) {
-      const parts = host.split('.');
-      if (parts.length >= 2 && !/^api\./i.test(host)) {
-        const root = parts.slice(-2).join('.');
-        const apiHost = `api.${root}`;
-        const proto = window.location.protocol === 'https:' ? 'https' : 'http';
-        RAW_API_BASE_URL = `${proto}://${apiHost}/api`;
-        console.log('[API][AUTO-FALLBACK] Derived API base URL =>', RAW_API_BASE_URL);
-      }
-    }
-    // 2) If we're on a tenant (non-api) subdomain under syrz1.com, use same-origin relative /api to avoid CORS & extra DNS
-    if (/syrz1\.com$/i.test(host) && !/^api\./i.test(host) && RAW_API_BASE_URL.startsWith('http')) {
-      // Only switch if env pointed elsewhere (api.syrz1.com or syrz1.com) to minimize surprises
-      RAW_API_BASE_URL = '/api';
-      console.log('[API][RELATIVE] Using same-origin /api base for host', host);
-    }
-  } catch {
-    // ignore
-  }
-}
+// عنوان الـ API (مثال إنتاج: https://api.syrz1.com/api) نستخدمه كما هو بدون أي fallback نسبي.
+const RAW_API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/$/, '');
 
 // Prefer relative /api when on a tenant subdomain (non api/www) of syrz1.com to eliminate cross-origin & CORS preflight.
 // This should help with mysterious timeouts in normal browser mode while incognito works.
@@ -333,14 +307,15 @@ export const API_ROUTES = {
    ========================= */
 
 const api = axios.create({
-  baseURL: EFFECTIVE_API_BASE_URL,
+  baseURL: EFFECTIVE_API_BASE_URL, // هذا ينتهي بـ /api
   headers: { 'Content-Type': 'application/json' },
 });
 
 // Convenience high-level methods (avoid scattering relative /api calls)
 export const Api = {
   client: api,
-  me: () => api.get(API_ROUTES.users.me),
+  // baseURL يحتوي /api بالفعل، فلا نضيف /api هنا
+  me: () => api.get('/users/profile'),
   logout: () => api.post('/auth/logout'),
   admin: {
     pendingOrders: () => api.get('/admin/pending-orders-count'),
