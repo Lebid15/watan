@@ -171,6 +171,13 @@ export class UserController {
     }
   }
 
+  // Backward/alias route to avoid 404 if frontend calls legacy path after deployment race
+  @UseGuards(AuthGuard('jwt'))
+  @Get('profile-alias')
+  async getProfileAlias(@Req() req) {
+    return this.getProfileWithCurrency(req);
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()

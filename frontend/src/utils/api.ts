@@ -309,6 +309,8 @@ export const API_ROUTES = {
 const api = axios.create({
   baseURL: EFFECTIVE_API_BASE_URL, // هذا ينتهي بـ /api
   headers: { 'Content-Type': 'application/json' },
+  // ضروري لإرسال كوكي auth (SameSite=None) عبر الدومين api.<root>
+  withCredentials: true,
 });
 
 // Convenience high-level methods (avoid scattering relative /api calls)
