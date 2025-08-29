@@ -10,6 +10,7 @@ interface ProductPackage {
   description?: string;
   basePrice: number;
   isActive: boolean;
+  publicCode?: number | null;
 }
 
 interface Product {
@@ -83,6 +84,9 @@ export default function AdminProductDetailsPage() {
   const [pkgName, setPkgName] = useState("");
   const [pkgDesc, setPkgDesc] = useState("");
   const [pkgPrice, setPkgPrice] = useState<number>(0);
+  const [pkgBridge, setPkgBridge] = useState<string>("");
+  const [bridges, setBridges] = useState<number[]>([]);
+  const [bridgesLoading, setBridgesLoading] = useState<boolean>(false);
   const [showPackageForm, setShowPackageForm] = useState(false);
 
   const apiHost = API_ROUTES.products.base.replace("/api/products", ""); // لعرض الصور النسبية إن وجدت
@@ -111,8 +115,25 @@ export default function AdminProductDetailsPage() {
     }
   };
 
+  const fetchBridges = async () => {
+    if (!id) return;
+    try {
+      setBridgesLoading(true);
+      const token = localStorage.getItem("token") || "";
+      const res = await fetch(`${API_ROUTES.products.base}/${id}/bridges`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setBridges(Array.isArray(data.available) ? data.available : []);
+    } catch {
+      setBridges([]);
+    } finally {
+      setBridgesLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (id) fetchProduct();
+  if (id) fetchProduct();
+  if (id) fetchBridges();
   }, [id]);
 
   const handleUpdateProduct = async () => {
@@ -180,7 +201,8 @@ export default function AdminProductDetailsPage() {
   };
 
   const handleAddPackage = async () => {
-    if (!pkgName || !pkgPrice) return alert("يرجى إدخال اسم وسعر الباقة");
+  if (!pkgName) return alert("يرجى إدخال اسم الباقة");
+  if (!pkgBridge) return alert("يرجى اختيار الجسر");
     try {
       const token = localStorage.getItem("token") || "";
       const res = await fetch(`${API_ROUTES.products.base}/${id}/packages`, {
@@ -193,6 +215,7 @@ export default function AdminProductDetailsPage() {
           name: pkgName,
           description: pkgDesc,
           basePrice: pkgPrice,
+      publicCode: pkgBridge,
           isActive: true,
         }),
       });
@@ -200,8 +223,10 @@ export default function AdminProductDetailsPage() {
       setPkgName("");
       setPkgDesc("");
       setPkgPrice(0);
+    setPkgBridge("");
       setShowPackageForm(false);
-      fetchProduct();
+    fetchProduct();
+    fetchBridges();
     } catch (err: any) {
       alert(err.message);
     }
@@ -406,14 +431,29 @@ export default function AdminProductDetailsPage() {
             value={pkgDesc}
             onChange={(e) => setPkgDesc(e.target.value)}
           />
-          <h2 className="text-text-secondary">السعر</h2>
+          <h2 className="text-text-secondary">رأس المال (يمكن أن يكون صفراً)</h2>
           <input
             type="number"
             className="w-full border border-border p-2 mb-2 rounded bg-bg-surface text-text-primary"
-            placeholder="السعر الأساسي"
+            placeholder="رأس المال"
             value={pkgPrice}
             onChange={(e) => setPkgPrice(parseFloat(e.target.value))}
           />
+          <div className="mb-2">
+            <label className="block text-text-secondary text-sm mb-1">الجسر (مطلوب)</label>
+            <select
+              className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary"
+              value={pkgBridge}
+              onChange={(e) => setPkgBridge(e.target.value)}
+            >
+              <option value="">-- اختر الجسر --</option>
+              {bridgesLoading && <option value="" disabled>جاري التحميل...</option>}
+              {!bridgesLoading && bridges.length === 0 && <option value="" disabled>لا توجد جسور متاحة</option>}
+              {bridges.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={handleAddPackage}
             className="px-4 py-2 bg-success text-text-inverse rounded hover:brightness-110"

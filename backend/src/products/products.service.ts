@@ -94,6 +94,41 @@ export class ProductsService {
     return this.productsRepo.save(product);
   }
 
+  /**
+   * Return available bridge codes (publicCode) for a tenant's product.
+   * Logic Phase1: If product has catalogProductId, pull all developer (pseudo tenant) packages sharing that catalogProductId
+   * where publicCode IS NOT NULL, then subtract codes already used by tenant's own packages for that catalogProductId.
+   * If product has no catalogProductId => return empty (later could derive from a manual pool).
+   */
+  async getAvailableBridges(tenantId: string, productId: string): Promise<{ available: number[]; used: number[] }> {
+    const product = await this.productsRepo.findOne({ where: { id: productId, tenantId } as any });
+    if (!product) throw new NotFoundException('المنتج غير موجود');
+    if (!product.catalogProductId) return { available: [], used: [] };
+    const DEV_TENANT = '00000000-0000-0000-0000-000000000000';
+    // Developer pool
+    const rows: { publicCode: number }[] = await this.packagesRepo.query(
+      `SELECT DISTINCT ppk."publicCode"::int AS "publicCode"
+         FROM product_packages ppk
+         JOIN product dp ON ppk."product_id" = dp.id
+        WHERE dp."tenantId" = $1 AND dp."catalogProductId" = $2 AND ppk."publicCode" IS NOT NULL
+        ORDER BY ppk."publicCode" ASC`,
+      [DEV_TENANT, product.catalogProductId]
+    );
+    const pool = rows.map(r => r.publicCode).filter(n => Number.isInteger(n) && n > 0);
+    // Used by this tenant for same catalogProductId
+    const usedRows: { publicCode: number }[] = await this.packagesRepo.query(
+      `SELECT DISTINCT ppk."publicCode"::int AS "publicCode"
+         FROM product_packages ppk
+         JOIN product tp ON ppk."product_id" = tp.id
+        WHERE tp."tenantId" = $1 AND tp."catalogProductId" = $2 AND ppk."publicCode" IS NOT NULL`,
+      [tenantId, product.catalogProductId]
+    );
+    const used = usedRows.map(r => r.publicCode).filter(n => Number.isInteger(n) && n > 0);
+    const usedSet = new Set(used);
+    const available = pool.filter(c => !usedSet.has(c));
+    return { available, used };
+  }
+
   // ---------- Helpers خاصة بالـ tenant ----------
   private ensureSameTenant(entityTenantId?: string | null, expectedTenantId?: string) {
     if (!expectedTenantId) return; // لا تحقق إن لم يُطلب تقييد

@@ -294,6 +294,10 @@ export class ProductsController {
   @Body('providerName') providerName?: string,
   ): Promise<ProductPackage> {
     if (!name) throw new NotFoundException('اسم الباقة مطلوب');
+    // إلزام اختيار رقم الجسر (publicCode) الآن (مرحلة 1) – نسمح برقم صحيح موجب فقط
+    if (publicCodeRaw == null || String(publicCodeRaw).trim() === '') {
+      throw new BadRequestException('الجسر (publicCode) مطلوب');
+    }
 
     let imageUrl: string | undefined;
     if (file) {
@@ -456,5 +460,12 @@ export class ProductsController {
   async getOneForUser(@Req() req, @Param('id') id: string) {
     // ✅ استخدم tenant context من middleware
     return this.productsService.findOneForUser((req as any).tenant?.id || (req as any).user?.tenantId, id, req.user.id);
+  }
+
+  // ✅ الجسور المتاحة لمنتج: يعتمد على catalogProductId ويطابق باقات التينانت المطوّر
+  @Get(':id/bridges')
+  async getAvailableBridges(@Req() req: Request, @Param('id') productId: string) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    return this.productsService.getAvailableBridges(tenantId, productId);
   }
 }
