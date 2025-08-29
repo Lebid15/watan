@@ -1,4 +1,5 @@
 import { Injectable, NestMiddleware, NotFoundException } from '@nestjs/common';
+import { debugEnabled, debugLog } from '../common/debug.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TenantDomain } from './tenant-domain.entity';
@@ -22,24 +23,15 @@ export class TenantContextMiddleware implements NestMiddleware {
     const originalHost = req.headers.host;
     const tenantHost = req.headers['x-tenant-host'] || originalHost;
     const host = (tenantHost || '').split(':')[0]; // ex: kadro.localhost
-    if (process.env.DEBUG_TENANT_CTX === '1') {
-      // eslint-disable-next-line no-console
-      console.log('[TenantCtx][DEBUG] incoming host=%s x-tenant-host=%s path=%s originalUrl=%s', originalHost, req.headers['x-tenant-host'], req.path, req.originalUrl);
-    }
+  if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'incoming', { originalHost, xTenant: req.headers['x-tenant-host'], path: req.path, url: req.originalUrl });
 
   let tenant: Tenant | null = null;
     if (host) {
       const domain = await this.domains.findOne({ where: { domain: host } });
       if (domain) {
         tenant = await this.tenants.findOne({ where: { id: domain.tenantId } });
-        if (process.env.DEBUG_TENANT_CTX === '1') {
-          // eslint-disable-next-line no-console
-          console.log('[TenantCtx][DEBUG] matched tenant_domain domain=%s tenantId=%s', host, domain.tenantId);
-        }
-      } else if (process.env.DEBUG_TENANT_CTX === '1') {
-        // eslint-disable-next-line no-console
-        console.log('[TenantCtx][DEBUG] no tenant_domain match for host=%s', host);
-      }
+        if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'matched domain', host, 'tenantId', domain.tenantId);
+      } else if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'no domain match', host);
     }
 
     // Fallback: explicit X-Tenant-Id header (integrations)
@@ -53,10 +45,7 @@ export class TenantContextMiddleware implements NestMiddleware {
     if (tenant) {
       if (!(tenant as any).isActive) throw new NotFoundException('Tenant inactive');
       req.tenant = tenant;
-      if (process.env.DEBUG_TENANT_CTX === '1') {
-        // eslint-disable-next-line no-console
-        console.log('[TenantCtx][DEBUG] attached tenant id=%s code=%s', tenant.id, (tenant as any).code);
-      }
+  if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'attached tenant', { id: tenant.id, code: (tenant as any).code });
     }
     next();
   }

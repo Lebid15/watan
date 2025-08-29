@@ -1,4 +1,5 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import { debugEnabled, debugLog } from '../common/debug.util';
 import { Reflector } from '@nestjs/core';
 
 // Whitelisted public routes (no tenant or auth required)
@@ -59,12 +60,7 @@ export class TenantGuard implements CanActivate {
   const path = req.path || req.url || '';
   const original = req.originalUrl || '';
     // DEBUG (مؤقت): اطبع المسار وقرار التخطّي
-    if (process.env.DEBUG_TENANT_GUARD === '1') {
-      const pub = PUBLIC_PATHS.some(r => r.test(path));
-      const noTenant = NO_TENANT_REQUIRED_PATHS.some(r => r.test(path));
-      // eslint-disable-next-line no-console
-  console.log('[TenantGuard][DEBUG] path=%s original=%s pub=%s noTenant=%s', path, original, pub, noTenant);
-    }
+  if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'evaluate', { path, original, pub: PUBLIC_PATHS.some(r=>r.test(path)), noTenant: NO_TENANT_REQUIRED_PATHS.some(r=>r.test(path)) });
 
   if (PUBLIC_PATHS.some(r => r.test(path))) return true;
 
@@ -90,15 +86,9 @@ export class TenantGuard implements CanActivate {
       // This avoids ordering issues where this global guard runs before controller-level JwtAuthGuard.
       const hasAuthHeader = !!(req.headers && req.headers.authorization);
       const hasAuthCookie = !!(req.cookies && req.cookies.auth);
-      if (process.env.JWT_DEBUG === '1') {
-        // eslint-disable-next-line no-console
-        console.log('[TenantGuard][DEBUG] pre-defer check path=%s hasAuthHeader=%s hasAuthCookie=%s rawCookieLen=%s', path, hasAuthHeader, hasAuthCookie, (req.headers && (req.headers.cookie||'')).length);
-      }
+      if (debugEnabled('jwt','tenantGuard')) debugLog('tenantGuard', 'pre-defer', { path, hasAuthHeader, hasAuthCookie, rawCookieLen: (req.headers && (req.headers.cookie||'')).length });
       if (hasAuthHeader || hasAuthCookie) {
-        if (process.env.JWT_DEBUG === '1') {
-          // eslint-disable-next-line no-console
-          console.log('[TenantGuard][DEBUG] deferring to JwtAuthGuard (header=%s cookie=%s path=%s)', hasAuthHeader, hasAuthCookie, path);
-        }
+        if (debugEnabled('jwt','tenantGuard')) debugLog('tenantGuard', 'deferring to JwtAuthGuard', { hasAuthHeader, hasAuthCookie, path });
         return true; // allow next guards to populate req.user
       }
       throw new UnauthorizedException('Auth required');
@@ -112,17 +102,11 @@ export class TenantGuard implements CanActivate {
       const roleLower = (user.role || '').toLowerCase();
       const isGlobalRole = roleLower === 'developer' || roleLower === 'instance_owner';
       if (userTenantId && tenant.id !== userTenantId && !isGlobalRole) {
-        if (process.env.DEBUG_TENANT_GUARD === '1') {
-          // eslint-disable-next-line no-console
-          console.log('[TenantGuard][DEBUG] TENANT_MISMATCH user.tenantId=%s req.tenant.id=%s role=%s path=%s', userTenantId, tenant.id, roleLower, path);
-        }
+  if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH diff ids', { userTenantId, tenantId: tenant.id, roleLower, path });
         throw new UnauthorizedException('TENANT_MISMATCH');
       }
       if (!userTenantId && tenant.id && !isGlobalRole) {
-        if (process.env.DEBUG_TENANT_GUARD === '1') {
-          // eslint-disable-next-line no-console
-          console.log('[TenantGuard][DEBUG] TENANT_MISMATCH (user has null tenantId) req.tenant.id=%s role=%s path=%s', tenant.id, roleLower, path);
-        }
+  if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH null user tenantId', { tenantId: tenant.id, roleLower, path });
         throw new UnauthorizedException('TENANT_MISMATCH');
       }
     }

@@ -5,6 +5,7 @@ import {
   UseGuards, Param, ParseUUIDPipe, NotFoundException, Request, Req, Query,
 } from '@nestjs/common';
 import { UserService } from './user.service';
+import { debugEnabled, debugLog } from '../common/debug.util';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserRole } from '../auth/user-role.enum';
@@ -53,10 +54,7 @@ export class UserController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user profile' })
   async getProfile(@Request() req) {
-    if (process.env.DEBUG_USER_PROFILE === '1') {
-      // eslint-disable-next-line no-console
-      console.log('[UserController][DEBUG] /users/profile userId=%s role=%s tokenTenant=%s resolvedTenant=%s path=%s originalUrl=%s', req.user?.id, req.user?.role, req.user?.tenantId, req.tenant?.id, req.path, req.originalUrl);
-    }
+  if (debugEnabled('userProfile')) debugLog('userProfile', '/users/profile', { userId: req.user?.id, role: req.user?.role, tokenTenant: req.user?.tenantId, resolvedTenant: req.tenant?.id, path: req.path, originalUrl: req.originalUrl });
     // خذ tenantId من سياق الطلب أو من الـ JWT (قد يكون null للمالك)
     const tokenTenant: string | null = req.user?.tenantId ?? null;
     const tenantId: string | null = req.tenant?.id ?? tokenTenant;
@@ -149,10 +147,7 @@ export class UserController {
   @UseGuards(AuthGuard('jwt'))
   @Get('profile-with-currency')
   async getProfileWithCurrency(@Req() req) {
-    if (process.env.DEBUG_USER_PROFILE === '1') {
-      // eslint-disable-next-line no-console
-      console.log('[UserController][DEBUG] /users/profile-with-currency userId=%s role=%s tokenTenant=%s resolvedTenant=%s path=%s originalUrl=%s', req.user?.id, req.user?.role, req.user?.tenantId, req.tenant?.id, req.path, req.originalUrl);
-    }
+  if (debugEnabled('userProfile')) debugLog('userProfile', '/users/profile-with-currency', { userId: req.user?.id, role: req.user?.role, tokenTenant: req.user?.tenantId, resolvedTenant: req.tenant?.id, path: req.path, originalUrl: req.originalUrl });
     // Allow fallback to tenantId carried inside JWT if middleware could not resolve domain.
     const tokenTenantId: string | null = req.user?.tenantId ?? null;
     const tenantId: string | null = req.tenant?.id ?? tokenTenantId;
