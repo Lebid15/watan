@@ -77,37 +77,54 @@ export class ProductsController {
   }
 
 
+  // NOTE: Place the more specific static GET routes BEFORE the dynamic ':id' route.
+  // Otherwise requests like /products/snapshot-available would be captured as id='snapshot-available'.
+
+  // 🔹 المنتجات الكتالوجية المتاحة (غير المفعّلة بعد) لهذا المستأجر
+  @Get('catalog-available')
+  async listAvailableCatalog(@Req() req: Request, @Query('limit') limitQ?: string) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    const limit = Math.min(Math.max(parseInt(limitQ || '100', 10) || 100, 1), 500);
+    const rows = await this.productsService.listAvailableCatalogProducts(tenantId, limit);
+    return { items: rows };
+  }
+
+  // ✅ قائمة الـ snapshot (مخزن المطوّر) لمنتجات قابلة للاستنساخ
+  @Get('snapshot-available')
+  async listSnapshot(@Req() req: Request, @Query('q') q?: string) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    console.log('[SNAPSHOT][CTRL] listSnapshot tenantId=%s q=%s', tenantId, q);
+    return this.productsService.listSnapshotProducts(tenantId, q);
+  }
+
   @Get()
   async findAll(@Req() req: Request, @Query('all') all?: string, @Query('includeNull') includeNull?: string): Promise<any[]> {
-    // ✅ استخدم tenant context من middleware
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
     console.log('[PRODUCTS] findAll tenantId=', tenantId);
     const wantAll = (all === '1' || all === 'true' || includeNull === '1' || includeNull === 'true');
     const products = wantAll
       ? await this.productsService.findAllWithPackages(tenantId)
       : await this.productsService.getTenantVisibleProducts(tenantId);
-  console.log('[PRODUCTS] findAll count=', products.length, 'first.packages?', products[0]?.packages?.length);
+    console.log('[PRODUCTS] findAll count=', products.length, 'first.packages?', products[0]?.packages?.length);
     return products.map((product) => ({
       ...product,
-      packages: (product.packages||[]).map((pk:any)=> ({
+      packages: (product.packages || []).map((pk: any) => ({
         ...pk,
         providerName: pk.providerName || null,
       })),
       packagesCount: product.packages?.length ?? 0,
-      // expose image meta consistently
-  imageUrl: product.imageUrl, // effective (computed; legacy column dropped)
+      imageUrl: product.imageUrl,
       imageSource: product.imageSource,
       useCatalogImage: product.useCatalogImage,
       hasCustomImage: product.hasCustomImage,
       customImageUrl: product.customImageUrl,
-  catalogAltText: (product as any).catalogAltText ?? null,
-  customAltText: (product as any).customAltText ?? null,
+      catalogAltText: (product as any).catalogAltText ?? null,
+      customAltText: (product as any).customAltText ?? null,
     }));
   }
 
   @Get(':id')
   async findOne(@Req() req: Request, @Param('id') id: string, @Query('all') all?: string, @Query('includeNull') includeNull?: string): Promise<any> {
-    // ✅ استخدم tenant context من middleware
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
     console.log('[PRODUCTS] findOne tenantId=', tenantId, 'productId=', id);
     const wantAll = (all === '1' || all === 'true' || includeNull === '1' || includeNull === 'true');
@@ -117,17 +134,17 @@ export class ProductsController {
     if (!product) throw new NotFoundException('معرف المنتج غير صالح');
     return {
       ...product,
-      packages: (product.packages||[]).map((pk:any)=> ({
+      packages: (product.packages || []).map((pk: any) => ({
         ...pk,
         providerName: pk.providerName || null,
       })),
-  imageUrl: product.imageUrl, // effective (computed; legacy column dropped)
+      imageUrl: product.imageUrl,
       imageSource: product.imageSource,
       useCatalogImage: product.useCatalogImage,
       hasCustomImage: product.hasCustomImage,
       customImageUrl: product.customImageUrl,
-  catalogAltText: (product as any).catalogAltText ?? null,
-  customAltText: (product as any).customAltText ?? null,
+      catalogAltText: (product as any).catalogAltText ?? null,
+      customAltText: (product as any).customAltText ?? null,
     };
   }
 
@@ -226,22 +243,7 @@ export class ProductsController {
     return { id: product.id, catalogProductId: product.catalogProductId };
   }
 
-  // 🔹 المنتجات الكتالوجية المتاحة (غير المفعّلة بعد) لهذا المستأجر
-  @Get('catalog-available')
-  async listAvailableCatalog(@Req() req: Request, @Query('limit') limitQ?: string) {
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    const limit = Math.min(Math.max(parseInt(limitQ || '100', 10) || 100, 1), 500);
-    const rows = await this.productsService.listAvailableCatalogProducts(tenantId, limit);
-    return { items: rows };
-  }
-
-  // ✅ قائمة الـ snapshot (مخزن المطوّر) لمنتجات قابلة للاستنساخ (لا تعتمد على isPublishable الآن)
-  @Get('snapshot-available')
-  async listSnapshot(@Req() req: Request, @Query('q') q?: string) {
-  const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-  console.log('[SNAPSHOT][CTRL] listSnapshot tenantId=%s q=%s', tenantId, q);
-  return this.productsService.listSnapshotProducts(tenantId, q);
-  }
+  // (moved catalog-available & snapshot-available routes above @Get(':id') to avoid dynamic capture)
 
   // ✅ استنساخ منتج من snapshot (مستودع المطوّر) إلى التينانت مع باقاته وأسعاره (basePrice=0)
   @Post('clone-from-snapshot')
