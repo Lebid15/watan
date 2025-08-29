@@ -315,12 +315,17 @@ const api = axios.create({
 export const Api = {
   client: api,
   // baseURL يحتوي /api بالفعل، فلا نضيف /api هنا
-  me: () => api.get('/users/profile'),
+  // Prefer simplified profile-with-currency endpoint (lighter joins, robust fallbacks)
+  me: () => api.get('/users/profile-with-currency'),
   logout: () => api.post('/auth/logout'),
   admin: {
     pendingOrders: () => api.get('/admin/pending-orders-count'),
     pendingDeposits: () => api.get('/admin/pending-deposits-count'),
   },
+  users: {
+    profile: () => api.get('/users/profile'),
+    profileWithCurrency: () => api.get('/users/profile-with-currency'),
+  }
 };
 
 // helper Ø¨Ø³ÙŠØ· Ù„Ù‚Ø±Ø§Ø¡Ø© ÙƒÙˆÙƒÙŠ Ø¨Ø§Ù„Ø§Ø³Ù…
@@ -375,7 +380,9 @@ function addTenantHeaders(config: any) {
   // 3) Ø§Ù„ØªÙˆÙƒÙ†
   if (typeof window !== 'undefined') {
     let token: string | null = localStorage.getItem('token');
-    if (!token) token = getCookie('access_token');
+  // Support both legacy 'access_token' and current httpOnly 'auth' cookie names
+  if (!token) token = getCookie('access_token');
+  if (!token) token = getCookie('auth');
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -418,7 +425,8 @@ if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) 
     // Ø£Ø¶Ù Ø§Ù„ØªÙˆÙƒÙ† Ø¥Ù† Ù„Ù… ÙŠÙƒÙ† Ù…ÙˆØ¬ÙˆØ¯Ø§Ù‹
     if (!headers.has('Authorization')) {
       let token: string | null = localStorage.getItem('token');
-      if (!token) token = getCookie('access_token');
+  if (!token) token = getCookie('access_token');
+  if (!token) token = getCookie('auth');
       if (token) headers.set('Authorization', `Bearer ${token}`);
     }
 
