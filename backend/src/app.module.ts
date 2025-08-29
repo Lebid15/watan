@@ -142,6 +142,7 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
   // Include ProductOrder + Deposit so their repositories can be injected.
   TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot, ProductOrder, Deposit]),
   ],
+  // DebugAuthController is registered inside AuthModule (avoid double registration here)
   controllers: [HealthController, MetricsController, AdminCountsController],
   providers: [
   { provide: APP_GUARD, useClass: TenantGuard },

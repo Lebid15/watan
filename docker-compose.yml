@@ -55,7 +55,7 @@ services:
       REQUEST_LOGGING: "1"
       FEATURE_BILLING_V1: "true"
       FORCE_TENANT_USD: "true"
-      JWT_DEBUG: "0"
+      JWT_DEBUG: "1"  # enable detailed JWT extraction logs
     expose:
       - "3000"
     volumes:

@@ -7,6 +7,7 @@ import { User } from '../user/user.entity';
 // ...existing code...
 import * as bcrypt from 'bcrypt';
 import { ApiTags, ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { AuthTokenService } from './auth-token.service';
 import { AuditService } from '../audit/audit.service';
@@ -36,8 +37,9 @@ export class AuthController {
     private readonly authService: AuthService,
     @InjectRepository(Tenant) private readonly tenantsRepo: Repository<Tenant>,
     @InjectRepository(User) private readonly usersRepo: Repository<User>,
-  private tokens: AuthTokenService,
-  private audit: AuditService,
+    private tokens: AuthTokenService,
+    private audit: AuditService,
+    private jwt: JwtService,
   ) {}
 
   @Post('login')
@@ -120,6 +122,7 @@ export class AuthController {
   const saved = await this.usersRepo.save(user);
   return { ok: true, id: saved.id, email: saved.email, role: saved.role };
   }
+
 
   @Post('register')
   @ApiOperation({ summary: 'إنشاء حساب جديد' })
