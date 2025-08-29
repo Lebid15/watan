@@ -11,6 +11,15 @@ export class Product {
   @Index()
   tenantId: string;
 
+  // يحدد أن هذا المنتج هو أصل (مصدري) أنشأه المطور وليس نسخة مستأجر
+  @Column({ type: 'boolean', default: false })
+  isSource: boolean;
+
+  // عند كونه نسخة: يشير إلى المنتج المصدر (product.id) في مساحة المطور
+  @Column({ type: 'uuid', nullable: true })
+  @Index()
+  sourceProductId?: string | null;
+
   // Phase2: الربط بالكتالوج (nullable في البداية ثم سنقيد لاحقًا حسب الحاجة)
   @Column({ type: 'uuid', nullable: true })
   @Index()

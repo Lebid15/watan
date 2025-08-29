@@ -26,6 +26,15 @@ export class ProductPackage {
   @Column({ type: 'integer', nullable: true })
   publicCode: number | null; // بعد الترقية: رقم موجب فريد عالميًا (مسموح NULL)
 
+  // هل هذه باقة مصدر (تابعة لمنتج مصدر)؟
+  @Column({ type: 'boolean', default: false })
+  isSource: boolean;
+
+  // عند كونها نسخة: تخزن معرف الباقة المصدر
+  @Column({ type: 'uuid', nullable: true })
+  @Index('idx_product_packages_sourcePackageId_field')
+  sourcePackageId?: string | null;
+
   @Column({ type: 'varchar', length: 160, nullable: true })
   name: string | null;
 

@@ -193,9 +193,11 @@ export class ProductsService {
       catalogProductId: base.catalogProductId || null,
       useCatalogImage: true,
       catalogImageUrl: (base as any).catalogImageUrl || (base as any).imageUrl || null,
+      isSource: false,
+      sourceProductId: base.id,
     } as Partial<Product>);
     const saved = await this.productsRepo.save(product);
-    for (const pkg of base.packages || []) {
+  for (const pkg of base.packages || []) {
       const newPkg = this.packagesRepo.create({
         tenantId,
         product: saved,
@@ -208,6 +210,8 @@ export class ProductsService {
         catalogLinkCode: (pkg as any).catalogLinkCode || null,
         providerName: pkg.providerName || null,
         imageUrl: pkg.imageUrl || null,
+    isSource: false,
+    sourcePackageId: pkg.id,
       } as Partial<ProductPackage>);
       if (newPkg.publicCode != null) {
         const conflict = await this.packagesRepo.findOne({ where: { tenantId, publicCode: newPkg.publicCode } as any });
@@ -751,9 +755,14 @@ export class ProductsService {
 
   /** ✅ حذف باقة (مع أسعارها) */
   async deletePackage(tenantId: string, id: string): Promise<void> {
-    const pkg = await this.packagesRepo.findOne({ where: { id, tenantId } as any, relations: ['prices'] });
+    const pkg = await this.packagesRepo.findOne({ where: { id, tenantId } as any, relations: ['prices', 'product'] });
     if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
-
+    // إذا كانت باقة مصدر (isSource) أو المنتج المصدر مرتبط بها => لا نحذفها فعليًا، فقط نعطّلها
+    if ((pkg as any).isSource) {
+      (pkg as any).isActive = false;
+      await this.packagesRepo.save(pkg);
+      return;
+    }
     if (Array.isArray(pkg.prices) && pkg.prices.length) await this.packagePriceRepo.remove(pkg.prices);
     await this.packagesRepo.remove(pkg);
   }
