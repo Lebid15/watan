@@ -235,6 +235,22 @@ export class ProductsController {
     return { items: rows };
   }
 
+  // ✅ قائمة الـ snapshot (مخزن المطوّر) لمنتجات قابلة للاستنساخ (لا تعتمد على isPublishable الآن)
+  @Get('snapshot-available')
+  async listSnapshot(@Req() req: Request, @Query('q') q?: string) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    return this.productsService.listSnapshotProducts(tenantId, q);
+  }
+
+  // ✅ استنساخ منتج من snapshot (مستودع المطوّر) إلى التينانت مع باقاته وأسعاره (basePrice=0)
+  @Post('clone-from-snapshot')
+  async cloneFromSnapshot(@Req() req: Request, @Body('productId') snapshotProductId: string) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    if (!snapshotProductId) throw new BadRequestException('productId مطلوب');
+    const created = await this.productsService.cloneSnapshotProduct(tenantId, snapshotProductId, { copyPublicCode: true });
+    return { id: created.id };
+  }
+
   // 🔹 رفع صورة المنتج إلى Cloudinary
   @Post(':id/image')
   @UseInterceptors(

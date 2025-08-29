@@ -152,6 +152,67 @@ export class ProductsService {
     return { available, used };
   }
 
+  // ===== Snapshot Products Listing =====
+  async listSnapshotProducts(tenantId: string, q?: string) {
+    const DEV_TENANT = '00000000-0000-0000-0000-000000000000';
+    const tenantProducts = await this.productsRepo.find({ where: { tenantId } as any });
+    const existingCatalogIds = new Set(tenantProducts.filter(p => p.catalogProductId).map(p => p.catalogProductId));
+    const existingNames = new Set(tenantProducts.map(p => p.name.toLowerCase()));
+    let qb = this.productsRepo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.packages', 'pk')
+      .where('p.tenantId = :dev', { dev: DEV_TENANT });
+    if (q && q.trim()) {
+      qb = qb.andWhere('LOWER(p.name) LIKE :q', { q: `%${q.toLowerCase()}%` });
+    }
+    const rows = await qb.orderBy('p.name', 'ASC').getMany();
+    return rows
+      .filter(r => !(r.catalogProductId && existingCatalogIds.has(r.catalogProductId)) && !existingNames.has(r.name.toLowerCase()))
+      .map(r => ({ id: r.id, name: r.name, packagesCount: (r.packages || []).length }));
+  }
+
+  // ===== Clone snapshot product to tenant =====
+  async cloneSnapshotProduct(tenantId: string, snapshotProductId: string, opts: { copyPublicCode?: boolean }) {
+    const DEV_TENANT = '00000000-0000-0000-0000-000000000000';
+    const base = await this.productsRepo.findOne({ where: { id: snapshotProductId, tenantId: DEV_TENANT } as any, relations: ['packages'] });
+    if (!base) throw new NotFoundException('المنتج غير موجود في snapshot');
+    const dup = await this.productsRepo.findOne({ where: [
+      { tenantId, catalogProductId: base.catalogProductId || null },
+      { tenantId, name: base.name },
+    ] as any });
+    if (dup) return dup;
+    const product = this.productsRepo.create({
+      tenantId,
+      name: base.name,
+      description: base.description || '',
+      isActive: true,
+      catalogProductId: base.catalogProductId || null,
+      useCatalogImage: true,
+      catalogImageUrl: (base as any).catalogImageUrl || (base as any).imageUrl || null,
+    } as Partial<Product>);
+    const saved = await this.productsRepo.save(product);
+    for (const pkg of base.packages || []) {
+      const newPkg = this.packagesRepo.create({
+        tenantId,
+        product: saved,
+        name: pkg.name,
+        description: pkg.description || '',
+        basePrice: 0,
+        capital: 0,
+        isActive: pkg.isActive,
+        publicCode: opts.copyPublicCode ? (pkg.publicCode ?? null) : null,
+        catalogLinkCode: (pkg as any).catalogLinkCode || null,
+        providerName: pkg.providerName || null,
+        imageUrl: pkg.imageUrl || null,
+      } as Partial<ProductPackage>);
+      if (newPkg.publicCode != null) {
+        const conflict = await this.packagesRepo.findOne({ where: { tenantId, publicCode: newPkg.publicCode } as any });
+        if (conflict) (newPkg as any).publicCode = null; // resolve intra-tenant conflict
+      }
+      await this.packagesRepo.save(newPkg as any);
+    }
+    return saved;
+  }
+
   // ---------- Helpers خاصة بالـ tenant ----------
   private ensureSameTenant(entityTenantId?: string | null, expectedTenantId?: string) {
     if (!expectedTenantId) return; // لا تحقق إن لم يُطلب تقييد

@@ -11,8 +11,8 @@ import { Product } from './product.entity';
 import { PackagePrice } from './package-price.entity';
 
 @Entity('product_packages')
-// استبدال الفهرس المركب القديم (tenantId, publicCode) بفهرس عالمي على publicCode
-@Index('ux_product_packages_public_code', ['publicCode'], { unique: true })
+// تعديل: جعل uniqueness على (tenantId, publicCode) بدلاً من global publicCode
+@Index('ux_product_packages_tenant_public_code', ['tenantId', 'publicCode'], { unique: true })
 @Index('idx_product_packages_tenant_active', ['tenantId', 'isActive'])
 @Index('idx_product_packages_product_id', ['product']) // يُنشئ فهرسًا على product_id
 export class ProductPackage {

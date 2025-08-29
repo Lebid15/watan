@@ -23,7 +23,7 @@ interface Product {
   isActive?: boolean;
 }
 
-interface CatalogProductAvailable { id: string; name: string; packagesCount: number; }
+interface SnapshotProductAvailable { id: string; name: string; packagesCount: number; }
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -31,11 +31,11 @@ export default function ProductsPage() {
   const [failed, setFailed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchBusy, setBatchBusy] = useState(false);
-  const [showCatalogModal, setShowCatalogModal] = useState(false);
-  const [availableCatalog, setAvailableCatalog] = useState<CatalogProductAvailable[] | null>(null);
-  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [snapshotList, setSnapshotList] = useState<SnapshotProductAvailable[] | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [activatingId, setActivatingId] = useState<string | null>(null);
-  const [catalogSearch, setCatalogSearch] = useState("");
+  const [snapshotSearch, setSnapshotSearch] = useState("");
 
   const apiHost = useMemo(() => API_ROUTES.products.base.replace(/\/api\/products\/?$/, ""), []);
   const apiBase = useMemo(() => `${apiHost}/api`, [apiHost]);
@@ -61,26 +61,29 @@ export default function ProductsPage() {
   function getImageSrc(p: Product): string { return failed.has(p.id) ? "/images/placeholder.png" : buildImageSrc(pickImageField(p)); }
   function resolveImageSource(p: Product): 'catalog' | 'custom' | 'none' { if (p.imageSource) return p.imageSource || 'none'; const img = pickImageField(p); if (!img) return 'none'; return p.useCatalogImage ? 'catalog' : 'custom'; }
 
-  // جلب كل منتجات الكتالوج (حتى لو كانت مفعلة مسبقاً) مع العد
-  const fetchAvailableCatalog = async () => {
-    if (catalogLoading) return; setCatalogLoading(true);
+  // جلب منتجات الـ snapshot (مخزن المطوّر) الجاهزة للاستنساخ
+  const fetchSnapshot = async () => {
+    if (snapshotLoading) return; setSnapshotLoading(true);
     try {
-      const res = await fetch(`${apiBase}/admin/catalog/products?withCounts=1`);
-      if (!res.ok) throw new Error('فشل في جلب منتجات الكتالوج');
-      const data = await res.json(); setAvailableCatalog((data?.items)||[]);
-    } catch (e) { console.error(e); setAvailableCatalog([]); }
-    finally { setCatalogLoading(false); }
+      const res = await fetch(`${apiBase}/products/snapshot-available`);
+      if (!res.ok) throw new Error('فشل في جلب قائمة المخزن');
+      const data = await res.json(); // الخدمة تُرجع مصفوفة مباشرة
+      setSnapshotList(Array.isArray(data) ? data : []);
+    } catch (e) { console.error(e); setSnapshotList([]); }
+    finally { setSnapshotLoading(false); }
   };
-  const handleActivate = async (catalogProductId: string) => {
-    if (activatingId) return; setActivatingId(catalogProductId);
+  const handleClone = async (productId: string) => {
+    if (activatingId) return; setActivatingId(productId);
     try {
-      const res = await fetch(`${apiBase}/products/activate-catalog`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ catalogProductId }) });
-      if (!res.ok) throw new Error('فشل تفعيل المنتج');
-      await fetchProducts(); setAvailableCatalog(prev => prev ? prev.filter(p => p.id !== catalogProductId) : prev); setShowCatalogModal(false);
-    } catch (e:any) { alert(e?.message || 'خطأ في التفعيل'); }
+      const res = await fetch(`${apiBase}/products/clone-from-snapshot`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId }) });
+      if (!res.ok) throw new Error('فشل استنساخ المنتج');
+      await fetchProducts(); // حدّث قائمة منتجات التينانت
+      setSnapshotList(prev => prev ? prev.filter(p => p.id !== productId) : prev); // شيله من المعروض (من المفترض أن الخدمة أصلاً تستثنيه لاحقاً)
+      setShowSnapshotModal(false);
+    } catch (e:any) { alert(e?.message || 'خطأ في الاستنساخ'); }
     finally { setActivatingId(null); }
   };
-  useEffect(() => { if (showCatalogModal && availableCatalog == null) fetchAvailableCatalog(); }, [showCatalogModal]);
+  useEffect(() => { if (showSnapshotModal && snapshotList == null) fetchSnapshot(); }, [showSnapshotModal]);
 
   const filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
@@ -90,8 +93,8 @@ export default function ProductsPage() {
         <h1 className="text-lg md:text-2xl font-bold">إدارة المنتجات</h1>
         <input type="text" placeholder="بحث..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
           className="w-full md:w-1/3 border border-[rgb(var(--color-border))] rounded-xl px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base bg-[rgb(var(--color-bg-input))] text-[rgb(var(--color-text-primary))]" />
-        <button onClick={()=>setShowCatalogModal(v=>!v)} className="px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-sm md:text-base whitespace-nowrap bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-hover))] text-[rgb(var(--color-primary-contrast))]">
-          {showCatalogModal ? 'إغلاق' : '+ تفعيل منتج من الكتالوج'}
+        <button onClick={()=>setShowSnapshotModal(v=>!v)} className="px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-sm md:text-base whitespace-nowrap bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-hover))] text-[rgb(var(--color-primary-contrast))]">
+          {showSnapshotModal ? 'إغلاق' : '+ استنساخ منتج من المخزن'}
         </button>
         {selected.size>0 && (
           <div className="flex items-center gap-2 flex-wrap text-xs md:text-sm">
@@ -142,52 +145,47 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {showCatalogModal && (
+      {showSnapshotModal && (
         <div className="fixed inset-0 z-40 flex items-start justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className="w-full max-w-2xl bg-[rgb(var(--color-bg-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[rgb(var(--color-border))]">
-              <h2 className="font-bold text-base md:text-lg">تفعيل منتج من الكتالوج</h2>
-              <button onClick={()=>setShowCatalogModal(false)} className="text-sm text-[rgb(var(--color-text-secondary))] hover:text-[rgb(var(--color-text-primary))]">إغلاق</button>
+              <h2 className="font-bold text-base md:text-lg">استنساخ منتج من المخزن</h2>
+              <button onClick={()=>setShowSnapshotModal(false)} className="text-sm text-[rgb(var(--color-text-secondary))] hover:text-[rgb(var(--color-text-primary))]">إغلاق</button>
             </div>
             <div className="p-3 flex items-center gap-2 border-b border-[rgb(var(--color-border))]">
-              <input type="text" placeholder="بحث داخل القائمة..." value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)}
+              <input type="text" placeholder="بحث داخل القائمة..." value={snapshotSearch} onChange={e=>setSnapshotSearch(e.target.value)}
                 className="flex-1 border border-[rgb(var(--color-border))] rounded-lg px-3 py-1.5 bg-[rgb(var(--color-bg-input))] text-sm" />
-              <button onClick={()=>fetchAvailableCatalog()} disabled={catalogLoading}
+              <button onClick={()=>fetchSnapshot()} disabled={snapshotLoading}
                 className="px-3 py-1.5 rounded-lg text-sm bg-zinc-600 hover:bg-zinc-700 text-white">تحديث</button>
             </div>
             <div className="overflow-auto p-0">
-              {catalogLoading && <div className="text-center text-sm text-[rgb(var(--color-text-secondary))] py-6">جاري التحميل...</div>}
-              {!catalogLoading && availableCatalog && availableCatalog.length===0 && <div className="text-center text-sm text-[rgb(var(--color-text-secondary))] py-6">لا توجد بيانات كتالوج.</div>}
-              {!catalogLoading && availableCatalog && (
+              {snapshotLoading && <div className="text-center text-sm text-[rgb(var(--color-text-secondary))] py-6">جاري التحميل...</div>}
+              {!snapshotLoading && snapshotList && snapshotList.length===0 && <div className="text-center text-sm text-[rgb(var(--color-text-secondary))] py-6">لا توجد منتجات بالمخزن.</div>}
+              {!snapshotLoading && snapshotList && (
                 <ul className="divide-y divide-[rgb(var(--color-border))] max-h-[60vh] overflow-auto">
-                  {availableCatalog
-                    .filter(c=> c.name.toLowerCase().includes(catalogSearch.toLowerCase()))
-                    .map(c=>{
+                  {snapshotList
+                    .filter(c=> c.name.toLowerCase().includes(snapshotSearch.toLowerCase()))
+                    .map(c=> {
                       const busy = activatingId===c.id;
-                      const already = products.some(p=> (p as any).catalogProductId === c.id || p.name === c.name);
                       return (
                         <li key={c.id} className="flex items-center gap-3 p-3 bg-[rgb(var(--color-bg-surface))] hover:bg-[rgb(var(--color-bg-hover,#262626))] transition">
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm md:text-base truncate">{c.name}</div>
                             <div className="text-[11px] md:text-xs text-[rgb(var(--color-text-secondary))]">باقات: {c.packagesCount}</div>
                           </div>
-                          {already ? (
-                            <span className="px-3 py-1.5 rounded-md text-xs md:text-sm bg-emerald-600/70 text-white cursor-not-allowed">مفعل</span>
-                          ) : (
-                            <button onClick={()=>handleActivate(c.id)} disabled={busy}
-                              className="px-3 py-1.5 rounded-md text-xs md:text-sm bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-hover))] text-[rgb(var(--color-primary-contrast))] disabled:opacity-50">{busy?'...جارٍ':'تفعيل'}</button>
-                          )}
+                          <button onClick={()=>handleClone(c.id)} disabled={busy}
+                            className="px-3 py-1.5 rounded-md text-xs md:text-sm bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-hover))] text-[rgb(var(--color-primary-contrast))] disabled:opacity-50">{busy?'...جارٍ':'استنساخ'}</button>
                         </li>
                       );
                     })}
-                  {availableCatalog.filter(c=> c.name.toLowerCase().includes(catalogSearch.toLowerCase())).length===0 && (
+                  {snapshotList.filter(c=> c.name.toLowerCase().includes(snapshotSearch.toLowerCase())).length===0 && (
                     <li className="text-center py-6 text-sm text-[rgb(var(--color-text-secondary))]">لا نتائج مطابقة</li>
                   )}
                 </ul>
               )}
             </div>
             <div className="px-4 py-3 border-t border-[rgb(var(--color-border))] flex justify-end">
-              <button onClick={()=>setShowCatalogModal(false)} className="px-4 py-1.5 rounded-md bg-zinc-700 hover:bg-zinc-800 text-sm text-white">إغلاق</button>
+              <button onClick={()=>setShowSnapshotModal(false)} className="px-4 py-1.5 rounded-md bg-zinc-700 hover:bg-zinc-800 text-sm text-white">إغلاق</button>
             </div>
           </div>
         </div>
