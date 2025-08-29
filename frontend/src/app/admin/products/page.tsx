@@ -39,7 +39,8 @@ export default function ProductsPage() {
     []
   );
   const apiBase = useMemo(() => `${apiHost}/api`, [apiHost]);
-  const productsUrl = `${apiBase}/products`;
+  // Use all=1 to include products even without public packages (admin view)
+  const productsUrl = `${apiBase}/products?all=1`;
 
   const fetchProducts = async () => {
     try {
@@ -87,7 +88,7 @@ export default function ProductsPage() {
     if (!newName) return alert("يرجى إدخال اسم المنتج");
     setAdding(true);
     try {
-      const createRes = await fetch(productsUrl, {
+  const createRes = await fetch(`${apiBase}/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName }),
@@ -98,7 +99,7 @@ export default function ProductsPage() {
       if (newImage) {
         const formData = new FormData();
         formData.append("image", newImage);
-        const uploadRes = await fetch(`${productsUrl}/${created.id}/image`, {
+  const uploadRes = await fetch(`${apiBase}/products/${created.id}/image`, {
           method: "POST",
           body: formData,
         });
