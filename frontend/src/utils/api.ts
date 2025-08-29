@@ -319,7 +319,16 @@ export const Api = {
   // baseURL يحتوي /api بالفعل، فلا نضيف /api هنا
   // Prefer simplified profile-with-currency endpoint (lighter joins, robust fallbacks)
   me: () => api.get('/users/profile-with-currency'),
-  logout: () => api.post('/auth/logout'),
+  logout: async () => {
+    try {
+      const res = await api.post('/auth/logout');
+      return res;
+    } catch (e) {
+      // حتى لو فشل (شبكة أو 404 قديم قبل نشر) نمسح الكوكي client-side كـ fallback
+      try { document.cookie = 'auth=; Max-Age=0; path=/; domain=.syrz1.com; secure; SameSite=None'; } catch {}
+      throw e;
+    }
+  },
   admin: {
     pendingOrders: () => api.get('/admin/pending-orders-count'),
     pendingDeposits: () => api.get('/admin/pending-deposits-count'),

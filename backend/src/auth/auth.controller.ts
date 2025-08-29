@@ -85,6 +85,26 @@ export class AuthController {
     return { token: access_token };
   }
 
+  @Post('logout')
+  @ApiOperation({ summary: 'تسجيل الخروج ومسح كوكي auth' })
+  async logout(@Res({ passthrough: true }) res: Response) {
+    // Clear the auth cookie using same attributes (domain/path) so browser actually removes it.
+    const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.syrz1.com';
+    try {
+      res.cookie('auth', '', {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        domain: cookieDomain,
+        path: '/',
+        maxAge: 0,
+      });
+    } catch (e) {
+      console.warn('[AUTH] failed to clear auth cookie:', (e as any)?.message);
+    }
+    return { ok: true };
+  }
+
   // يسمح بإنشاء حساب مطوّر (tenantId NULL) مرة واحدة عبر سر بيئة BOOTSTRAP_DEV_SECRET.
   // الاستخدام: POST /api/auth/bootstrap-developer { secret, email, password }
   // الحماية:

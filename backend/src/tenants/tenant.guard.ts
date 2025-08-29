@@ -8,6 +8,7 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/(api\/)?metrics$/,
   /^\/api\/auth\/login$/,
   /^\/api\/auth\/register$/,
+  /^\/api\/auth\/logout$/,
   /^\/api\/auth\/request-password-reset$/,
   /^\/api\/auth\/reset-password$/,
   /^\/api\/auth\/request-email-verification$/,
