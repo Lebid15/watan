@@ -44,20 +44,17 @@ export default function DevFilteredProductsPage(){
     try {
       const res = await api.get('/products?all=1');
       const raw = Array.isArray(res.data)? res.data : (res.data?.items||[]);
-      const mapped: DevProduct[] = raw
-        .map((p:any): DevProduct => ({
-          id: p.id,
-            name: p.name,
-            isActive: p.isActive !== false, // افتراض true إذا غير محدد
-            packages: (p.packages||[]).map((k:any): DevPackage => ({
-              id: k.id,
-              name: k.name,
-              publicCode: k.publicCode == null ? null : String(k.publicCode),
-              isActive: k.isActive !== false,
-            }))
-          }))
-        // شرط >=2 باقات (بعد التصفية المحلية فقط لا علاقة بالمزوّد)
-        .filter((p:DevProduct)=> (p.packages?.length||0) >= 2);
+      const mapped: DevProduct[] = raw.map((p:any): DevProduct => ({
+        id: p.id,
+        name: p.name,
+        isActive: p.isActive !== false,
+        packages: (p.packages||[]).map((k:any): DevPackage => ({
+          id: k.id,
+          name: k.name,
+          publicCode: k.publicCode == null ? null : String(k.publicCode),
+          isActive: k.isActive !== false,
+        }))
+      }));
       if (!Array.isArray(mapped) || mapped.length===0) {
         // Debug فقط مؤقت
         console.log('[DEV][filtered-products] raw products payload =', raw);
@@ -140,7 +137,7 @@ export default function DevFilteredProductsPage(){
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold">المنتجات (Dev / ≥2 باقات)</h1>
+  <h1 className="text-2xl font-bold">كل المنتجات (Dev)</h1>
         <div className="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="font-mono" title="Frontend Git SHA">F:{process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}</span>
@@ -256,7 +253,7 @@ export default function DevFilteredProductsPage(){
                   className={`w-4 h-4 rounded-full border transition-colors ${prod.isActive? 'bg-green-500 border-green-600':'bg-red-500 border-red-600'}`}
                 />
                 <span>{prod.name}</span>
-                <span className="text-xs text-gray-400">({prod.packages.length} باقات)</span>
+                <span className={`text-xs ${prod.packages.length<2? 'text-red-500':'text-gray-400'}`}>({prod.packages.length} باقات)</span>
               </div>
               <div className="flex gap-2">
                 <button onClick={()=> router.push(`/dev/filtered-products/${prod.id}`)} className="text-xs px-2 py-1 rounded bg-sky-600 text-white">تفاصيل</button>
@@ -275,10 +272,7 @@ export default function DevFilteredProductsPage(){
                   </tr>
                 </thead>
                 <tbody>
-                  {prod.packages
-                    // إخفاء الباقات بدون publicCode عن السوب دومين (عرض داخلي: نظهرها باهتة مع تنبيه؟ سنختار إخفاء تام حسب المطلوب)
-                    .filter(pkg=> pkg.publicCode != null)
-                    .map((pkg,i)=>(
+                  {prod.packages.map((pkg,i)=>(
                     <tr key={pkg.id} className={`odd:bg-white even:bg-gray-50 hover:bg-yellow-50 ${!pkg.isActive ? 'opacity-60' : ''}`}>
                       <td className="px-2 py-1">{i+1}</td>
                       <td className="px-2 py-1 font-medium">{pkg.name}</td>
@@ -309,7 +303,7 @@ export default function DevFilteredProductsPage(){
                       </td>
                     </tr>
                   ))}
-                  {prod.packages.filter(pkg=> pkg.publicCode != null).length===0 && (
+                  {prod.packages.length===0 && (
                     <tr><td colSpan={5} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
                   )}
                 </tbody>

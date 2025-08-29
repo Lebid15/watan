@@ -107,7 +107,7 @@ export default function DevEditProductPage(){
           </div>
           <div className="p-3 border rounded bg-white">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="font-semibold text-sm">الباقات ({product.packages.filter(pk=> pk.publicCode!=null).length}/{product.packages.length}) <span className="text-[10px] text-gray-500">الباقات بدون publicCode مخفية عن السوب دومين</span></h2>
+              <h2 className="font-semibold text-sm">الباقات ({product.packages.length}) <span className="text-[10px] text-gray-500">(السوب دومين سيرى فقط الباقات ذات publicCode لكنك ترى الكل هنا)</span></h2>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <input value={newPkgName} onChange={e=>setNewPkgName(e.target.value)} placeholder="اسم باقة" className="border rounded px-2 py-1" />
                 <input value={newPkgCode} onChange={e=> setNewPkgCode(e.target.value.replace(/[^0-9]/g,''))} placeholder="كود" className="border rounded px-2 py-1 w-24" maxLength={9} />
@@ -136,7 +136,7 @@ export default function DevEditProductPage(){
                 </tr>
               </thead>
               <tbody>
-                {product.packages.filter(pk=> pk.publicCode!=null).map((pk,i)=>(
+                {product.packages.map((pk,i)=>(
                   <tr key={pk.id} className="odd:bg-white even:bg-gray-50">
                     <td className="px-2 py-1">{i+1}</td>
                     <td className="px-2 py-1 w-40">
@@ -163,8 +163,8 @@ export default function DevEditProductPage(){
                     {/* TODO: per-package edit / toggle active */}
                   </tr>
                 ))}
-                {product.packages.filter(pk=> pk.publicCode!=null).length===0 && (
-                  <tr><td colSpan={5} className="text-center py-4 text-gray-400">لا توجد باقات صالحة (كل الباقات بلا publicCode)</td></tr>
+                {product.packages.length===0 && (
+                  <tr><td colSpan={5} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
                 )}
               </tbody>
             </table>
