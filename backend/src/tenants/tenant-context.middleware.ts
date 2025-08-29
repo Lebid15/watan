@@ -22,12 +22,23 @@ export class TenantContextMiddleware implements NestMiddleware {
     const originalHost = req.headers.host;
     const tenantHost = req.headers['x-tenant-host'] || originalHost;
     const host = (tenantHost || '').split(':')[0]; // ex: kadro.localhost
+    if (process.env.DEBUG_TENANT_CTX === '1') {
+      // eslint-disable-next-line no-console
+      console.log('[TenantCtx][DEBUG] incoming host=%s x-tenant-host=%s path=%s originalUrl=%s', originalHost, req.headers['x-tenant-host'], req.path, req.originalUrl);
+    }
 
   let tenant: Tenant | null = null;
     if (host) {
       const domain = await this.domains.findOne({ where: { domain: host } });
       if (domain) {
         tenant = await this.tenants.findOne({ where: { id: domain.tenantId } });
+        if (process.env.DEBUG_TENANT_CTX === '1') {
+          // eslint-disable-next-line no-console
+          console.log('[TenantCtx][DEBUG] matched tenant_domain domain=%s tenantId=%s', host, domain.tenantId);
+        }
+      } else if (process.env.DEBUG_TENANT_CTX === '1') {
+        // eslint-disable-next-line no-console
+        console.log('[TenantCtx][DEBUG] no tenant_domain match for host=%s', host);
       }
     }
 
@@ -42,6 +53,10 @@ export class TenantContextMiddleware implements NestMiddleware {
     if (tenant) {
       if (!(tenant as any).isActive) throw new NotFoundException('Tenant inactive');
       req.tenant = tenant;
+      if (process.env.DEBUG_TENANT_CTX === '1') {
+        // eslint-disable-next-line no-console
+        console.log('[TenantCtx][DEBUG] attached tenant id=%s code=%s', tenant.id, (tenant as any).code);
+      }
     }
     next();
   }

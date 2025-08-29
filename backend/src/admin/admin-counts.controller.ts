@@ -27,6 +27,10 @@ export class AdminCountsController {
 
   @Get('pending-deposits-count')
   async pendingDeposits(@Req() req: any) {
+    if (process.env.DEBUG_ADMIN_COUNTS === '1') {
+      // eslint-disable-next-line no-console
+      console.log('[AdminCounts][DEBUG] /admin/pending-deposits-count userId=%s role=%s tenantFromReq=%s tokenTenant=%s path=%s', req.user?.id, req.user?.role, req.tenant?.id, req.user?.tenantId, req.path);
+    }
     const tenantId = req.user?.tenantId;
     if (!tenantId) return { count: 0 };
     const count = await this.depositsRepo.count({ where: { tenantId, status: 'pending' } as any });
