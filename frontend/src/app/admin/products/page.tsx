@@ -35,6 +35,7 @@ export default function ProductsPage() {
   const [availableCatalog, setAvailableCatalog] = useState<CatalogProductAvailable[] | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [catalogSearch, setCatalogSearch] = useState("");
 
   const apiHost = useMemo(() => API_ROUTES.products.base.replace(/\/api\/products\/?$/, ""), []);
   const apiBase = useMemo(() => `${apiHost}/api`, [apiHost]);
@@ -60,12 +61,13 @@ export default function ProductsPage() {
   function getImageSrc(p: Product): string { return failed.has(p.id) ? "/images/placeholder.png" : buildImageSrc(pickImageField(p)); }
   function resolveImageSource(p: Product): 'catalog' | 'custom' | 'none' { if (p.imageSource) return p.imageSource || 'none'; const img = pickImageField(p); if (!img) return 'none'; return p.useCatalogImage ? 'catalog' : 'custom'; }
 
+  // جلب كل منتجات الكتالوج (حتى لو كانت مفعلة مسبقاً) مع العد
   const fetchAvailableCatalog = async () => {
     if (catalogLoading) return; setCatalogLoading(true);
     try {
-      const res = await fetch(`${apiBase}/products/catalog-available`);
-      if (!res.ok) throw new Error('فشل في جلب المنتجات الكتالوجية المتاحة');
-      const data = await res.json(); setAvailableCatalog(data?.items || []);
+      const res = await fetch(`${apiBase}/admin/catalog/products?withCounts=1`);
+      if (!res.ok) throw new Error('فشل في جلب منتجات الكتالوج');
+      const data = await res.json(); setAvailableCatalog((data?.items)||[]);
     } catch (e) { console.error(e); setAvailableCatalog([]); }
     finally { setCatalogLoading(false); }
   };
@@ -118,7 +120,23 @@ export default function ProductsPage() {
                   <span className={`absolute -top-1 -left-1 ${badgeColor} text-white text-[9px] md:text-[10px] px-1 py-0.5 rounded-br`}>{labelMap[imgSource]}</span>
                   {!available && <span className="absolute bottom-1 right-1 text-[9px] md:text-[10px] px-1.5 py-0.5 rounded-full bg-[rgb(var(--color-danger))] text-[rgb(var(--color-primary-contrast))]">غير متوفر</span>}
                 </div>
-                <div className="mt-1.5 md:mt-2 text-center text-[11px] sm:text-[12px] md:text-sm text-[rgb(var(--color-text-primary))] truncate w-16 sm:w-20 md:w-24 flex flex-col items-center gap-0.5">{product.name}{isSelected && <span className="text-[9px] text-primary">محدد</span>}</div>
+                <div className="mt-1.5 md:mt-2 text-center text-[11px] sm:text-[12px] md:text-sm text-[rgb(var(--color-text-primary))] truncate w-16 sm:w-20 md:w-24 flex flex-col items-center gap-0.5">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={async (e)=>{
+                        e.preventDefault(); e.stopPropagation();
+                        const newVal = !(product.isActive !== false);
+                        setProducts(ps=> ps.map(p=> p.id===product.id? {...p, isActive:newVal}:p));
+                        try { await api.put(`/products/${product.id}`, { isActive: newVal }); }
+                        catch(err:any){ alert(err?.response?.data?.message||err?.message||'فشل تحديث الحالة'); setProducts(ps=> ps.map(p=> p.id===product.id? {...p, isActive:!newVal}:p)); }
+                      }}
+                      title={(product.isActive!==false)?'نشط - انقر للتعطيل':'معطل - انقر للتفعيل'}
+                      className={`w-3.5 h-3.5 rounded-full border transition-colors ${ (product.isActive!==false) ? 'bg-green-500 border-green-600':'bg-red-500 border-red-600' }`}
+                    />
+                    <span>{product.name}</span>
+                  </div>
+                  {isSelected && <span className="text-[9px] text-primary">محدد</span>}
+                </div>
               </Link>
             ); })}
         </div>
@@ -132,24 +150,41 @@ export default function ProductsPage() {
               <button onClick={()=>setShowCatalogModal(false)} className="text-sm text-[rgb(var(--color-text-secondary))] hover:text-[rgb(var(--color-text-primary))]">إغلاق</button>
             </div>
             <div className="p-3 flex items-center gap-2 border-b border-[rgb(var(--color-border))]">
-              <input type="text" placeholder="بحث في الكتالوج..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
+              <input type="text" placeholder="بحث داخل القائمة..." value={catalogSearch} onChange={e=>setCatalogSearch(e.target.value)}
                 className="flex-1 border border-[rgb(var(--color-border))] rounded-lg px-3 py-1.5 bg-[rgb(var(--color-bg-input))] text-sm" />
               <button onClick={()=>fetchAvailableCatalog()} disabled={catalogLoading}
                 className="px-3 py-1.5 rounded-lg text-sm bg-zinc-600 hover:bg-zinc-700 text-white">تحديث</button>
             </div>
-            <div className="overflow-auto p-3 space-y-2">
+            <div className="overflow-auto p-0">
               {catalogLoading && <div className="text-center text-sm text-[rgb(var(--color-text-secondary))] py-6">جاري التحميل...</div>}
-              {!catalogLoading && availableCatalog && availableCatalog.length===0 && <div className="text-center text-sm text-[rgb(var(--color-text-secondary))] py-6">لا توجد منتجات متاحة للتفعيل حالياً.</div>}
-              {!catalogLoading && availableCatalog && availableCatalog.filter(c=>c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c=>{ const busy=activatingId===c.id; return (
-                <div key={c.id} className="flex items-center gap-3 p-3 rounded-lg border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg-elevated,#1f1f1f))] hover:bg-[rgb(var(--color-bg-hover,#262626))] transition">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm md:text-base truncate">{c.name}</div>
-                    <div className="text-[11px] md:text-xs text-[rgb(var(--color-text-secondary))]">الحزم المتاحة: {c.packagesCount}</div>
-                  </div>
-                  <button onClick={()=>handleActivate(c.id)} disabled={busy}
-                    className="px-3 py-1.5 rounded-md text-xs md:text-sm bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-hover))] text-[rgb(var(--color-primary-contrast))] disabled:opacity-50">{busy?'...جارٍ':'تفعيل'}</button>
-                </div>
-              ); })}
+              {!catalogLoading && availableCatalog && availableCatalog.length===0 && <div className="text-center text-sm text-[rgb(var(--color-text-secondary))] py-6">لا توجد بيانات كتالوج.</div>}
+              {!catalogLoading && availableCatalog && (
+                <ul className="divide-y divide-[rgb(var(--color-border))] max-h-[60vh] overflow-auto">
+                  {availableCatalog
+                    .filter(c=> c.name.toLowerCase().includes(catalogSearch.toLowerCase()))
+                    .map(c=>{
+                      const busy = activatingId===c.id;
+                      const already = products.some(p=> (p as any).catalogProductId === c.id || p.name === c.name);
+                      return (
+                        <li key={c.id} className="flex items-center gap-3 p-3 bg-[rgb(var(--color-bg-surface))] hover:bg-[rgb(var(--color-bg-hover,#262626))] transition">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm md:text-base truncate">{c.name}</div>
+                            <div className="text-[11px] md:text-xs text-[rgb(var(--color-text-secondary))]">باقات: {c.packagesCount}</div>
+                          </div>
+                          {already ? (
+                            <span className="px-3 py-1.5 rounded-md text-xs md:text-sm bg-emerald-600/70 text-white cursor-not-allowed">مفعل</span>
+                          ) : (
+                            <button onClick={()=>handleActivate(c.id)} disabled={busy}
+                              className="px-3 py-1.5 rounded-md text-xs md:text-sm bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-hover))] text-[rgb(var(--color-primary-contrast))] disabled:opacity-50">{busy?'...جارٍ':'تفعيل'}</button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  {availableCatalog.filter(c=> c.name.toLowerCase().includes(catalogSearch.toLowerCase())).length===0 && (
+                    <li className="text-center py-6 text-sm text-[rgb(var(--color-text-secondary))]">لا نتائج مطابقة</li>
+                  )}
+                </ul>
+              )}
             </div>
             <div className="px-4 py-3 border-t border-[rgb(var(--color-border))] flex justify-end">
               <button onClick={()=>setShowCatalogModal(false)} className="px-4 py-1.5 rounded-md bg-zinc-700 hover:bg-zinc-800 text-sm text-white">إغلاق</button>

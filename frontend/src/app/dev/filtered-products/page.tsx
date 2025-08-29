@@ -252,7 +252,9 @@ export default function DevFilteredProductsPage(){
                   title={prod.isActive? 'نشط - انقر للتعطيل':'معطل - انقر للتفعيل'}
                   className={`w-4 h-4 rounded-full border transition-colors ${prod.isActive? 'bg-green-500 border-green-600':'bg-red-500 border-red-600'}`}
                 />
-                <span>{prod.name}</span>
+                <div className="flex items-center gap-1">
+                  <span>{prod.name}</span>
+                </div>
                 <span className={`text-xs ${prod.packages.length<2? 'text-red-500':'text-gray-400'}`}>({prod.packages.length} باقات)</span>
               </div>
               <div className="flex gap-2">

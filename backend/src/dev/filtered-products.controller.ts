@@ -1,4 +1,4 @@
-import { Controller, Post, Get } from '@nestjs/common';
+import { Controller, Post, Get, Query } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -168,21 +168,33 @@ export class DevFilteredProductsController {
 
   // استيراد منتجات الكتالوج (المفلترة) إلى الجدول الفعلي product + product_packages داخل الحاوية العالمية
   @Post('import-catalog')
-  async importCatalog() {
+  async importCatalog(
+    @Query('limit') limitRaw?: string,
+    @Query('offset') offsetRaw?: string,
+    @Query('minPackages') minPackagesRaw?: string, // احتياطي لو أردنا الإبقاء على فلتر لاحقاً
+  ) {
     const PSEUDO_TENANT = '00000000-0000-0000-0000-000000000000';
-    const MAX_PRODUCTS = 25;
-    const MAX_PACKAGES_PER = 100; // استيراد أكبر عدد معقول
+    // السماح برفع الحد مع قيود عليا لمنع التخمة
+    const limit = Math.min(Math.max(parseInt(limitRaw || '500', 10), 1), 5000);
+    const offset = Math.max(parseInt(offsetRaw || '0', 10), 0);
+    const minPackages = Math.max(parseInt(minPackagesRaw || '0', 10), 0); // افتراضياً 0 (لا فلترة)
+    const MAX_PACKAGES_PER = 1000; // رفع الحد للمنتجات الكبيرة
+
+    // نجلب المنتجات (صفوف الكتالوج) ضمن الصفحة المطلوبة
     const products: any[] = await this.productsRepo.manager.query(
       `SELECT p.id, p.name,
         (SELECT count(*) FROM catalog_package cp WHERE cp."catalogProductId" = p.id) AS pkg_count
        FROM catalog_product p
        ORDER BY p.name
-       LIMIT $1`, [MAX_PRODUCTS]);
-    const filtered = products.filter(p => Number(p.pkg_count) >= 2);
-    if (filtered.length === 0) return { imported: 0, packages: 0, note: 'no eligible catalog products' };
+       OFFSET $1 LIMIT $2`, [offset, limit]);
+
+    // تطبيق حد أدنى اختياري لعدد الباقات (إذا أراد المستخدم ذلك) وإلا كل المنتجات
+    const eligible = products.filter(p => Number(p.pkg_count) >= minPackages);
+    if (eligible.length === 0) return { imported: 0, packages: 0, note: 'لا توجد منتجات مطابقة (قد يكون minPackages مرتفعاً)' };
+
     let importedProducts = 0;
     let importedPackages = 0;
-    for (const row of filtered) {
+    for (const row of eligible) {
       // هل المنتج موجود مسبقاً (بالـ catalogProductId أو الاسم)؟
       let existing: any = await this.productsRepo.findOne({ where: [{ catalogProductId: row.id }, { name: row.name, tenantId: PSEUDO_TENANT }] as any });
       if (!existing) {
@@ -221,7 +233,7 @@ export class DevFilteredProductsController {
         importedPackages++;
       }
     }
-    return { imported: importedProducts, packages: importedPackages };
+    return { imported: importedProducts, packages: importedPackages, page: { offset, limit, returned: products.length, eligible: eligible.length, minPackages } };
   }
 
   // LOCAL TEST ONLY (not public path list) create ad-hoc demo product with packages

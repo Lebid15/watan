@@ -61,9 +61,9 @@ export default function DevEditProductPage(){
                       try { await api.put(`/products/${product.id}`, { isActive: newVal }); }
                       catch(e:any){ alert(e?.response?.data?.message||e?.message||'فشل تحديث الحالة'); setProduct(p=> p? {...p, isActive:!newVal}:p); }
                     }}
-                    className={`text-[10px] px-2 py-0.5 rounded border flex items-center gap-1 ${product.isActive? 'bg-green-600 border-green-700 text-white':'bg-red-600 border-red-700 text-white'}`}
+                    className={`w-4 h-4 rounded-full border transition-colors ${product.isActive? 'bg-green-500 border-green-600':'bg-red-500 border-red-600'}`}
                     title={product.isActive? 'نشط - انقر للتعطيل':'معطل - انقر للتفعيل'}
-                  >{product.isActive? 'نشط':'معطل'}</button>
+                  />
                 )}
               </h2>
               {autoSaving && <span className="text-[10px] text-amber-600 animate-pulse">حفظ تلقائي...</span>}
