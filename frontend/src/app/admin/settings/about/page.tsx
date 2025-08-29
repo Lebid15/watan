@@ -13,9 +13,12 @@ export default function Page() {
     let mounted = true;
     (async () => {
       try {
-        const r = await api.get<string>(API_ROUTES.site.admin.about);
+        const r = await api.get<any>(API_ROUTES.site.admin.about);
         if (!mounted) return;
-        setValue(r.data || '');
+        const val = typeof r.data === 'string'
+          ? r.data
+          : (r.data && typeof r.data === 'object' ? (r.data.value ?? '') : '');
+        setValue(val || '');
       } catch {
         if (!mounted) return;
         setError('تعذّر جلب المحتوى');

@@ -7,12 +7,21 @@ import api, { API_ROUTES } from '@/utils/api';
 
 type RangePreset = 'today' | 'this_month' | 'last_month' | 'last_6_months' | 'custom';
 
-interface ProfitsResponse {
-  filters: { range: RangePreset; start: string; end: string; userId: string | null; provider: string | null };
+// يدعم شكلين: الافتراضي (TRY + USD) أو usd_only (totalsUSD + profitUSD)
+interface ProfitsResponseDefault {
+  filters: { range: RangePreset; start: string; end: string; userId: string | null; provider: string | null; view?: string };
   counts: { total: number; approved: number; rejected: number };
   totalsTRY: { cost: number; sales: number };
   profit: { try: number; usd: number; rateTRY: number };
 }
+interface ProfitsResponseUsdOnly {
+  filters: { range: RangePreset; start: string; end: string; userId: string | null; provider: string | null; view: 'usd_only' };
+  counts: { total: number; approved: number; rejected: number };
+  totalsUSD: { cost: number; sales: number };
+  profitUSD: number;
+  rateTRY: number;
+}
+type ProfitsResponse = ProfitsResponseDefault | ProfitsResponseUsdOnly;
 interface Option { value: string; label: string; }
 
 export default function AdminReportsProfitsPage() {
@@ -158,8 +167,10 @@ export default function AdminReportsProfitsPage() {
       if (effUserId) params.userId = effUserId;
       if (effProvider) params.provider = effProvider;
 
-      const { data } = await api.get<ProfitsResponse>(API_ROUTES.admin.reports.profits, { params });
-      setData(data);
+  // نطلب دائماً العرض بالدولار فقط
+  params.view = 'usd_only';
+  const resp = await api.get<ProfitsResponse>(API_ROUTES.admin.reports.profits, { params });
+  setData(resp.data);
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'حدث خطأ غير متوقع');
     } finally {
@@ -205,8 +216,24 @@ export default function AdminReportsProfitsPage() {
   ];
 
   // تنسيق رقم
-  const fmtNum = (n: number | undefined | null, fd = 2) =>
-    Number(n ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: fd, maximumFractionDigits: fd });
+  const fmtNum = (n: number | undefined | null, fd = 2) => {
+    const v = Number(n ?? 0);
+    if (!Number.isFinite(v)) return '0';
+    return v.toLocaleString('en-US', { minimumFractionDigits: fd, maximumFractionDigits: fd });
+  };
+
+  const isUsdOnly = data && 'totalsUSD' in data;
+  const costDisplay = isUsdOnly ? fmtNum((data as ProfitsResponseUsdOnly).totalsUSD.cost) : fmtNum((data as ProfitsResponseDefault|any)?.totalsTRY?.cost);
+  const salesDisplay = isUsdOnly ? fmtNum((data as ProfitsResponseUsdOnly).totalsUSD.sales) : fmtNum((data as ProfitsResponseDefault|any)?.totalsTRY?.sales);
+  const profitDisplay = isUsdOnly
+    ? fmtNum((data as ProfitsResponseUsdOnly).profitUSD)
+    : fmtNum((data as ProfitsResponseDefault|any)?.profit?.try);
+  const rateTRY = isUsdOnly
+    ? (data as ProfitsResponseUsdOnly).rateTRY
+    : (data as ProfitsResponseDefault|any)?.profit?.rateTRY;
+  const profitUsdExplicit = isUsdOnly
+    ? fmtNum((data as ProfitsResponseUsdOnly).profitUSD)
+    : fmtNum((data as ProfitsResponseDefault|any)?.profit?.usd);
 
   return (
     <div className="space-y-4 text-text-primary bg-bg-base p-2">
@@ -301,30 +328,27 @@ export default function AdminReportsProfitsPage() {
       <section className="inline-block max-w-full rounded-lg bg-bg-surface border border-border p-4" dir="rtl">
         <div className="grid grid-cols-[1fr,auto] gap-x-6 gap-y-2 items-start">
           <div className="text-text-secondary">إجمالي الطلبات</div>
-          <div className="text-left"><span className="block text-xl font-bold">{data?.counts.total ?? 0}</span></div>
+          <div className="text-left"><span className="block text-xl font-bold">{data ? (data as any).counts.total : 0}</span></div>
 
           <div className="text-success">المقبولة</div>
-          <div className="text-left"><span className="block text-xl font-bold">{data?.counts.approved ?? 0}</span></div>
+          <div className="text-left"><span className="block text-xl font-bold">{data ? (data as any).counts.approved : 0}</span></div>
 
           <div className="text-danger">المرفوضة</div>
-          <div className="text-left"><span className="block text-xl font-bold">{data?.counts.rejected ?? 0}</span></div>
+          <div className="text-left"><span className="block text-xl font-bold">{data ? (data as any).counts.rejected : 0}</span></div>
 
           <div className="col-span-2 my-2"><hr className="border-border" /></div>
 
-          <div className="text-text-primary">مجموع التكلفة (TRY)</div>
-          <div className="text-left" dir="ltr"><span className="block text-xl font-bold">{fmtNum(data?.totalsTRY.cost)}</span></div>
+          <div className="text-text-primary">مجموع التكلفة (USD)</div>
+          <div className="text-left" dir="ltr"><span className="block text-xl font-bold">{costDisplay} USD</span></div>
 
-          <div className="text-text-primary">مجموع سعر البيع (TRY)</div>
-          <div className="text-left" dir="ltr"><span className="block text-xl font-bold">{fmtNum(data?.totalsTRY.sales)}</span></div>
+          <div className="text-text-primary">مجموع سعر البيع (USD)</div>
+          <div className="text-left" dir="ltr"><span className="block text-xl font-bold">{salesDisplay} USD</span></div>
 
-          <div className="text-text-primary">الربح النهائي</div>
-          <div className="text-left" dir="ltr"><span className="block text-xl font-bold">{fmtNum(data?.profit.try)}&nbsp;TRY</span></div>
+          <div className="text-text-primary">الربح النهائي (USD)</div>
+          <div className="text-left" dir="ltr"><span className="block text-xl font-bold">{profitDisplay} USD</span></div>
 
           <div className="col-span-2 text-left text-xs text-text-secondary" dir="ltr">
-            (ما يقابله بالدولار: {Number(data?.profit.usd ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD)
-          </div>
-          <div className="col-span-2 text-left text-xs text-text-secondary" dir="ltr">
-            (المعدل الحالي: 1 USD = {data?.profit.rateTRY ?? '—'} TRY)
+            (سعر الصرف الحالي: 1 USD = {rateTRY ?? '—'} TRY)
           </div>
         </div>
 
