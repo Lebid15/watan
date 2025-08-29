@@ -86,9 +86,15 @@ export class TenantGuard implements CanActivate {
   if (isTenantPath && !tenant) throw new UnauthorizedException('Tenant context required');
 
   if (!user && !req.externalToken) {
-      // Defer auth evaluation to JwtAuthGuard / RolesGuard if an Authorization header is present.
+      // Defer auth evaluation to JwtAuthGuard / RolesGuard if an Authorization header OR auth cookie is present.
       // This avoids ordering issues where this global guard runs before controller-level JwtAuthGuard.
-      if (req.headers && req.headers.authorization) {
+      const hasAuthHeader = !!(req.headers && req.headers.authorization);
+      const hasAuthCookie = !!(req.cookies && req.cookies.auth);
+      if (hasAuthHeader || hasAuthCookie) {
+        if (process.env.JWT_DEBUG === '1') {
+          // eslint-disable-next-line no-console
+          console.log('[TenantGuard][DEBUG] deferring to JwtAuthGuard (header=%s cookie=%s path=%s)', hasAuthHeader, hasAuthCookie, path);
+        }
         return true; // allow next guards to populate req.user
       }
       throw new UnauthorizedException('Auth required');
