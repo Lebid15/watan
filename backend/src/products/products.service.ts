@@ -631,6 +631,17 @@ export class ProductsService {
     data: Partial<ProductPackage> & { catalogLinkCode?: string },
     ctx?: { userId?: string; finalRole?: string },
   ): Promise<ProductPackage> {
+    // Lightweight debug log (avoid dumping large objects)
+    try {
+      console.log('[PKG][CREATE][START]', {
+        tenantId: tenantId?.slice(0, 8),
+        productId: productId?.slice(0, 8),
+        name: data?.name,
+        catalogLinkCode: (data as any)?.catalogLinkCode,
+        publicCode: (data as any)?.publicCode,
+        by: ctx?.finalRole || 'unknown',
+      });
+    } catch (_) {}
     if (!data.name || !data.name.trim()) throw new ConflictException('اسم الباقة مطلوب');
 
     const product = await this.productsRepo.findOne({
@@ -641,16 +652,26 @@ export class ProductsService {
 
     if (isFeatureEnabled('catalogLinking')) {
       if (!product.catalogProductId) {
+        console.warn('[PKG][CREATE][ERR] missing catalogProductId while catalogLinking enabled', {
+          productId: product.id,
+        });
         throw new BadRequestException('catalogProductId مفقود للمنتج؛ لا يمكن إنشاء باقة (ربط الكتالوج مفعل)');
       }
       const link = (data as any).catalogLinkCode?.trim();
-      if (!link) throw new BadRequestException('catalogLinkCode مطلوب');
+      if (!link) {
+        console.warn('[PKG][CREATE][ERR] catalogLinkCode missing');
+        throw new BadRequestException('catalogLinkCode مطلوب');
+      }
       // تحقق وجود linkCode في catalog_package لنفس catalogProductId
       const row = await this.productsRepo.manager.query(
         'SELECT 1 FROM catalog_package WHERE "catalogProductId" = $1 AND "linkCode" = $2 LIMIT 1',
         [product.catalogProductId, link],
       );
       if (!row || row.length === 0) {
+        console.warn('[PKG][CREATE][ERR] invalid catalogLinkCode for catalogProduct', {
+          productId: product.id,
+          link,
+        });
         throw new BadRequestException('catalogLinkCode غير صالح لهذا المنتج الكتالوجي');
       }
       (data as any).catalogLinkCode = link;
@@ -681,9 +702,13 @@ export class ProductsService {
       const pc = Number(data.publicCode);
       if (Number.isInteger(pc) && pc > 0) {
         const existing = await this.packagesRepo.findOne({ where: { publicCode: pc } as any });
-        if (existing) throw new ConflictException('الكود مستخدم مسبقًا');
+        if (existing) {
+          console.warn('[PKG][CREATE][ERR] publicCode already used', { publicCode: pc });
+          throw new ConflictException('الكود مستخدم مسبقًا');
+        }
         (newPackage as any).publicCode = pc;
       } else if (data.publicCode !== null) {
+        console.warn('[PKG][CREATE][ERR] invalid publicCode value', { value: data.publicCode });
         throw new BadRequestException('publicCode غير صالح (يجب أن يكون رقمًا موجبًا)');
       }
     }
@@ -704,6 +729,14 @@ export class ProductsService {
     await this.packagePriceRepo.save(prices);
 
     (saved as any).prices = prices;
+    try {
+      console.log('[PKG][CREATE][OK]', {
+        id: saved.id?.slice(0, 8),
+        publicCode: (saved as any).publicCode,
+        catalogLinkCode: (saved as any).catalogLinkCode,
+        capital: saved.capital,
+      });
+    } catch (_) {}
     return saved as ProductPackage;
   }
 
