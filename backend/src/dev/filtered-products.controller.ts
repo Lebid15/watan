@@ -168,72 +168,91 @@ export class DevFilteredProductsController {
 
   // استيراد منتجات الكتالوج (المفلترة) إلى الجدول الفعلي product + product_packages داخل الحاوية العالمية
   @Post('import-catalog')
-  async importCatalog(
-    @Query('limit') limitRaw?: string,
-    @Query('offset') offsetRaw?: string,
-    @Query('minPackages') minPackagesRaw?: string, // احتياطي لو أردنا الإبقاء على فلتر لاحقاً
-  ) {
+  async importCatalog() {
+    // استيراد شامل بدون أي فلترة: كل المنتجات وكل الباقات وكل الصور المتاحة.
     const PSEUDO_TENANT = '00000000-0000-0000-0000-000000000000';
-    // السماح برفع الحد مع قيود عليا لمنع التخمة
-    const limit = Math.min(Math.max(parseInt(limitRaw || '500', 10), 1), 5000);
-    const offset = Math.max(parseInt(offsetRaw || '0', 10), 0);
-    const minPackages = Math.max(parseInt(minPackagesRaw || '0', 10), 0); // افتراضياً 0 (لا فلترة)
-    const MAX_PACKAGES_PER = 1000; // رفع الحد للمنتجات الكبيرة
-
-    // نجلب المنتجات (صفوف الكتالوج) ضمن الصفحة المطلوبة
-    const products: any[] = await this.productsRepo.manager.query(
-      `SELECT p.id, p.name,
-        (SELECT count(*) FROM catalog_package cp WHERE cp."catalogProductId" = p.id) AS pkg_count
-       FROM catalog_product p
-       ORDER BY p.name
-       OFFSET $1 LIMIT $2`, [offset, limit]);
-
-    // تطبيق حد أدنى اختياري لعدد الباقات (إذا أراد المستخدم ذلك) وإلا كل المنتجات
-    const eligible = products.filter(p => Number(p.pkg_count) >= minPackages);
-    if (eligible.length === 0) return { imported: 0, packages: 0, note: 'لا توجد منتجات مطابقة (قد يكون minPackages مرتفعاً)' };
-
+    const BATCH = 250; // دفعة قراءة من جدول الكتالوج لمنع الحمل الكبير
+    let offset = 0;
+    let totalProcessed = 0;
     let importedProducts = 0;
+    let skippedProducts = 0;
     let importedPackages = 0;
-    for (const row of eligible) {
-      // هل المنتج موجود مسبقاً (بالـ catalogProductId أو الاسم)؟
-      let existing: any = await this.productsRepo.findOne({ where: [{ catalogProductId: row.id }, { name: row.name, tenantId: PSEUDO_TENANT }] as any });
-      if (!existing) {
-        const created: any = this.productsRepo.create({
-          tenantId: PSEUDO_TENANT,
-          name: row.name,
-          description: null,
-          isActive: true,
-          useCatalogImage: true,
-          catalogProductId: row.id,
-        } as any);
-        existing = await this.productsRepo.save(created);
-        importedProducts++;
-      }
-      // اجلب باقات الكتالوج
-      const pkgs: any[] = await this.productsRepo.manager.query(
-        `SELECT cp.id, cp.name FROM catalog_package cp WHERE cp."catalogProductId" = $1 ORDER BY cp.name LIMIT $2`,
-        [row.id, MAX_PACKAGES_PER],
-      );
-      for (const cpk of pkgs) {
-        // تحقق إذا كانت الباقة موجودة بالاسم لنفس المنتج
-  const dup = await this.packagesRepo.findOne({ where: { product: { id: existing.id }, name: cpk.name } as any });
-        if (dup) continue;
-        const newPkg = this.packagesRepo.create({
-          id: randomUUID(),
-          tenantId: PSEUDO_TENANT,
-          product: existing,
-          name: cpk.name,
-          basePrice: 0,
-          capital: 0,
-          isActive: true,
-          publicCode: null,
-          catalogLinkCode: null,
-        } as any);
-        await this.packagesRepo.save(newPkg as any);
-        importedPackages++;
+    let skippedPackages = 0;
+    const started = Date.now();
+
+    // عدّ إجمالي المنتجات (للتقدم)
+    const [{ count: totalCatalogStr }] = await this.productsRepo.manager.query('SELECT COUNT(*)::int AS count FROM catalog_product');
+    const totalCatalog = Number(totalCatalogStr) || 0;
+
+    for (;;) {
+      const rows: any[] = await this.productsRepo.manager.query(
+        `SELECT p.id, p.name, p.description, p."imageUrl"
+         FROM catalog_product p
+         ORDER BY p.name
+         OFFSET $1 LIMIT $2`, [offset, BATCH]);
+      if (rows.length === 0) break;
+      offset += rows.length;
+      for (const row of rows) {
+        totalProcessed++;
+        // ابحث عن المنتج الداخلي (snapshot) بالـ catalogProductId أو الاسم لنفس pseudo tenant
+        let existing: any = await this.productsRepo.findOne({ where: [{ catalogProductId: row.id }, { name: row.name, tenantId: PSEUDO_TENANT }] as any });
+        if (!existing) {
+          const created: any = this.productsRepo.create({
+            tenantId: PSEUDO_TENANT,
+            name: row.name,
+            description: row.description ?? null,
+            isActive: true,
+            useCatalogImage: true,
+            imageUrl: row.imageUrl ?? null,
+            catalogProductId: row.id,
+          } as any);
+          existing = await this.productsRepo.save(created);
+          importedProducts++;
+        } else {
+          skippedProducts++;
+          // تحديث طفيف للصورة/الوصف إذا كانا فارغين لدينا ومتوفرين بالكتالوج
+          let dirty = false;
+            if ((!existing.description || existing.description === '') && row.description) { existing.description = row.description; dirty = true; }
+            if ((!existing.imageUrl || /placeholder/i.test(existing.imageUrl)) && row.imageUrl) { existing.imageUrl = row.imageUrl; dirty = true; }
+          if (dirty) { try { await this.productsRepo.save(existing); } catch {} }
+        }
+        // جلب كل باقات المنتج من الكتالوج دون حد
+        const pkgs: any[] = await this.productsRepo.manager.query(
+          `SELECT cp.id, cp.name
+             FROM catalog_package cp
+            WHERE cp."catalogProductId" = $1
+            ORDER BY cp.name`, [row.id]);
+        for (const cpk of pkgs) {
+          const dup = await this.packagesRepo.findOne({ where: { product: { id: existing.id }, name: cpk.name } as any });
+          if (dup) { skippedPackages++; continue; }
+          const newPkg = this.packagesRepo.create({
+            id: randomUUID(),
+            tenantId: PSEUDO_TENANT,
+            product: existing,
+            name: cpk.name,
+            basePrice: 0,
+            capital: 0,
+            isActive: true,
+            publicCode: null,
+            catalogLinkCode: null,
+          } as any);
+          await this.packagesRepo.save(newPkg as any);
+          importedPackages++;
+        }
       }
     }
-    return { imported: importedProducts, packages: importedPackages, page: { offset, limit, returned: products.length, eligible: eligible.length, minPackages } };
+    const elapsedMs = Date.now() - started;
+    return {
+      mode: 'full-import',
+      totalCatalog,
+      processed: totalProcessed,
+      imported: importedProducts,
+      skippedProducts,
+      packages: importedPackages,
+      skippedPackages,
+      elapsedMs,
+      note: 'استيراد كامل بدون فلترة',
+    };
   }
 
   // LOCAL TEST ONLY (not public path list) create ad-hoc demo product with packages
