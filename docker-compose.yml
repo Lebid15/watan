@@ -51,13 +51,9 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       JWT_SECRET: "${JWT_SECRET}"
       PUBLIC_TENANT_BASE_DOMAIN: "syrz1.com"
-      DEBUG_TENANT_GUARD: "1"
-      DEBUG_TENANT_CTX: "1"
-      DEBUG_USER_PROFILE: "1"
-      DEBUG_ADMIN_COUNTS: "1"
-      REQUEST_LOGGING: "1"
+      # Unified toggle for selective verbose logging (set to 1 only temporarily when needed)
+      DEBUG: "0"
       FEATURE_BILLING_V1: "true"
-      FORCE_TENANT_USD: "true"
     expose:
       - "3000"
     volumes:

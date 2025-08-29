@@ -267,7 +267,14 @@ export class UserService {
     if (!user && (tenantId === undefined || tenantId === null)) {
       user = await this.usersRepository.findOne({ where: { id: userId, tenantId: null } as any });
     }
-    if (!user) throw new NotFoundException('المستخدم غير موجود');
+    if (!user) {
+      // Log detailed context to diagnose 404 (user not found) after successful login
+      if (process.env.DEBUG_USER_PROFILE === '1') {
+        // eslint-disable-next-line no-console
+        console.log('[PROFILE][SIMPLIFIED][DEBUG] user not found', { userId, tenantIdTried: tenantId });
+      }
+      throw new NotFoundException('المستخدم غير موجود');
+    }
 
     let currencyCode = 'USD';
     if ((user as any).currency_id) {
