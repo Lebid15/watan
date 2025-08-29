@@ -94,6 +94,29 @@ export class ProductsService {
     return this.productsRepo.save(product);
   }
 
+  // قائمة المنتجات الكتالوجية القابلة للتفعيل (لم تُفعل بعد لهذا التينانت)
+  async listAvailableCatalogProducts(tenantId: string, limit = 100): Promise<{ id: string; name: string; packagesCount: number }[]> {
+    // اجلب ids المنتجات المفعّلة لهذا التينانت
+    const existing: { catalogProductId: string }[] = await this.productsRepo.query(
+      'SELECT "catalogProductId" FROM product WHERE "tenantId" = $1 AND "catalogProductId" IS NOT NULL',
+      [tenantId],
+    );
+    const existingSet = new Set(existing.map(r => r.catalogProductId));
+    // اجلب مجموعة من الكتالوج منشورة وقابلة للتفعيل
+    const rows: { id: string; name: string; packagescount: string }[] = await this.productsRepo.manager.query(
+      `SELECT p.id, p.name,
+              (SELECT count(*) FROM catalog_package cp WHERE cp."catalogProductId" = p.id) AS packagesCount
+         FROM catalog_product p
+        WHERE p."isPublishable" = true
+        ORDER BY p.name
+        LIMIT $1`,
+      [limit],
+    );
+    return rows
+      .filter(r => !existingSet.has(r.id))
+      .map(r => ({ id: r.id, name: r.name, packagesCount: Number(r.packagescount || (r as any).packagesCount || 0) }));
+  }
+
   /**
    * Return available bridge codes (publicCode) for a tenant's product.
    * Logic Phase1: If product has catalogProductId, pull all developer (pseudo tenant) packages sharing that catalogProductId

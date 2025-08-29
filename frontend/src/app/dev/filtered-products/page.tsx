@@ -8,14 +8,14 @@ import api from '@/utils/api';
 interface DevPackage {
   id: string;
   name: string | null;
-  publicCode: string | null; // كود الربط (نحن نُدخله يدويًا)
-  providerName?: string | null; // اسم المزود اليدوي (local / barakat ...)
-  isActive?: boolean;
+  publicCode: string | null; // كود الربط
+  isActive: boolean;
 }
 interface DevProduct {
   id: string;
   name: string;
   packages: DevPackage[];
+  isActive: boolean; // مخزن في الباك اند
 }
 
 export default function DevFilteredProductsPage(){
@@ -44,17 +44,20 @@ export default function DevFilteredProductsPage(){
     try {
       const res = await api.get('/products?all=1');
       const raw = Array.isArray(res.data)? res.data : (res.data?.items||[]);
-      const mapped: DevProduct[] = raw.map((p:any)=>({
-        id: p.id,
-        name: p.name,
-        packages: (p.packages||[]).map((k:any)=>({
-          id: k.id,
-          name: k.name,
-          publicCode: k.publicCode == null ? null : String(k.publicCode),
-          basePrice: Number(k.basePrice ?? 0),
-          isActive: k.isActive,
-        }))
-      }));
+      const mapped: DevProduct[] = raw
+        .map((p:any): DevProduct => ({
+          id: p.id,
+            name: p.name,
+            isActive: p.isActive !== false, // افتراض true إذا غير محدد
+            packages: (p.packages||[]).map((k:any): DevPackage => ({
+              id: k.id,
+              name: k.name,
+              publicCode: k.publicCode == null ? null : String(k.publicCode),
+              isActive: k.isActive !== false,
+            }))
+          }))
+        // شرط >=2 باقات (بعد التصفية المحلية فقط لا علاقة بالمزوّد)
+        .filter((p:DevProduct)=> (p.packages?.length||0) >= 2);
       if (!Array.isArray(mapped) || mapped.length===0) {
         // Debug فقط مؤقت
         console.log('[DEV][filtered-products] raw products payload =', raw);
@@ -128,8 +131,8 @@ export default function DevFilteredProductsPage(){
     finally{ setPkgDeleting(productId,false); }
   };
 
-  const nameFiltered = products.filter(p=> !textFilter.trim() || p.name.toLowerCase().includes(textFilter.toLowerCase()));
-  const filtered = selectedName ? nameFiltered.filter(p=> p.name.toLowerCase().startsWith(selectedName.toLowerCase())) : nameFiltered;
+  const nameFiltered = products.filter((p:DevProduct)=> !textFilter.trim() || p.name.toLowerCase().includes(textFilter.toLowerCase()));
+  const filtered = selectedName ? nameFiltered.filter((p:DevProduct)=> p.name.toLowerCase().startsWith(selectedName.toLowerCase())) : nameFiltered;
   const productOptions = products; // أصبحت القائمة تعتمد فقط على المنتجات المدمجة
   const totalPackages = filtered.reduce((acc,p)=> acc + p.packages.length, 0);
   const activePackages = filtered.reduce((acc,p)=> acc + p.packages.filter(pk=>pk.isActive).length, 0);
@@ -137,7 +140,7 @@ export default function DevFilteredProductsPage(){
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold">المنتجات 3 (Dev / All)</h1>
+        <h1 className="text-2xl font-bold">المنتجات (Dev / ≥2 باقات)</h1>
         <div className="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="font-mono" title="Frontend Git SHA">F:{process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}</span>
@@ -158,7 +161,7 @@ export default function DevFilteredProductsPage(){
           disabled={loading}
           className="px-4 py-1.5 rounded text-sm bg-blue-600 text-white disabled:opacity-50"
         >تحديث</button>
-        {/* زر استيراد منتجات الكتالوج المؤهلة (>=2 باقات) */}
+  {/* زر استيراد منتجات الكتالوج */}
         <button
           onClick={async()=>{
             setImporting(true); setImportStats(null);
@@ -241,10 +244,23 @@ export default function DevFilteredProductsPage(){
         {filtered.map(prod=> (
           <div key={prod.id} className="border rounded shadow-sm bg-white">
             <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b">
-              <div className="font-semibold text-sm">{prod.name} <span className="text-xs text-gray-400">({prod.packages.length} باقات)</span></div>
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <button
+                  onClick={async()=>{
+                    const newVal = !prod.isActive;
+                    setProducts(ps=> ps.map(p=> p.id===prod.id? {...p, isActive:newVal}:p));
+                    try { await api.put(`/products/${prod.id}`, { isActive: newVal }); }
+                    catch(e:any){ alert(e?.response?.data?.message||e?.message||'فشل تحديث حالة المنتج'); setProducts(ps=> ps.map(p=> p.id===prod.id? {...p, isActive:!newVal}:p)); }
+                  }}
+                  title={prod.isActive? 'نشط - انقر للتعطيل':'معطل - انقر للتفعيل'}
+                  className={`w-4 h-4 rounded-full border transition-colors ${prod.isActive? 'bg-green-500 border-green-600':'bg-red-500 border-red-600'}`}
+                />
+                <span>{prod.name}</span>
+                <span className="text-xs text-gray-400">({prod.packages.length} باقات)</span>
+              </div>
               <div className="flex gap-2">
-                <button onClick={()=> router.push(`/dev/filtered-products/${prod.id}`)} className="text-xs px-2 py-1 rounded bg-sky-600 text-white">تعديل المنتج</button>
-                <button onClick={()=>deleteProduct(prod.id)} disabled={!!deleting[prod.id]} className="text-xs px-2 py-1 rounded bg-red-600 text-white disabled:opacity-50">حذف المنتج</button>
+                <button onClick={()=> router.push(`/dev/filtered-products/${prod.id}`)} className="text-xs px-2 py-1 rounded bg-sky-600 text-white">تفاصيل</button>
+                <button onClick={()=>deleteProduct(prod.id)} disabled={!!deleting[prod.id]} className="text-xs px-2 py-1 rounded bg-red-600 text-white disabled:opacity-50">حذف</button>
               </div>
             </div>
             <div className="overflow-auto">
@@ -254,13 +270,15 @@ export default function DevFilteredProductsPage(){
                     <th className="px-2 py-1 text-right">#</th>
                     <th className="px-2 py-1 text-right">الباقة</th>
                     <th className="px-2 py-1 text-right">الكود</th>
-                    <th className="px-2 py-1 text-right">المزوّد</th>
                     <th className="px-2 py-1 text-right">نشطة</th>
                     <th className="px-2 py-1 text-center">حذف</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {prod.packages.map((pkg,i)=>(
+                  {prod.packages
+                    // إخفاء الباقات بدون publicCode عن السوب دومين (عرض داخلي: نظهرها باهتة مع تنبيه؟ سنختار إخفاء تام حسب المطلوب)
+                    .filter(pkg=> pkg.publicCode != null)
+                    .map((pkg,i)=>(
                     <tr key={pkg.id} className={`odd:bg-white even:bg-gray-50 hover:bg-yellow-50 ${!pkg.isActive ? 'opacity-60' : ''}`}>
                       <td className="px-2 py-1">{i+1}</td>
                       <td className="px-2 py-1 font-medium">{pkg.name}</td>
@@ -274,30 +292,25 @@ export default function DevFilteredProductsPage(){
                           disabled={!!saving[pkg.id]}
                         />
                       </td>
-                      <td className="px-2 py-1 w-36">
-                        <input
-                          defaultValue={pkg.providerName || ''}
-                          onBlur={async e=> {
-                            const val = e.target.value.trim();
-                            if(!val) return; // تجاهل الفارغ (يمكن مستقبلاً السماح بمسح المزود)
-                            try {
-                              await api.patch(`/products/packages/${pkg.id}/provider`, { providerName: val });
-                              setProducts(ps=> ps.map(p=> p.id===prod.id ? ({...p, packages: p.packages.map(pk=> pk.id===pkg.id ? {...pk, providerName: val}: pk)}) : p));
-                            }catch(err:any){ alert(err?.response?.data?.message || err?.message || 'فشل حفظ المزود'); }
+                      <td className="px-2 py-1">
+                        <button
+                          onClick={async()=>{
+                            const newVal = !pkg.isActive;
+                            setProducts(ps=> ps.map(p=> p.id===prod.id? {...p, packages: p.packages.map(pk=> pk.id===pkg.id? {...pk, isActive:newVal}:pk)}:p));
+                            try { await api.put(`/products/packages/${pkg.id}`, { isActive: newVal }); }
+                            catch(e:any){ alert(e?.response?.data?.message||e?.message||'فشل تحديث حالة الباقة'); setProducts(ps=> ps.map(p=> p.id===prod.id? {...p, packages: p.packages.map(pk=> pk.id===pkg.id? {...pk, isActive:!newVal}:pk)}:p)); }
                           }}
-                          placeholder="المزوّد"
-                          maxLength={50}
-                          className="w-full border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring"
+                          title={pkg.isActive? 'نشطة - انقر للتعطيل':'معطلة - انقر للتفعيل'}
+                          className={`w-4 h-4 rounded-full border transition-colors ${pkg.isActive? 'bg-green-500 border-green-600':'bg-red-500 border-red-600'}`}
                         />
                       </td>
-                      <td className="px-2 py-1">{pkg.isActive? '✓':'✗'}</td>
                       <td className="px-2 py-1 text-center">
                         <button onClick={()=>deletePackage(pkg.id)} disabled={!!deleting[pkg.id]} className="text-xs px-2 py-0.5 rounded bg-red-500 text-white disabled:opacity-50">حذف</button>
                       </td>
                     </tr>
                   ))}
-                  {prod.packages.length===0 && (
-                    <tr><td colSpan={6} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
+                  {prod.packages.filter(pkg=> pkg.publicCode != null).length===0 && (
+                    <tr><td colSpan={5} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
                   )}
                 </tbody>
               </table>

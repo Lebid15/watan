@@ -226,6 +226,15 @@ export class ProductsController {
     return { id: product.id, catalogProductId: product.catalogProductId };
   }
 
+  // 🔹 المنتجات الكتالوجية المتاحة (غير المفعّلة بعد) لهذا المستأجر
+  @Get('catalog-available')
+  async listAvailableCatalog(@Req() req: Request, @Query('limit') limitQ?: string) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    const limit = Math.min(Math.max(parseInt(limitQ || '100', 10) || 100, 1), 500);
+    const rows = await this.productsService.listAvailableCatalogProducts(tenantId, limit);
+    return { items: rows };
+  }
+
   // 🔹 رفع صورة المنتج إلى Cloudinary
   @Post(':id/image')
   @UseInterceptors(
