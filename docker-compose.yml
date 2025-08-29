@@ -55,7 +55,8 @@ services:
       REQUEST_LOGGING: "1"
       FEATURE_BILLING_V1: "true"
       FORCE_TENANT_USD: "true"
-      JWT_DEBUG: "1"  # enable detailed JWT extraction logs
+      JWT_DEBUG: "1"   # enable detailed JWT extraction logs
+      ECHO_MARKER: "abc123"
     expose:
       - "3000"
     volumes:
