@@ -15,10 +15,10 @@ export class AlterPublicCodeUniqueness20250829T1800 implements MigrationInterfac
       END IF;
     END $$;`);
 
-    // Create new unique composite index
+    // Create new unique composite index (quote "publicCode" in predicate to avoid case-folding to publiccode)
     await queryRunner.query(`DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ux_product_packages_tenant_public_code') THEN
-        EXECUTE 'CREATE UNIQUE INDEX "ux_product_packages_tenant_public_code" ON "product_packages" ("tenantId", "publicCode") WHERE publicCode IS NOT NULL';
+        EXECUTE 'CREATE UNIQUE INDEX "ux_product_packages_tenant_public_code" ON "product_packages" ("tenantId", "publicCode") WHERE "publicCode" IS NOT NULL';
       END IF;
     END $$;`);
   }
@@ -32,7 +32,7 @@ export class AlterPublicCodeUniqueness20250829T1800 implements MigrationInterfac
     END $$;`);
     await queryRunner.query(`DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'ux_product_packages_public_code') THEN
-        EXECUTE 'CREATE UNIQUE INDEX "ux_product_packages_public_code" ON "product_packages" ("publicCode") WHERE publicCode IS NOT NULL';
+        EXECUTE 'CREATE UNIQUE INDEX "ux_product_packages_public_code" ON "product_packages" ("publicCode") WHERE "publicCode" IS NOT NULL';
       END IF;
     END $$;`);
   }
