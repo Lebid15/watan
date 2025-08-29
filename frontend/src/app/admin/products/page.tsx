@@ -65,20 +65,27 @@ export default function ProductsPage() {
   const fetchSnapshot = async () => {
     if (snapshotLoading) return; setSnapshotLoading(true);
     try {
-      const res = await fetch(`${apiBase}/products/snapshot-available`);
-      if (!res.ok) throw new Error('فشل في جلب قائمة المخزن');
-      const data = await res.json(); // الخدمة تُرجع مصفوفة مباشرة
+      const params: any = {};
+      if (snapshotSearch.trim()) params.q = snapshotSearch.trim();
+      // استخدم axios المثبت عليه التوكن تلقائياً
+      const res = await api.get('/products/snapshot-available', { params, validateStatus: () => true });
+      if (res.status === 401) throw new Error('غير مصرح: تأكد من تسجيل الدخول');
+      if (res.status >= 400) throw new Error('فشل في جلب قائمة المخزن');
+      const data = res.data;
       setSnapshotList(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); setSnapshotList([]); }
-    finally { setSnapshotLoading(false); }
+    } catch (e: any) {
+      console.error('snapshot fetch error', e?.response?.status, e?.response?.data || e);
+      setSnapshotList([]);
+    } finally { setSnapshotLoading(false); }
   };
   const handleClone = async (productId: string) => {
     if (activatingId) return; setActivatingId(productId);
     try {
-      const res = await fetch(`${apiBase}/products/clone-from-snapshot`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId }) });
-      if (!res.ok) throw new Error('فشل استنساخ المنتج');
-      await fetchProducts(); // حدّث قائمة منتجات التينانت
-      setSnapshotList(prev => prev ? prev.filter(p => p.id !== productId) : prev); // شيله من المعروض (من المفترض أن الخدمة أصلاً تستثنيه لاحقاً)
+      const res = await api.post('/products/clone-from-snapshot', { productId }, { validateStatus: () => true });
+      if (res.status === 401) throw new Error('غير مصرح');
+      if (res.status >= 400) throw new Error('فشل استنساخ المنتج');
+      await fetchProducts();
+      setSnapshotList(prev => prev ? prev.filter(p => p.id !== productId) : prev);
       setShowSnapshotModal(false);
     } catch (e:any) { alert(e?.message || 'خطأ في الاستنساخ'); }
     finally { setActivatingId(null); }
