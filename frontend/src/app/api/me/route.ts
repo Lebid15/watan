@@ -4,11 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 // Derive backend API base. On tenant subdomains we prefer relative '/api' so nginx proxies directly (avoids CORS and extra DNS hop).
 function deriveApiBase(req: NextRequest): string {
   const host = req.headers.get('host') || '';
+  const envBase = process.env.NEXT_PUBLIC_API_URL;
+  // اعتمد دومين الـ API المركزي إن وُجد
+  if (envBase && /^https?:\/\//i.test(envBase)) return envBase.replace(/\/$/, '');
+  // خلاف ذلك جرّب relative proxy على التينانت
   if (/\.syrz1\.com$/i.test(host) && !/^api\./i.test(host)) {
     return '/api';
   }
-  const envBase = process.env.NEXT_PUBLIC_API_URL;
-  if (envBase && /^https?:\/\//i.test(envBase)) return envBase.replace(/\/$/, '');
   if (/\.syrz1\.com$/i.test(host)) {
     const root = host.split('.').slice(-2).join('.');
     return `https://api.${root}/api`;

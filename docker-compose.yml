@@ -65,7 +65,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      NEXT_PUBLIC_API_URL: "https://syrz1.com/api"
+      NEXT_PUBLIC_API_URL: "https://api.syrz1.com/api"
       NEXT_PUBLIC_FEATURE_BILLING_V1: "true"
     expose:
       - "3001"
