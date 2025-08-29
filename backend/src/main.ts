@@ -42,6 +42,8 @@ async function bootstrap() {
     });
     console.log('🟢 REQUEST_LOGGING enabled');
   }
+  // JWT debug env visibility
+  console.log('[DEBUG] JWT_DEBUG=%s ECHO_MARKER=%s', process.env.JWT_DEBUG || '(unset)', process.env.ECHO_MARKER || '(unset)');
   // Debug presence of developer bootstrap secret (length only) - remove later
   if (process.env.BOOTSTRAP_DEV_SECRET) {
     console.log('[DEBUG] BOOTSTRAP_DEV_SECRET detected (length=%d)', process.env.BOOTSTRAP_DEV_SECRET.length);
