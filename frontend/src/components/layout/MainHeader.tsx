@@ -106,7 +106,14 @@ export default function MainHeader() {
                     className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
                     onClick={() => { setOpen(false); router.push('/user/passkeys'); }}
                   >
-                    مفاتيح المرور
+                    إدارة مفاتيح المرور
+                  </button>
+                  <button
+                    role="menuitem"
+                    className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
+                    onClick={() => { setOpen(false); router.push('/login?addPasskey=1'); }}
+                  >
+                    إضافة مفتاح مرور
                   </button>
                   <button
                     role="menuitem"

@@ -86,7 +86,7 @@ export default function LoginPage() {
           if (isSub) {
             if (norm === 'tenant_owner') return '/admin/dashboard';
             if (norm === 'distributor') return '/admin/distributor';
-            if (norm === 'user') return '/app';
+            if (norm === 'user') return '/';
             if (norm === 'developer') {
               const apex = configuredApex || apexHost;
               return `${window.location.protocol}//${apex}/dev`;

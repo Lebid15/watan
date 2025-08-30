@@ -156,7 +156,7 @@ export function middleware(req: NextRequest) {
     if (hostInfo.isSub) {
       if (role === 'tenant_owner') return redirect('/admin/dashboard', req);
       if (role === 'distributor') return redirect('/admin/distributor', req);
-      if (role === 'user') return redirect('/app', req);
+  if (role === 'user') return NextResponse.next();
       if (role === 'developer') {
         const apex = CONFIGURED_APEX || hostInfo.apex; // fallback
         const proto = req.nextUrl.protocol;
@@ -191,7 +191,7 @@ export function middleware(req: NextRequest) {
       return redirect(`${req.nextUrl.protocol}//${apex}/dev`, req);
     }
     // user or unknown
-    return redirect('/app', req);
+  return redirect('/', req);
   }
 
   if (path.startsWith('/dev')) {
@@ -209,13 +209,8 @@ export function middleware(req: NextRequest) {
   }
 
   if (path.startsWith('/app')) {
-    // Storefront on subdomains only; allow public & user & distributor & tenant_owner (owner might preview) but never developer
-    if (!hostInfo.isSub) return redirect('/', req);
-    if (role === 'developer') {
-      const apex = CONFIGURED_APEX || hostInfo.apex;
-      return redirect(`${req.nextUrl.protocol}//${apex}/dev`, req);
-    }
-    return response ?? NextResponse.next();
+    // المسار القديم /app لم يعد مستخدماً: أعد التوجيه إلى الجذر لعدم وجود صفحة
+    return redirect('/', req);
   }
 
   return response ?? NextResponse.next();

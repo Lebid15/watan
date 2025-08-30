@@ -58,9 +58,9 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
     }
     // نطاق فرعي + لدينا توكن: وجه إلى المسار المناسب حسب الدور
     let dest = '/';
-    if (role === 'tenant_owner') dest = '/admin/dashboard';
-    else if (role === 'distributor') dest = '/admin/distributor';
-    else if (role === 'user') dest = '/app';
+  if (role === 'tenant_owner') dest = '/admin/dashboard';
+  else if (role === 'distributor') dest = '/admin/distributor';
+  else if (role === 'user') dest = '/';
     else if (role === 'developer') {
       // مطوّر من ساب دومين → أعده إلى الـ apex (قد يكون خطأ إعداد، نعيده للـ apex ثم /dev)
       const apex = (process.env.NEXT_PUBLIC_APEX_DOMAIN || '').toLowerCase().replace(/\/$/, '') || parts.slice(-2).join('.');

@@ -69,14 +69,14 @@ export default function ResponsiveCurrencySelect({ options, value, onChange, pla
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full mb-2 px-3 py-2 border border-gray-300 rounded bg-white text-black text-right"
+        className="w-full mb-2 px-3 py-2 border border-gray-300 rounded bg-white text-gray-800 text-right"
       >
         {selected ? `${selected.name} (${selected.code})` : <span className="text-gray-500">{placeholder}</span>}
       </button>
       {open && (
         <div className="fixed inset-0 z-[999] flex flex-col bg-black/50 backdrop-blur-sm">
-          <div className="mt-8 mx-auto w-[92%] max-w-md bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
-            <div className="flex items-center gap-2 p-3 border-b border-gray-200 bg-gray-50">
+          <div className="mt-8 mx-auto w-[92%] max-w-md bg-white text-gray-800 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center gap-2 p-3 border-b border-gray-200 bg-gray-50 text-gray-800">
               <input
                 autoFocus
                 value={query}
@@ -90,7 +90,7 @@ export default function ResponsiveCurrencySelect({ options, value, onChange, pla
                 className="px-3 py-2 text-sm rounded bg-red-600 text-white hover:bg-red-700"
               >إغلاق</button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto divide-y divide-gray-100 text-sm">
+            <div className="max-h-[60vh] overflow-y-auto divide-y divide-gray-100 text-sm text-gray-800">
               {filtered.length === 0 && (
                 <div className="p-4 text-center text-gray-500">لا نتائج</div>
               )}
@@ -99,7 +99,7 @@ export default function ResponsiveCurrencySelect({ options, value, onChange, pla
                   key={o.id}
                   type="button"
                   onClick={() => { onChange(o.id); setOpen(false); setQuery(''); }}
-                  className={`w-full text-right px-4 py-3 hover:bg-sky-50 ${o.id === value ? 'bg-sky-100 font-medium' : ''}`}
+                  className={`w-full text-right px-4 py-3 hover:bg-sky-50 text-gray-800 ${o.id === value ? 'bg-sky-100 font-medium' : ''}`}
                 >
                   {o.name} ({o.code})
                 </button>
