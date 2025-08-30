@@ -10,11 +10,11 @@ export function usePasskeys() {
   const registerPasskey = useCallback(async (label?: string) => {
     setError(null); setLoading(true);
     try {
-      // new flow: /auth/passkeys/options/register -> { options, challengeRef }
-  const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/options/register', {});
+  // استخدم المسارات الموحدة من backend (registration/options & registration/verify)
+  const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/registration/options', {});
   const { options, challengeRef } = optRes;
-      const attResp = await startRegistration(options);
-      const verifyRes = await api.post('/auth/passkeys/register', { response: attResp, challengeRef, label }, { validateStatus: () => true });
+  const attResp = await startRegistration(options);
+  const verifyRes = await api.post('/auth/passkeys/registration/verify', { response: attResp, challengeRef, label }, { validateStatus: () => true });
       if (verifyRes.status >= 300) throw new Error((verifyRes.data as any)?.message || 'فشل التحقق');
       return verifyRes.data;
     } catch (e: any) {
@@ -26,10 +26,10 @@ export function usePasskeys() {
   const authenticateWithPasskey = useCallback(async (emailOrUsername: string) => {
     setError(null); setLoading(true);
     try {
-  const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/options/login', { emailOrUsername });
+  const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/authentication/options', { emailOrUsername });
   const { options, challengeRef } = optRes;
-      const authResp = await startAuthentication(options);
-      const verifyRes = await api.post<any>('/auth/passkeys/login', { emailOrUsername, response: authResp, challengeRef }, { validateStatus: () => true });
+  const authResp = await startAuthentication(options);
+  const verifyRes = await api.post<any>('/auth/passkeys/authentication/verify', { emailOrUsername, response: authResp, challengeRef }, { validateStatus: () => true });
       if (verifyRes.status >= 300 || !(verifyRes.data as any)?.access_token) throw new Error((verifyRes.data as any)?.message || 'فشل تسجيل الدخول');
       const token = (verifyRes.data as any).access_token as string;
       localStorage.setItem('token', token);
