@@ -674,7 +674,7 @@ export class ProductsService {
           tenantId: tenantId?.slice(0,8),
           role: ctx?.finalRole,
         });
-        throw new NotFoundException('لم يتم العثور على المنتج أو أنك تحاول إضافة باقة لمنتج خارج نطاق هذا المستأجر');
+  throw new NotFoundException('المنتج غير موجود في نطاق المستأجر الحالي. إذا كان المنتج من كتالوج المطوّر فقم باستنساخه أولاً أو اطلب صلاحية إضافة باقة مباشرة للمنتج المصدر.');
       }
     }
 
