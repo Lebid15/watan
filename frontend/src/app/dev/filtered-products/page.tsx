@@ -1,7 +1,7 @@
 "use client";
 // منع الكاش أثناء التطوير لهذه الصفحة (App Router)
 export const dynamic = 'force-dynamic';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
 
@@ -21,6 +21,11 @@ interface DevProduct {
 export default function DevFilteredProductsPage(){
   const router = useRouter();
   const [products,setProducts]=useState<DevProduct[]>([]);
+  // فلاتر
+  const [q,setQ]=useState('');
+  const [statusFilter,setStatusFilter]=useState<'all'|'active'|'inactive'>('all');
+  const [minPkgs,setMinPkgs]=useState<number>(0);
+  const [attentionOnly,setAttentionOnly]=useState(false); // منتجات أقل من 2 باقات مثلاً
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const [backendMeta,setBackendMeta]=useState<{gitSha?:string;buildTime?:string;version?:string}>({});
@@ -68,12 +73,21 @@ export default function DevFilteredProductsPage(){
     }catch(e:any){ alert(e?.response?.data?.message || e?.message || 'فشل حذف المنتج'); }
     finally{ setPkgDeleting(productId,false); }
   };
-  const filtered = products; // تبسيط: لا فلاتر
+  const filtered = useMemo(()=>{
+    return products.filter(p=>{
+      if(q && !p.name.toLowerCase().includes(q.toLowerCase())) return false;
+      if(statusFilter==='active' && !p.isActive) return false;
+      if(statusFilter==='inactive' && p.isActive) return false;
+      if(minPkgs>0 && p.packages.length < minPkgs) return false;
+      if(attentionOnly && p.packages.length>=2) return false; // إبراز المحتاج اهتمام (أقل من 2)
+      return true;
+    });
+  },[products,q,statusFilter,minPkgs,attentionOnly]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-  <h1 className="text-2xl font-bold">كل المنتجات (Dev)</h1>
+  <h1 className="text-2xl font-bold">كل المنتجات (Devv)</h1>
         <div className="text-xs bg-gray-800 text-white px-3 py-1 rounded shadow flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="font-mono" title="Frontend Git SHA">F:{process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}</span>
@@ -88,13 +102,42 @@ export default function DevFilteredProductsPage(){
         </div>
       </div>
       <div className="flex flex-wrap gap-3 items-center">
-        {/* زر إضافة منتج جديد فقط */}
         <button
           onClick={()=> router.push('/dev/filtered-products/new')}
           className="px-4 py-1.5 rounded text-sm bg-emerald-600 text-white"
         >+ إضافة منتج</button>
+        <input
+          value={q}
+          onChange={e=>setQ(e.target.value)}
+          placeholder="بحث بالاسم..."
+          className="px-3 py-1.5 rounded border text-sm w-48"
+        />
+        <select
+          value={statusFilter}
+          onChange={e=>setStatusFilter(e.target.value as any)}
+          className="px-2 py-1.5 rounded border text-sm"
+        >
+          <option value="all">الكل</option>
+          <option value="active">نشط</option>
+          <option value="inactive">معطل</option>
+        </select>
+        <div className="flex items-center gap-1 text-sm">
+          <label className="text-gray-600">حد أدنى للباقات</label>
+          <input type="number" min={0} value={minPkgs} onChange={e=>setMinPkgs(Number(e.target.value)||0)} className="w-16 px-2 py-1 rounded border text-sm" />
+        </div>
+        <label className="flex items-center gap-1 text-sm cursor-pointer select-none">
+          <input type="checkbox" checked={attentionOnly} onChange={e=>setAttentionOnly(e.target.checked)} />
+          <span>تحتاج اهتمام (&lt;2 باقات)</span>
+        </label>
         {loading && <span className="text-sm text-gray-500 animate-pulse">تحميل...</span>}
         {error && <span className="text-sm text-red-600">{error}</span>}
+        {filtered.length !== products.length && (
+          <button
+            onClick={()=>{ setQ(''); setStatusFilter('all'); setMinPkgs(0); setAttentionOnly(false); }}
+            className="text-xs px-2 py-1 rounded border bg-white hover:bg-gray-50"
+            title="إلغاء الفلاتر"
+          >إلغاء الفلاتر</button>
+        )}
       </div>
       <div className="space-y-6">
         {filtered.map(prod=> (
@@ -112,7 +155,7 @@ export default function DevFilteredProductsPage(){
                   className={`w-4 h-4 rounded-full border transition-colors ${prod.isActive? 'bg-green-500 border-green-600':'bg-red-500 border-red-600'}`}
                 />
                 <div className="flex items-center gap-1">
-                  <span>{prod.name}</span>
+                  <span className="text-white">{prod.name}</span>
                 </div>
                 <span className={`text-xs ${prod.packages.length<2? 'text-red-500':'text-gray-400'}`}>({prod.packages.length} باقات)</span>
               </div>
