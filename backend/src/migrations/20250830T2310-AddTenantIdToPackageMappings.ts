@@ -26,8 +26,14 @@ export class AddTenantIdToPackageMappings20250830T2310 implements MigrationInter
 
     // 3) Backfill tenantId using integrations table (id -> tenantId)
     // Integrations table column assumed "tenantId" (camel case) per existing entities/migrations.
+    // Backfill: only rows where provider_api_id looks like a UUID, then cast to uuid for join
     await queryRunner.query(
-      `UPDATE package_mappings pm SET "tenantId" = i."tenantId" FROM integrations i WHERE pm.provider_api_id = i.id AND pm."tenantId" IS NULL`,
+      `UPDATE package_mappings pm
+       SET "tenantId" = i."tenantId"
+       FROM integrations i
+       WHERE pm.provider_api_id ~ '^[0-9a-fA-F-]{36}$'
+         AND pm.provider_api_id::uuid = i.id
+         AND pm."tenantId" IS NULL`,
     );
 
     // 4) Enforce NOT NULL (only if column exists and no remaining nulls)
