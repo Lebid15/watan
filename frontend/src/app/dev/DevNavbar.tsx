@@ -7,9 +7,6 @@ import { performLogout } from '@/utils/logout';
 
 const baseTabs = [
   { href: '/dev', label: 'لوحة المطوّر' },
-  { href: '/dev/providers', label: 'المزوّدون' },
-  { href: '/dev/catalog', label: 'الكتالوج' },
-  { href: '/dev/catalog-images', label: 'صور الكتالوج' },
   { href: '/dev/subdomains', label: 'Subdomains' },
   { href: '/dev/stats', label: 'الإحصائيات' },
   { href: '/dev/errors', label: 'الأخطاء' },

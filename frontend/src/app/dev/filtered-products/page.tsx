@@ -1,7 +1,7 @@
 "use client";
 // منع الكاش أثناء التطوير لهذه الصفحة (App Router)
 export const dynamic = 'force-dynamic';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
 
@@ -24,23 +24,10 @@ export default function DevFilteredProductsPage(){
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const [backendMeta,setBackendMeta]=useState<{gitSha?:string;buildTime?:string;version?:string}>({});
-  const [textFilter,setTextFilter]=useState('');      // فلتر نصي بالاسم
-  const [saving,setSaving]=useState<Record<string,boolean>>({});
   const [deleting,setDeleting]=useState<Record<string,boolean>>({});
-  const [showRefreshConfirm,setShowRefreshConfirm]=useState(false);
-  const [showProductDropdown,setShowProductDropdown]=useState(false);
-  const [productSearch,setProductSearch]=useState('');
-  // اسم المنتج أو البادئة المختارة من القائمة (بدلاً من ID كي يعمل أيضاً مع عناصر الكتالوج)
-  const [selectedName,setSelectedName]=useState<string|undefined>(undefined);
-  // لم نعد نعرض أقسام منفصلة للكتالوج؛ سيتم دمج أي جلب مستقبلي في المنتجات الحالية
-  const [catalogPreview,setCatalogPreview]=useState<any[]>([]); // احتفاظ فقط لو احتجناه لاحقًا
-  // استيراد الكتالوج
-  const [importing,setImporting]=useState(false);
-  const [importStats,setImportStats]=useState<{imported?:number;packages?:number;note?:string}|null>(null);
-  const dropdownRef = useRef<HTMLDivElement|null>(null);
 
   const load = useCallback(async()=>{
-    setLoading(true); setError(null); setShowRefreshConfirm(false);
+  setLoading(true); setError(null);
     try {
       const res = await api.get('/products?all=1');
       const raw = Array.isArray(res.data)? res.data : (res.data?.items||[]);
@@ -60,10 +47,8 @@ export default function DevFilteredProductsPage(){
         console.log('[DEV][filtered-products] raw products payload =', raw);
       }
       setProducts(mapped);
-      // fetch backend meta in parallel (non-blocking)
-      api.get('/health').then(r=>{
-        setBackendMeta({gitSha:r.data.gitSha, buildTime:r.data.buildTime, version:r.data.version});
-      }).catch(()=>{});
+  // fetch backend meta (اختياري)
+  api.get('/health').then(r=>{ setBackendMeta({gitSha:r.data.gitSha, buildTime:r.data.buildTime, version:r.data.version}); }).catch(()=>{});
   // أوقفنا جلب الكتالوج المنفصل هنا مؤقتًا
     }catch(e:any){ setError(e?.message||'فشل التحميل'); }
     finally{ setLoading(false); }
@@ -71,52 +56,8 @@ export default function DevFilteredProductsPage(){
 
   useEffect(()=>{ load(); },[load]);
 
-  // إغلاق القائمة المنسدلة عند الضغط خارجها
-  useEffect(()=>{
-    function onDoc(e:MouseEvent){
-      if(!showProductDropdown) return;
-      if(dropdownRef.current && !dropdownRef.current.contains(e.target as any)){
-        setShowProductDropdown(false);
-      }
-    }
-    document.addEventListener('mousedown', onDoc);
-    return ()=> document.removeEventListener('mousedown', onDoc);
-  },[showProductDropdown]);
-
-  const setPkgSaving = (id:string,val:boolean)=> setSaving(s=>({...s,[id]:val}));
+  // تبسيط: لا تحرير مباشر للأكواد هنا الآن
   const setPkgDeleting = (id:string,val:boolean)=> setDeleting(s=>({...s,[id]:val}));
-
-  const updateCode = async (pkgId:string, value:string)=>{
-    const v = value.trim();
-    if(v===''){
-      setPkgSaving(pkgId,true);
-      try {
-        await api.patch(`/products/packages/${pkgId}/code`, { publicCode: null });
-        setProducts(ps=> ps.map(p=> ({...p, packages: p.packages.map(pk=> pk.id===pkgId? {...pk, publicCode:null}:pk)})));
-      }catch(e:any){ alert(e?.response?.data?.message || e?.message || 'فشل مسح الكود'); }
-      finally { setPkgSaving(pkgId,false); }
-      return;
-    }
-    const num = Number(v);
-    if(!Number.isInteger(num) || num < 1) return; // تجاهل غير الصحيح
-    setPkgSaving(pkgId,true);
-    try {
-      const res = await api.patch(`/products/packages/${pkgId}/code`, { publicCode: num });
-      const finalCode = res.data?.publicCode ?? num;
-      setProducts(ps=> ps.map(p=> ({...p, packages: p.packages.map(pk=> pk.id===pkgId? {...pk, publicCode: finalCode == null ? null : String(finalCode)}:pk)})));
-    }catch(e:any){ alert(e?.response?.data?.message || e?.message || 'فشل حفظ الكود'); }
-    finally{ setPkgSaving(pkgId,false); }
-  };
-
-  const deletePackage = async (pkgId:string)=>{
-    if(!confirm('تأكيد حذف الباقة؟')) return;
-    setPkgDeleting(pkgId,true);
-    try {
-      await api.delete(`/products/packages/${pkgId}`);
-      setProducts(ps=> ps.map(p=> ({...p, packages: p.packages.filter(pk=>pk.id!==pkgId)})));
-    }catch(e:any){ alert(e?.response?.data?.message || e?.message || 'فشل الحذف'); }
-    finally{ setPkgDeleting(pkgId,false); }
-  };
 
   const deleteProduct = async (productId:string)=>{
     if(!confirm('تأكيد حذف المنتج وكل باقاته؟')) return;
@@ -127,12 +68,7 @@ export default function DevFilteredProductsPage(){
     }catch(e:any){ alert(e?.response?.data?.message || e?.message || 'فشل حذف المنتج'); }
     finally{ setPkgDeleting(productId,false); }
   };
-
-  const nameFiltered = products.filter((p:DevProduct)=> !textFilter.trim() || p.name.toLowerCase().includes(textFilter.toLowerCase()));
-  const filtered = selectedName ? nameFiltered.filter((p:DevProduct)=> p.name.toLowerCase().startsWith(selectedName.toLowerCase())) : nameFiltered;
-  const productOptions = products; // أصبحت القائمة تعتمد فقط على المنتجات المدمجة
-  const totalPackages = filtered.reduce((acc,p)=> acc + p.packages.length, 0);
-  const activePackages = filtered.reduce((acc,p)=> acc + p.packages.filter(pk=>pk.isActive).length, 0);
+  const filtered = products; // تبسيط: لا فلاتر
 
   return (
     <div className="space-y-4">
@@ -151,91 +87,14 @@ export default function DevFilteredProductsPage(){
             )}
         </div>
       </div>
-      <div className="flex flex-wrap gap-3 items-center relative">
-        {/* زر تحديث + حوار تأكيد */}
-        <button
-          onClick={()=> setShowRefreshConfirm(true)}
-          disabled={loading}
-          className="px-4 py-1.5 rounded text-sm bg-blue-600 text-white disabled:opacity-50"
-        >تحديث</button>
-  {/* زر استيراد منتجات الكتالوج */}
-        <button
-          onClick={async()=>{
-            setImporting(true); setImportStats(null);
-            try {
-              const r = await api.post('/dev/filtered-products-sync/import-catalog');
-              setImportStats(r.data);
-              await load();
-            } catch(e:any){
-              alert(e?.response?.data?.message || e?.message || 'فشل الاستيراد');
-            } finally { setImporting(false); }
-          }}
-          disabled={loading || importing}
-          className="px-4 py-1.5 rounded text-sm bg-purple-600 text-white disabled:opacity-50"
-        >{importing? 'جاري...' : 'استيراد الكتالوج'}</button>
-        {showRefreshConfirm && (
-          <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 px-3 py-1 rounded text-xs">
-            <span>تأكيد التحديث؟</span>
-            <button onClick={async()=>{ try { const res = await api.post('/dev/filtered-products-sync'); console.log('[DEV][filtered-products] sync stats =', res.data); if(res.data?.fallbackSeeded){ alert('لا توجد بيانات كتالوج، تم إنشاء ديمو للعرض'); } } catch(e:any){ console.log('sync error', e?.response?.data||e?.message);} finally { await load(); } }} className="px-2 py-0.5 bg-amber-600 text-white rounded">تأكيد</button>
-            <button onClick={()=> setShowRefreshConfirm(false)} className="px-2 py-0.5 bg-gray-300 rounded">إلغاء</button>
-          </div>
-        )}
-        {/* زر إضافة منتج جديد */}
+      <div className="flex flex-wrap gap-3 items-center">
+        {/* زر إضافة منتج جديد فقط */}
         <button
           onClick={()=> router.push('/dev/filtered-products/new')}
           className="px-4 py-1.5 rounded text-sm bg-emerald-600 text-white"
         >+ إضافة منتج</button>
-        {/* فلتر نصي */}
-        <input
-          value={textFilter}
-          onChange={e=> setTextFilter(e.target.value)}
-          placeholder="بحث بالاسم..."
-          className="border rounded px-3 py-1 text-sm"
-        />
-        {/* قائمة المنتجات المنسدلة */}
-        <div className="relative" ref={dropdownRef}>
-          <button
-            type="button"
-            onClick={()=> setShowProductDropdown(s=>!s)}
-            className="px-3 py-1.5 text-sm border rounded bg-white hover:bg-gray-50"
-          >{selectedName ? (selectedName + ' ×') : 'كل المنتجات ▼'}</button>
-          {showProductDropdown && (
-            <div className="absolute z-20 mt-1 w-64 max-h-80 overflow-auto bg-white border rounded shadow-lg p-2 space-y-2">
-              <input
-                autoFocus
-                value={productSearch}
-                onChange={e=> setProductSearch(e.target.value)}
-                placeholder="بحث داخل القائمة..."
-                className="w-full border rounded px-2 py-1 text-xs"
-              />
-              <button
-                onClick={()=> { setSelectedName(undefined); setShowProductDropdown(false); }}
-                className="w-full text-right text-xs px-2 py-1 rounded hover:bg-gray-100 font-medium"
-              >كل المنتجات</button>
-              <div className="divide-y divide-gray-100"></div>
-              {productOptions
-                .filter(p=> !productSearch.trim() || p.name.toLowerCase().includes(productSearch.toLowerCase()))
-                .map(p=> (
-                  <button
-                    key={p.id}
-                    onClick={()=> { setSelectedName(p.name); setShowProductDropdown(false); }}
-                    className={`w-full text-right text-xs px-2 py-1 rounded hover:bg-gray-100 ${p.name===selectedName? 'bg-sky-50 font-semibold':''}`}
-                  >{p.name}</button>
-                ))}
-              {productOptions.filter(p=> !productSearch.trim() || p.name.toLowerCase().includes(productSearch.toLowerCase())).length===0 && (
-                <div className="text-center text-gray-400 text-xs py-2">لا نتائج</div>
-              )}
-            </div>
-          )}
-        </div>
-  {loading && <span className="text-sm text-gray-500 animate-pulse">تحميل...</span>}
-  <span className="text-xs text-gray-600">المنتجات: {filtered.length} | الباقات: {activePackages}/{totalPackages} نشطة</span>
+        {loading && <span className="text-sm text-gray-500 animate-pulse">تحميل...</span>}
         {error && <span className="text-sm text-red-600">{error}</span>}
-        {importStats && (
-          <span className="text-xs text-purple-700">
-            مستورد: {importStats.imported??0} | باقات: {importStats.packages??0} {importStats.note? `| ${importStats.note}`:''}
-          </span>
-        )}
       </div>
       <div className="space-y-6">
         {filtered.map(prod=> (
@@ -263,60 +122,14 @@ export default function DevFilteredProductsPage(){
               </div>
             </div>
             <div className="overflow-auto">
-              <table className="min-w-full text-xs">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="px-2 py-1 text-right">#</th>
-                    <th className="px-2 py-1 text-right">الباقة</th>
-                    <th className="px-2 py-1 text-right">الكود</th>
-                    <th className="px-2 py-1 text-right">نشطة</th>
-                    <th className="px-2 py-1 text-center">حذف</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {prod.packages.map((pkg,i)=>(
-                    <tr key={pkg.id} className={`odd:bg-white even:bg-gray-50 hover:bg-yellow-50 ${!pkg.isActive ? 'opacity-60' : ''}`}>
-                      <td className="px-2 py-1">{i+1}</td>
-                      <td className="px-2 py-1 font-medium">{pkg.name}</td>
-                      <td className="px-2 py-1 w-40">
-                        <input
-                          defaultValue={pkg.publicCode || ''}
-                          onBlur={e=> updateCode(pkg.id, e.target.value)}
-                          placeholder="كود"
-                          maxLength={9}
-                          className="w-full border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring"
-                          disabled={!!saving[pkg.id]}
-                        />
-                      </td>
-                      <td className="px-2 py-1">
-                        <button
-                          onClick={async()=>{
-                            const newVal = !pkg.isActive;
-                            setProducts(ps=> ps.map(p=> p.id===prod.id? {...p, packages: p.packages.map(pk=> pk.id===pkg.id? {...pk, isActive:newVal}:pk)}:p));
-                            try { await api.put(`/products/packages/${pkg.id}`, { isActive: newVal }); }
-                            catch(e:any){ alert(e?.response?.data?.message||e?.message||'فشل تحديث حالة الباقة'); setProducts(ps=> ps.map(p=> p.id===prod.id? {...p, packages: p.packages.map(pk=> pk.id===pkg.id? {...pk, isActive:!newVal}:pk)}:p)); }
-                          }}
-                          title={pkg.isActive? 'نشطة - انقر للتعطيل':'معطلة - انقر للتفعيل'}
-                          className={`w-4 h-4 rounded-full border transition-colors ${pkg.isActive? 'bg-green-500 border-green-600':'bg-red-500 border-red-600'}`}
-                        />
-                      </td>
-                      <td className="px-2 py-1 text-center">
-                        <button onClick={()=>deletePackage(pkg.id)} disabled={!!deleting[pkg.id]} className="text-xs px-2 py-0.5 rounded bg-red-500 text-white disabled:opacity-50">حذف</button>
-                      </td>
-                    </tr>
-                  ))}
-                  {prod.packages.length===0 && (
-                    <tr><td colSpan={5} className="text-center py-4 text-gray-400">لا توجد باقات</td></tr>
-                  )}
-                </tbody>
-              </table>
+              {/* أزلنا عرض/تحرير الباقات هنا لتبسيط الواجهة */}
             </div>
           </div>
         ))}
   {!loading && filtered.length===0 && <div className="text-center text-gray-500 py-10">لا توجد منتجات</div>}
         {loading && <div className="text-center text-gray-400 py-10 animate-pulse">تحميل...</div>}
       </div>
-  {/* أزلنا أقسام الكتالوج المنفصلة */}
+  {/* الواجهة مبسطة حسب المتطلبات */}
     </div>
   );
 }
