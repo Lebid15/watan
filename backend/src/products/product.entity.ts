@@ -43,6 +43,11 @@ export class Product {
   @Column({ default: true })
   isActive: boolean;
 
+  // مرجع المنتج العالمي الأصلي عند الاستنساخ (اختياري)
+  @Column('uuid', { nullable: true })
+  @Index()
+  sourceGlobalProductId?: string | null;
+
   @OneToMany(() => ProductPackage, (pkg) => pkg.product, { cascade: true })
   packages: ProductPackage[];
 }

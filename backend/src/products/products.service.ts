@@ -323,6 +323,8 @@ export class ProductsService {
   newProduct.tenantId = targetTenantId;
   newProduct.name = candidate;
   newProduct.description = source.description || undefined;
+  // حفظ مرجع المنتج العالمي الأصلي
+  (newProduct as any).sourceGlobalProductId = source.id;
   (newProduct as any).customImageUrl = (source as any).customImageUrl || undefined;
   (newProduct as any).customAltText = (source as any).customAltText || undefined;
   (newProduct as any).thumbSmallUrl = (source as any).thumbSmallUrl || undefined;
@@ -478,6 +480,31 @@ export class ProductsService {
         }),
       })),
     };
+  }
+
+  // ===== ✅ الجسور المتاحة لمنتج (أكواد publicCode من المنتج العالمي المصدر غير الموجودة محلياً) =====
+  async getAvailableBridges(tenantId: string, productId: string): Promise<number[]> {
+    const product = await this.productsRepo.findOne({ where: { id: productId, tenantId } as any });
+    if (!product) throw new NotFoundException('المنتج غير موجود');
+    if (!(product as any).sourceGlobalProductId) {
+      // إذا لم يكن مستنسخاً من منتج عالمي فليست هناك جسور مرجعية
+      return [];
+    }
+    const globalId = (product as any).sourceGlobalProductId;
+    // جلب الباقات العالمية المصدر
+    const global = await this.productsRepo.findOne({ where: { id: globalId, tenantId: this.DEV_TENANT_ID } as any, relations: ['packages'] });
+    if (!global) return [];
+    const globalCodes = new Set<number>(
+      (global.packages || [])
+        .filter((p: any) => p.isActive && p.publicCode != null)
+        .map((p: any) => p.publicCode as number)
+    );
+    // جلب الباقات المحلية (نشطة أو معطلة) لإخفاء الأكواد المستخدمة
+    const localPkgs = await this.packagesRepo.find({ where: { product: { id: productId } } as any });
+    for (const lp of localPkgs) {
+      if (lp.publicCode != null) globalCodes.delete(lp.publicCode as any);
+    }
+    return Array.from(globalCodes).sort((a,b)=>a-b);
   }
 
   async create(product: Product): Promise<Product> {

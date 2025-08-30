@@ -215,6 +215,16 @@ export class ProductsController {
     return { message: 'تم حذف المنتج بنجاح' };
   }
 
+  // ✅ الجسور المتاحة (الأكواد غير المستخدمة بعد) لمنتج مستنسخ
+  @Get(':id/bridges')
+  @UseGuards(AuthGuard('jwt'))
+  async getAvailableBridges(@Req() req: Request, @Param('id') id: string) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    if (!tenantId) throw new BadRequestException('لا يمكن تحديد التينانت');
+    const available = await this.productsService.getAvailableBridges(tenantId, id);
+    return { available };
+  }
+
   // ✅ استنساخ منتج عالمي إلى تينانت المستأجر الحالي
   @Post(':id/clone-to-tenant')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
