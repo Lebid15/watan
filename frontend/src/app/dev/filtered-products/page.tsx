@@ -1,7 +1,7 @@
 "use client";
 // منع الكاش أثناء التطوير لهذه الصفحة (App Router)
 export const dynamic = 'force-dynamic';
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
 
@@ -22,10 +22,12 @@ export default function DevFilteredProductsPage(){
   const router = useRouter();
   const [products,setProducts]=useState<DevProduct[]>([]);
   // فلاتر
-  const [q,setQ]=useState('');
-  const [statusFilter,setStatusFilter]=useState<'all'|'active'|'inactive'>('all');
-  const [minPkgs,setMinPkgs]=useState<number>(0);
-  const [attentionOnly,setAttentionOnly]=useState(false); // منتجات أقل من 2 باقات مثلاً
+  // البحث الجديد عبر قائمة منسدلة تحتوي كل المنتجات
+  const [q,setQ]=useState(''); // يستخدم داخل صندوق البحث داخل القائمة المنسدلة فقط (لا يفلتر تلقائياً حتى يتم الاختيار)
+  const [productSelectOpen,setProductSelectOpen]=useState(false);
+  const [selectedProductId,setSelectedProductId]=useState<string|undefined>(undefined);
+  const dropdownRef = useRef<HTMLDivElement|null>(null);
+  // تمت إزالة باقي الفلاتر (الحالة/العدد/الانتباه) حسب الطلب
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const [backendMeta,setBackendMeta]=useState<{gitSha?:string;buildTime?:string;version?:string}>({});
@@ -74,15 +76,25 @@ export default function DevFilteredProductsPage(){
     finally{ setPkgDeleting(productId,false); }
   };
   const filtered = useMemo(()=>{
-    return products.filter(p=>{
-      if(q && !p.name.toLowerCase().includes(q.toLowerCase())) return false;
-      if(statusFilter==='active' && !p.isActive) return false;
-      if(statusFilter==='inactive' && p.isActive) return false;
-      if(minPkgs>0 && p.packages.length < minPkgs) return false;
-      if(attentionOnly && p.packages.length>=2) return false; // إبراز المحتاج اهتمام (أقل من 2)
-      return true;
-    });
-  },[products,q,statusFilter,minPkgs,attentionOnly]);
+    if(!selectedProductId) return products;
+    return products.filter(p=> p.id===selectedProductId);
+  },[products,selectedProductId]);
+
+  // إغلاق القائمة عند الضغط خارجها
+  useEffect(()=>{
+    if(!productSelectOpen) return;
+    const fn = (e:MouseEvent)=>{
+      if(!dropdownRef.current) return;
+      if(!dropdownRef.current.contains(e.target as any)) setProductSelectOpen(false);
+    };
+    window.addEventListener('mousedown',fn);
+    return ()=> window.removeEventListener('mousedown',fn);
+  },[productSelectOpen]);
+
+  const productOptions = useMemo(()=>{
+    if(!q) return products;
+    return products.filter(p=> p.name.toLowerCase().includes(q.toLowerCase()));
+  },[products,q]);
 
   return (
     <div className="space-y-4">
@@ -106,34 +118,64 @@ export default function DevFilteredProductsPage(){
           onClick={()=> router.push('/dev/filtered-products/new')}
           className="px-4 py-1.5 rounded text-sm bg-emerald-600 text-white"
         >+ إضافة منتج</button>
-        <input
-          value={q}
-          onChange={e=>setQ(e.target.value)}
-          placeholder="بحث بالاسم..."
-          className="px-3 py-1.5 rounded border text-sm w-48"
-        />
-        <select
-          value={statusFilter}
-          onChange={e=>setStatusFilter(e.target.value as any)}
-          className="px-2 py-1.5 rounded border text-sm"
-        >
-          <option value="all">الكل</option>
-          <option value="active">نشط</option>
-          <option value="inactive">معطل</option>
-        </select>
-        <div className="flex items-center gap-1 text-sm">
-          <label className="text-gray-600">حد أدنى للباقات</label>
-          <input type="number" min={0} value={minPkgs} onChange={e=>setMinPkgs(Number(e.target.value)||0)} className="w-16 px-2 py-1 rounded border text-sm" />
+        {/* قائمة المنتجات المنسدلة مع بحث داخلي */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            type="button"
+            onClick={()=> setProductSelectOpen(o=>!o)}
+            className="px-3 py-1.5 rounded border text-sm bg-white min-w-52 flex items-center justify-between gap-2"
+          >
+            <span className="truncate text-right flex-1">
+              {selectedProductId? (products.find(p=>p.id===selectedProductId)?.name || '—'): 'اختر منتجاً أو ابحث...'}
+            </span>
+            <span className="text-xs text-gray-500">▾</span>
+          </button>
+          {productSelectOpen && (
+            <div className="absolute z-20 mt-1 w-72 rounded border bg-white shadow-lg p-2 space-y-2 max-h-96 flex flex-col">
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={q}
+                  onChange={e=>setQ(e.target.value)}
+                  placeholder="بحث..."
+                  className="flex-1 px-2 py-1 rounded border text-sm"
+                />
+                {selectedProductId && (
+                  <button
+                    onClick={()=>{ setSelectedProductId(undefined); setQ(''); }}
+                    className="text-xs px-2 py-1 rounded border bg-gray-50 hover:bg-gray-100"
+                  >مسح</button>
+                )}
+              </div>
+              <div className="overflow-auto divide-y rounded border bg-gray-50">
+                <button
+                  onClick={()=>{ setSelectedProductId(undefined); setProductSelectOpen(false); setQ(''); }}
+                  className={`w-full text-right px-3 py-1.5 text-sm hover:bg-white ${!selectedProductId? 'bg-white font-semibold':''}`}
+                >الكل</button>
+                <div className="max-h-60 overflow-auto">
+                  {productOptions.map(p=> (
+                    <button
+                      key={p.id}
+                      onClick={()=>{ setSelectedProductId(p.id); setProductSelectOpen(false); }}
+                      className={`w-full text-right px-3 py-1.5 text-sm hover:bg-white ${selectedProductId===p.id? 'bg-white font-semibold':''}`}
+                    >{p.name}
+                      <span className="text-[10px] text-gray-500 mr-2">{p.packages.length} باقات</span>
+                    </button>
+                  ))}
+                  {productOptions.length===0 && (
+                    <div className="px-3 py-2 text-xs text-gray-500">لا نتائج</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-        <label className="flex items-center gap-1 text-sm cursor-pointer select-none">
-          <input type="checkbox" checked={attentionOnly} onChange={e=>setAttentionOnly(e.target.checked)} />
-          <span>تحتاج اهتمام (&lt;2 باقات)</span>
-        </label>
+  {/* أزيلت الفلاتر الأخرى */}
         {loading && <span className="text-sm text-gray-500 animate-pulse">تحميل...</span>}
         {error && <span className="text-sm text-red-600">{error}</span>}
-        {filtered.length !== products.length && (
+    {selectedProductId && (
           <button
-            onClick={()=>{ setQ(''); setStatusFilter('all'); setMinPkgs(0); setAttentionOnly(false); }}
+      onClick={()=>{ setQ(''); setSelectedProductId(undefined); }}
             className="text-xs px-2 py-1 rounded border bg-white hover:bg-gray-50"
             title="إلغاء الفلاتر"
           >إلغاء الفلاتر</button>
