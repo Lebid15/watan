@@ -11,15 +11,6 @@ export class Product {
   @Index()
   tenantId: string;
 
-  // يحدد أن هذا المنتج هو أصل (مصدري) أنشأه المطور وليس نسخة مستأجر
-  @Column({ type: 'boolean', default: false })
-  isSource: boolean;
-
-  // عند كونه نسخة: يشير إلى المنتج المصدر (product.id) في مساحة المطور
-  @Column({ type: 'uuid', nullable: true })
-  @Index()
-  sourceProductId?: string | null;
-
 
   @Column()
   name: string;
@@ -33,9 +24,6 @@ export class Product {
   @Column({ type: 'varchar', length: 500, nullable: true })
   customImageUrl?: string | null;
 
-  // catalogAltText: نص بديل افتراضي لصورة الكتالوج (يمكن أن يأتي من مصدر خارجي)
-  @Column({ type: 'varchar', length: 300, nullable: true })
-  catalogAltText?: string | null;
 
   // customAltText: نص بديل مخصص (أولوية إذا كانت الصورة مخصصة أو حتى مع الكتالوج بهدف تحسين الوصولية)
   @Column({ type: 'varchar', length: 300, nullable: true })

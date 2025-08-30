@@ -36,7 +36,7 @@ export class ProductsAdminController {
 	@Put(':id/image/custom')
 	async setCustomImage(
 		@Param('id') id: string,
-		@Body() body: { customImageUrl?: string; customAltText?: string | null; catalogAltText?: string | null },
+		@Body() body: { customImageUrl?: string; customAltText?: string | null },
 		@Req() req: Request,
 	) {
 		if (!isFeatureEnabled('productImageFallback')) {
@@ -49,7 +49,6 @@ export class ProductsAdminController {
 		const prevCustom = (product as any).customImageUrl || null;
 		(product as any).customImageUrl = body?.customImageUrl ?? null;
 		if (body.customAltText !== undefined) (product as any).customAltText = body.customAltText;
-		if (body.catalogAltText !== undefined) (product as any).catalogAltText = body.catalogAltText;
 		// Catalog usage flag removed
 			// Generate thumbnails if custom image changed
 			if ((product as any).customImageUrl && prevCustom !== (product as any).customImageUrl) {
@@ -72,7 +71,7 @@ export class ProductsAdminController {
 			await this.audit.log('product.image.custom.set', {
 				actorUserId: (req as any)?.user?.id ?? null,
 				targetTenantId: tenantId,
-				meta: { productId: product.id, customImageUrl: (product as any).customImageUrl, customAltText: (product as any).customAltText, catalogAltText: (product as any).catalogAltText },
+				meta: { productId: product.id, customImageUrl: (product as any).customImageUrl, customAltText: (product as any).customAltText },
 			});
 			return { ok: true, id: product.id, customImageUrl: (product as any).customImageUrl };
 	}

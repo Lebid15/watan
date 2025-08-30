@@ -101,7 +101,6 @@ export class ProductsController {
       imageSource: product.imageSource,
       hasCustomImage: product.hasCustomImage,
       customImageUrl: product.customImageUrl,
-      catalogAltText: (product as any).catalogAltText ?? null,
       customAltText: (product as any).customAltText ?? null,
     }));
   }
@@ -125,7 +124,6 @@ export class ProductsController {
       imageSource: product.imageSource,
       hasCustomImage: product.hasCustomImage,
       customImageUrl: product.customImageUrl,
-      catalogAltText: (product as any).catalogAltText ?? null,
       customAltText: (product as any).customAltText ?? null,
     };
   }

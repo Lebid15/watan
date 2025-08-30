@@ -420,9 +420,6 @@ export class ProductsService {
   if (!product.name) product.name = 'منتج جديد';
   if (product.isActive === undefined) product.isActive = true;
   // إذا أنشأ المطوّر منتجًا جديدًا (ليس نسخة من مصدر آخر) عيّنه كمصدر
-  if (product.tenantId === this.DEV_TENANT_ID && product.sourceProductId == null) {
-    product.isSource = true;
-  }
   // حافظ على nulls الاختيارية كما هي
       const saved = await this.productsRepo.save(product);
       console.log('[PRODUCTS][SERVICE] created product id=', saved.id, 'tenantId=', saved.tenantId);
@@ -505,21 +502,11 @@ export class ProductsService {
     if (!product) {
       // محاولة بديلة: إن كان المستخدم مطوّرًا، اسمح له بالوصول لمنتج "مصدر" حتى لو لم يطابق tenantId
       const alt = await this.productsRepo.findOne({ where: { id: productId } as any, relations: ['packages'] });
-      if (alt && (alt as any).isSource && (ctx?.finalRole === 'developer' || ctx?.finalRole === 'DEVELOPER')) {
-        console.warn('[PKG][CREATE][FALLBACK] developer accessing source product with different tenant', {
-          productId: alt.id?.slice(0,8),
-          productTenant: (alt as any).tenantId?.slice(0,8),
-          requestTenant: tenantId?.slice(0,8),
-        });
-        product = alt as any;
-      } else {
-        console.warn('[PKG][CREATE][NF] product not found or tenant mismatch', {
-          productId: productId?.slice(0,8),
-          tenantId: tenantId?.slice(0,8),
-          role: ctx?.finalRole,
-        });
-  throw new NotFoundException('المنتج غير موجود في نطاق المستأجر الحالي. إذا كان المنتج من كتالوج المطوّر فقم باستنساخه أولاً أو اطلب صلاحية إضافة باقة مباشرة للمنتج المصدر.');
-      }
+      // المنتج يجب أن يكون ضمن نفس المستأجر الآن بعد إزالة منطق المصدر/الاستنساخ
+      console.warn('[PKG][CREATE][NF] product not found for tenant', {
+        productId: productId?.slice(0,8), tenantId: tenantId?.slice(0,8), role: ctx?.finalRole,
+      });
+      throw new NotFoundException('المنتج غير موجود في هذا المستأجر');
     }
 
   // Catalog linking removed: no catalogLinkCode validation required.
@@ -537,9 +524,7 @@ export class ProductsService {
   product,
       createdByDistributorId: (data as any).createdByDistributorId || null,
   providerName: (data as any).providerName || null,
-      // إذا كانت الحزمة تُنشأ داخل منتج مصدر (تينانت المطوّر و المنتج isSource=true) نعتبر الحزمة مصدرية
-      isSource: (product as any)?.isSource === true && (product as any)?.tenantId === this.DEV_TENANT_ID,
-      sourcePackageId: null,
+  // إزالة منطق المصدر/الاستنساخ
     } as Partial<ProductPackage>) as ProductPackage;
 
     // اختيارياً: ضبط publicCode أثناء الإنشاء إن وُفّر
@@ -607,21 +592,10 @@ export class ProductsService {
     if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
 
     // حماية: التأكد أن المستدعي يملك صلاحية على هذه الحزمة (باستثناء المطوّر على مصدره)
-    const isDevPackage = (pkg as any).tenantId === this.DEV_TENANT_ID;
-    if (pkg.tenantId !== tenantId && !isDevPackage) {
+  if (pkg.tenantId !== tenantId) {
       throw new ForbiddenException('لا تملك صلاحية حذف هذه الباقة');
     }
-
-    // أي حزمة مصدر أو حزمة تابعة لتينانت المطوّر: تعطيل فقط
-    if ((pkg as any).isSource || isDevPackage) {
-      if ((pkg as any).isActive) {
-        (pkg as any).isActive = false;
-        await this.packagesRepo.save(pkg);
-      }
-      return;
-    }
-
-    // إذا كانت حزمة مستأجر (clone) نحذف فعليًا (لا تؤثر على المطوّر أو مستأجر آخر)
+  // حذف فعلي الآن
     if (Array.isArray(pkg.prices) && pkg.prices.length) {
       await this.packagePriceRepo.remove(pkg.prices);
     }
@@ -1602,7 +1576,6 @@ export class ProductsService {
   imageSource: img.imageSource,
   hasCustomImage: img.hasCustomImage,
   customImageUrl: img.customImageUrl,
-  catalogAltText: (product as any).catalogAltText ?? null,
   customAltText: (product as any).customAltText ?? null,
   thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
   thumbMediumUrl: (product as any).thumbMediumUrl ?? null,
