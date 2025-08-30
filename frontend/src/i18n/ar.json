@@ -44,9 +44,6 @@
   "tenant.priceGroups": "مجموعات الأسعار",
   "tenant.reports": "التقارير",
   "distributor.title": "الموزع",
-  "owner.catalog.import": "استيراد الكتالوج",
-  "owner.catalog.new": "منتج يدوي",
-  "owner.catalog.review": "مراجعة ونشر",
   "common.forbidden": "ممنوع الوصول",
   "common.noData": "لا توجد بيانات"
 }
