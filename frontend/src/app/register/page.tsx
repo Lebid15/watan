@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import ResponsiveCurrencySelect from '@/components/ResponsiveCurrencySelect';
 import { useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
 
@@ -168,25 +169,12 @@ export default function RegisterPage() {
             اختر العملة
           </label>
           <div className="relative overflow-visible">
-            <select
-              id="currency"
-              required
+            <ResponsiveCurrencySelect
+              options={currencies}
               value={currencyId}
-              onChange={(e) => setCurrencyId(e.target.value)}
-              className="w-full mb-2 px-3 py-1 border border-gray-300 rounded bg-white text-black relative z-10"
-            >
-              {/* خيار افتراضي واضح */}
-              {!currencyId && (
-                <option value="" disabled>
-                  اختر العملة
-                </option>
-              )}
-              {currencies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.code})
-                </option>
-              ))}
-            </select>
+              onChange={setCurrencyId}
+              placeholder="اختر العملة"
+            />
           </div>
 
           {/* زر التسجيل */}

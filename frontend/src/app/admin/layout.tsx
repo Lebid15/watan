@@ -23,29 +23,52 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const alertMessage = 'تنبيه: تم تحديث النظام، يرجى مراجعة صفحة الطلبات لمعرفة التفاصيل.';
 
-  const computeScale = () => {
-    const w = Math.max(320, window.innerWidth);
-    return Math.min(w / DESIGN_WIDTH, 1);
-  };
-
+  // حساب المقياس بحيث تُعرض الصفحة كاملة (عرضاً وارتفاعاً) بلا سكرول على الجوال والآيباد
   const applyLayout = (useAnim: boolean) => {
     if (!wrapperRef.current || !canvasRef.current) return;
 
-    const s = computeScale();
+    const canvas = canvasRef.current;
+
+    // نحفظ التحويل الحالي ثم نعيده لاحقاً لتفادي وميض كبير
+    const prevTransform = canvas.style.transform;
+
+    // نجبر القياس على الحجم الأصلي (scale 1) لمعرفة الارتفاع الحقيقي بدون تأثير التصغير السابق
+    canvas.style.transform = 'translateX(-50%) scale(1)';
+    const unscaledHeight = canvas.scrollHeight; // الارتفاع الفعلي الكامل
+
+    const w = Math.max(320, window.innerWidth);
+    const h = Math.max(320, window.innerHeight);
+
+    const widthScale = Math.min(w / DESIGN_WIDTH, 1);
+    const heightScale = Math.min(h / unscaledHeight, 1);
+    const s = Math.min(widthScale, heightScale); // اختيار الأصغر لضمان احتواء كامل الصفحة
+
     setScale(s);
-
-    // الارتفاع الحقيقي قبل التصغير
-    const unscaledHeight = canvasRef.current.scrollHeight;
     wrapperRef.current.style.height = `${unscaledHeight * s}px`;
-
     setWithTransition(useAnim);
+
+    // نعيد التحويل (سيتم استبداله بقيمة scale عبر JSX اعتماداً على state)
+    canvas.style.transform = prevTransform;
   };
 
   // حساب التخطيط قبل الطلاء الأول لمنع القفزة
   useLayoutEffect(() => {
     applyLayout(false);
     setLayoutReady(true);
+    // تفعيل منع السكرول على الجسم في هذه الصفحات
+    if (typeof document !== 'undefined') {
+      document.body.classList.add('desktop-fixed-no-scroll');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // إزالة الكلاس عند الخروج من التخطيط
+  useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.classList.remove('desktop-fixed-no-scroll');
+      }
+    };
   }, []);
 
   // استجابة لتغير المقاس/المحتوى
@@ -131,6 +154,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           top: 0,
           left: '50%',
           width: DESIGN_WIDTH,
+          // نطبّق نفس التحويل بعد حساب scale النهائي
           transform: `translateX(-50%) scale(${scale})`,
           transformOrigin: 'top center',
           transition: withTransition ? 'transform 120ms linear' : 'none',

@@ -44,7 +44,7 @@ export default function AdminDashboard() {
       <h1 className="text-lg p-5 font-bold mb-3">لوحة تحكم المشرف</h1>
       <div className="space-y-2">
         <p>مرحباً، {user?.fullName || user?.email}</p>
-        <p>هنا سنقدم جميع التعلميات الخاصة بالموضع4</p>
+        <p>هنا سنقدم جميع التعلميات الخاصة بالموضع5</p>
         <p>أهلا وسهلا بكم دائماً.</p>
 
       </div>
