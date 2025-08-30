@@ -562,10 +562,39 @@ export class ProductsService {
     return this.productsRepo.save(product);
   }
 
-  async delete(tenantId: string, id: string): Promise<void> {
-    const product = await this.productsRepo.findOne({ where: { id, tenantId } as any });
+  async delete(opts: { tenantId?: string | null; role?: string | null; allowGlobal?: boolean }, id: string): Promise<void> {
+    const { tenantId, role, allowGlobal } = opts || {};
+    const roleLower = (role || '').toLowerCase();
+    const isDev = roleLower === 'developer' || roleLower === 'instance_owner';
+
+    if (!tenantId) {
+      // لا نسمح بحذف أي منتج بدون tenantId صريح إلا عند حذف عالمي صريح من مطور وبـ allowGlobal
+      if (!(isDev && allowGlobal)) {
+        throw new ForbiddenException('لا يوجد سياق مستأجر صالح للحذف');
+      }
+    }
+
+    // بناء where بشكل صارم: إن لم يكن allowGlobal فلابد من tenantId
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    else if (isDev && allowGlobal) where.tenantId = this.DEV_TENANT_ID; // حاوية عالمية صريحة
+
+    const product = await this.productsRepo.findOne({ where });
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
+
+    // حواجز حماية إضافية: منع مطور من حذف منتج تينانت آخر لو مر tenantId خاطئ
+    if (product.tenantId !== (where.tenantId)) {
+      throw new ForbiddenException('عدم تطابق سياق المنتج مع التينانت');
+    }
+
+    // إن كان حذف عالمي تأكد من أنه فعلاً عالمي
+    if (allowGlobal && isDev && product.tenantId !== this.DEV_TENANT_ID) {
+      throw new ForbiddenException('هذا المنتج ليس ضمن الحاوية العالمية');
+    }
+
+    console.log('[PRODUCTS][DELETE][REQ]', { id: product.id, tenantId: product.tenantId, byRole: roleLower, allowGlobal });
     await this.productsRepo.remove(product);
+    console.log('[PRODUCTS][DELETE][DONE]', { id: product.id, global: product.tenantId === this.DEV_TENANT_ID });
   }
 
   async createPriceGroup(tenantId: string, data: Partial<PriceGroup>): Promise<PriceGroup> {

@@ -17,6 +17,7 @@ import {
   BadRequestException,
   Query,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -139,15 +140,10 @@ export class ProductsController {
 
   @Post()
   async create(@Req() req: Request, @Body() body: Partial<Product>): Promise<Product> {
-    // ✅ استخدم tenant context من middleware
-    let tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    // حاوية المنتجات العالمية (catalog container) لاستعمال المطوّر قبل أن يقوم المستأجر بالاستيراد لاحقًا
-    const PSEUDO_TENANT = '00000000-0000-0000-0000-000000000000';
-    if (!tenantId) {
-      // السماح بالإنشاء في الحاوية العالمية بدل رفض الطلب – هذا هو "المخزن" الذي سيُستورد لاحقًا للمستأجرين
-      tenantId = PSEUDO_TENANT;
-    }
-    console.log('[PRODUCTS] create effectiveTenantId=', tenantId, 'body=', body);
+    // إنشاء منتج للمستأجر فقط (بدون fallback عالمي). يجب أن يكون هناك tenantId.
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    if (!tenantId) throw new BadRequestException('tenantId مفقود لإنشاء منتج مستأجر');
+    console.log('[PRODUCTS] create tenant product tenantId=', tenantId, 'body=', body);
     const AUTO_DEFAULT_BASE = 'منتج جديد';
     const product = new Product();
     const providedName = (body.name || '').trim();
@@ -208,11 +204,44 @@ export class ProductsController {
 
   @Delete(':id')
   async delete(@Req() req: Request, @Param('id') id: string): Promise<{ message: string }> {
-    // ✅ استخدم tenant context من middleware
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    console.log('[PRODUCTS] delete tenantId=', tenantId, 'productId=', id);
-    await this.productsService.delete(tenantId, id);
+    const role = (req as any).user?.roleFinal || (req as any).user?.role;
+    console.log('[PRODUCTS] delete tenantId=', tenantId, 'productId=', id, 'role=', role);
+    await this.productsService.delete({ tenantId, role }, id);
     return { message: 'تم حذف المنتج بنجاح' };
+  }
+
+  // إنشاء منتج عالمي (للكتالوج) مخصص للمطور فقط
+  @Post('global')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
+  async createGlobal(@Req() req: Request, @Body() body: Partial<Product>): Promise<Product> {
+    const role = (req as any).user?.roleFinal || (req as any).user?.role;
+    const roleLower = (role || '').toLowerCase();
+    if (!(roleLower === 'developer' || roleLower === 'instance_owner')) throw new ForbiddenException('غير مصرح');
+    const GLOBAL_ID = '00000000-0000-0000-0000-000000000000';
+    const product = new Product();
+    const AUTO_DEFAULT_BASE = 'منتج عالمي';
+    const providedName = (body.name || '').trim();
+    const usingAuto = !providedName;
+    product.name = providedName || AUTO_DEFAULT_BASE;
+    product.description = body.description ?? '';
+    product.isActive = body.isActive ?? true;
+    product.tenantId = GLOBAL_ID;
+    console.log('[PRODUCTS] create global product by=', roleLower, 'name=', product.name);
+    try {
+      const created = await this.productsService.create(product);
+      return created;
+    } catch (err: any) {
+      if (err?.code === '23505' && usingAuto) {
+        for (let i = 2; i <= 5; i++) {
+          product.name = `${AUTO_DEFAULT_BASE}-${i}`;
+          try { return await this.productsService.create(product); } catch(e2:any){ if (e2?.code==='23505') continue; throw e2; }
+        }
+        throw new ConflictException('تعذر اختيار اسم عالمي');
+      }
+      throw err;
+    }
   }
 
   // ✅ الجسور المتاحة (الأكواد غير المستخدمة بعد) لمنتج مستنسخ
