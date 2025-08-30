@@ -157,9 +157,13 @@ export default function DevFilteredProductsPage(){
                     <button
                       key={p.id}
                       onClick={()=>{ setSelectedProductId(p.id); setProductSelectOpen(false); }}
-                      className={`w-full text-right px-3 py-1.5 text-sm hover:bg-white ${selectedProductId===p.id? 'bg-white font-semibold':''}`}
-                    >{p.name}
-                      <span className="text-[10px] text-gray-500 mr-2">{p.packages.length} باقات</span>
+                      className={`w-full text-right px-3 py-1.5 text-sm flex items-center justify-between gap-2 hover:bg-white ${selectedProductId===p.id? 'bg-white font-semibold':''}`}
+                    >
+                      <span className="truncate flex-1">{p.name}</span>
+                      <span
+                        title="عدد الباقات"
+                        className={`shrink-0 inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10px] font-medium border ${p.packages.length < 2 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-100 text-gray-700 border-gray-200'}`}
+                      >{p.packages.length}</span>
                     </button>
                   ))}
                   {productOptions.length===0 && (
