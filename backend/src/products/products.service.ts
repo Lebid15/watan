@@ -236,13 +236,16 @@ export class ProductsService {
 
   async findAllWithPackages(tenantId?: string): Promise<any[]> {
     // Dev fallback: إذا لم يوجد tenantId (صفحة /dev من الدومين الرئيسي أو بدون تسجيل دخول)
-    // أعرض كل المنتجات مع الباقات بشكل مبسّط (بدون أسعار المجموعات) حتى يتم التحديد لاحقًا.
+    // سابقاً: كان يتم إرجاع كل المنتجات لكل التينانت مما سبب التباس بأن منتجات المستأجر تظهر كأنها "عالمية".
+    // الآن: نقيّد العرض إلى الحاوية العالمية فقط (DEV_TENANT_ID) عند غياب tenantId.
     if (!tenantId) {
       const products = await this.productsRepo.find({
+        where: { tenantId: this.DEV_TENANT_ID } as any,
         relations: ['packages'],
-        take: 500, // حِد أمان بسيط لمنع انفجار النتائج
+        take: 500,
         order: { name: 'ASC' } as any,
       });
+      console.log('[PRODUCTS][LIST][NO-TENANT] returned', products.length, 'global products');
       return products.map((product: any) => {
         const mapped = this.mapEffectiveImage(product);
         return {
@@ -251,7 +254,7 @@ export class ProductsService {
           packages: (product.packages || []).map((pkg: any) => ({
             ...pkg,
             basePrice: pkg.basePrice ?? pkg.capital ?? 0,
-            prices: [], // لا نسترجع أسعار المجموعات في وضع (بدون تينانت)
+            prices: [],
           })),
         };
       });
