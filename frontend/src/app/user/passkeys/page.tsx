@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import api, { API_ROUTES } from '@/utils/api';
 import { usePasskeys } from '@/hooks/usePasskeys';
 import { useToast } from '@/context/ToastContext';
@@ -16,6 +16,7 @@ export default function PasskeysPage() {
   const [loading, setLoading] = useState(true);
   const { show } = useToast();
   const [label, setLabel] = useState('');
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -28,6 +29,16 @@ export default function PasskeysPage() {
 
   useEffect(() => { if (!user) { router.push('/login'); return; } load(); }, [user]);
 
+  // إذا وُجد ?add=1 ركز الحقل وضع قيمة افتراضية
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('add') === '1') {
+      setLabel(l => l || 'جهازي');
+      setTimeout(()=>{ inputRef.current?.focus(); }, 50);
+    }
+  }, []);
+
   return (
     <div className="max-w-2xl mx-auto p-4">
       <h1 className="text-2xl font-semibold mb-4">مفاتيح المرور (Passkeys)</h1>
@@ -36,7 +47,7 @@ export default function PasskeysPage() {
       <div className="mb-6 flex gap-2 items-end">
         <div className="flex-1">
           <label className="block text-sm font-medium mb-1">تسمية الجهاز</label>
-          <input value={label} onChange={e=>setLabel(e.target.value)} placeholder="مثال: لابتوب العمل" className="w-full border rounded px-3 py-2 text-sm" />
+          <input ref={inputRef} value={label} onChange={e=>setLabel(e.target.value)} placeholder="مثال: لابتوب العمل" className="w-full border rounded px-3 py-2 text-sm" />
         </div>
         <button
           disabled={opLoading}
@@ -57,7 +68,19 @@ export default function PasskeysPage() {
               <div className="text-xs text-gray-500">أُنشئ: {new Date(i.createdAt).toLocaleString()} {i.lastUsedAt && <>• آخر استخدام: {new Date(i.lastUsedAt).toLocaleString()}</>}</div>
             </div>
             <button
-              onClick={async ()=>{ if(!confirm('حذف هذا المفتاح؟')) return; try { await api.delete(API_ROUTES.auth.passkeys.delete(i.credentialId)); show('تم الحذف'); await load(); } catch (e:any) { show(e?.message || 'فشل'); } }}
+              onClick={async ()=>{
+                // حماية: منع حذف آخر مفتاح مرور
+                if (items.length === 1) {
+                  alert('لا يمكنك حذف مفتاح المرور الوحيد. أضف مفتاحاً جديداً أولاً للمحافظة على وسيلة دخول آمنة.');
+                  return;
+                }
+                if(!confirm('حذف هذا المفتاح؟')) return;
+                try {
+                  await api.delete(API_ROUTES.auth.passkeys.delete(i.credentialId));
+                  show('تم الحذف');
+                  await load();
+                } catch (e:any) { show(e?.message || 'فشل'); }
+              }}
               className="text-xs text-red-600 hover:underline"
             >حذف</button>
           </li>
