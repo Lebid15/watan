@@ -297,6 +297,9 @@ export class ProductsController {
 
   // 🔹 إنشاء باقة جديدة مع رفع صورة + تمرير السعر
   @Post(':id/packages')
+  // ✅ إضافة الحماية المفقودة: بدون الحارس كان req.user undefined وبالتالي tenantId يسقط إلى الحاوية العامة
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
   @UseInterceptors(
     FileInterceptor('image', {
       storage: memoryStorage(),
@@ -321,6 +324,16 @@ export class ProductsController {
   @Body('isActive') isActiveRaw?: any,
   @Body('providerName') providerName?: string,
   ): Promise<ProductPackage> {
+    // Debug log (سيساعد في حالة أي سقوط إلى الحاوية العامة)
+    try {
+      const dbgUser: any = (req as any).user || null;
+      console.log('[PKG][CTRL][ADD][START]', {
+        productId,
+        userId: dbgUser?.id || null,
+        role: dbgUser?.role || dbgUser?.roleFinal || null,
+        tenantCtx: (req as any).tenant?.id || dbgUser?.tenantId || null,
+      });
+    } catch {}
     if (!name) throw new NotFoundException('اسم الباقة مطلوب');
     // إلزام اختيار رقم الجسر (publicCode) الآن (مرحلة 1) – نسمح برقم صحيح موجب فقط
     if (publicCodeRaw == null || String(publicCodeRaw).trim() === '') {

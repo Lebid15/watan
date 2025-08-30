@@ -3,9 +3,15 @@ $server = "root@49.13.133.189"
 $branch = "feat/phase8-frontend-roles-and-catalog"
 
 Write-Host "Push changes to GitHub..."
-git add .
-git commit -m "auto deploy"
-git push origin $branch
+$status = git status --porcelain
+if (-not [string]::IsNullOrWhiteSpace($status)) {
+	git add .
+	$ts = Get-Date -Format 'yyyyMMdd-HHmmss'
+	git commit -m "auto deploy $ts"
+	git push origin $branch
+} else {
+	Write-Host "No local changes to commit. Pushing skipped."
+}
 
 Write-Host "Connect to server and deploy..."
 # سطر واحد على السيرفر لتفادي CRLF

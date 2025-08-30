@@ -31,6 +31,7 @@
     "metrics:product-images": "ts-node -r tsconfig-paths/register ./src/scripts/product-image-metrics.ts"
   ,"migrations:guard": "node scripts/check-migrations.cjs",
     "seed:demo": "ts-node -r tsconfig-paths/register ./src/scripts/seed-demo-data.ts"
+  ,"dev:token": "node scripts/request-dev-token.cjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.6",

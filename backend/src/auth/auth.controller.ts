@@ -157,6 +157,32 @@ export class AuthController {
   return { ok: true, id: saved.id, email: saved.email, role: saved.role };
   }
 
+  // إصدار توكن مطوّر / مرتفع الصلاحية مباشرة بدون كلمة مرور لتجاوز مشاكل إرسال JSON داخل الحاويات.
+  // الاستخدام: POST /api/auth/dev-token { secret, email, tenantId? }
+  // الحماية: DEV_ISSUE_SECRET في البيئة.
+  @Post('dev-token')
+  @ApiOperation({ summary: 'إصدار JWT للمطور مباشرة عبر سر بيئة (للاستخدام التشغيلي)' })
+  @ApiBody({ schema: { properties: { secret: { type: 'string' }, email: { type: 'string' }, tenantId: { type: 'string' } }, required: ['secret','email'] } })
+  async issueDevToken(@Body() body: { secret: string; email: string; tenantId?: string }) {
+    const envSecret = process.env.DEV_ISSUE_SECRET;
+    if (!envSecret) throw new ForbiddenException('Issuing disabled (no DEV_ISSUE_SECRET)');
+    if (!body?.secret || body.secret !== envSecret) throw new ForbiddenException('Invalid secret');
+    if (!body.email) throw new BadRequestException('email required');
+    const user = await this.usersRepo.findOne({ where: { email: body.email } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!(user.role === 'developer' || user.role === 'instance_owner')) {
+      throw new ForbiddenException('User not elevated');
+    }
+    const payload: any = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: body.tenantId === undefined ? (user.tenantId ?? null) : body.tenantId || null,
+    };
+    const token = this.jwt.sign(payload);
+    return { token, payload };
+  }
+
 
   @Post('register')
   @ApiOperation({ summary: 'إنشاء حساب جديد' })

@@ -1,7 +1,7 @@
 services:
-  nginx:
+  backend:
+    environment:
+      DEV_ISSUE_SECRET: 4f445f99fe093c8def4f3a402ff825788cb6842d21ae79794bf5dfff91aeca6a
+      BOOTSTRAP_DEV_SECRET: anotherBootstrapSecret123
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/certs:/etc/nginx/certs:ro
+      - "3000:3000"
