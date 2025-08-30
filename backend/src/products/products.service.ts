@@ -257,34 +257,11 @@ export class ProductsService {
       });
     }
 
-    // السياق الطبيعي: مقيّد بالتينانت
-    let products = await this.productsRepo.find({
+    // السياق الطبيعي: مقيّد بالتينانت (لا fallback تلقائي للمنتجات العالمية الآن)
+    const products = await this.productsRepo.find({
       where: { tenantId } as any,
       relations: ['packages', 'packages.prices', 'packages.prices.priceGroup'],
     });
-
-    // Fallback: إذا لم يكن لدى المستأجر أي منتجات بعد، أعرض المنتجات العالمية (pseudo tenant) لتسهيل التجربة
-    if (products.length === 0) {
-      const globalProducts = await this.productsRepo.find({
-        where: { tenantId: '00000000-0000-0000-0000-000000000000' } as any,
-        relations: ['packages'],
-      });
-      if (globalProducts.length) {
-        return globalProducts.map((product: any) => {
-          const mapped = this.mapEffectiveImage(product);
-          return {
-            ...product,
-            ...mapped,
-            globalFallback: true,
-            packages: (product.packages || []).map((pkg: any) => ({
-              ...pkg,
-              basePrice: pkg.basePrice ?? pkg.capital ?? 0,
-              prices: [],
-            })),
-          };
-        });
-      }
-    }
 
     const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
     return products.map((product) => {
@@ -309,6 +286,94 @@ export class ProductsService {
         })),
       };
     });
+  }
+
+  // ===== ✅ استنساخ منتج عالمي (الحاوية العامة) إلى تينانت مستهدف =====
+  async cloneGlobalProductToTenant(globalProductId: string, targetTenantId: string): Promise<Product> {
+    const GLOBAL_ID = this.DEV_TENANT_ID; // نفس المعرف المستخدم كحاوية عالمية
+    // احضار المنتج العالمي مع باقاته
+    const source = await this.productsRepo.findOne({
+      where: { id: globalProductId, tenantId: GLOBAL_ID } as any,
+      relations: ['packages'],
+    });
+    if (!source) throw new NotFoundException('المنتج العالمي غير موجود');
+
+    // فلترة الباقات الصالحة (نشطة ولها publicCode)
+    const validPkgs = (source.packages || []).filter((p: any) => p.isActive && p.publicCode != null);
+    if (validPkgs.length === 0) {
+      throw new UnprocessableEntityException('لا توجد باقات نشطة ذات publicCode لنسخها');
+    }
+
+    // معالجة تعارض الاسم داخل التينانت المستهدف
+    const baseName = source.name?.trim() || 'منتج';
+    let candidate = baseName;
+    const MAX_TRIES = 12;
+    for (let i = 0; i < MAX_TRIES; i++) {
+      const exists = await this.productsRepo.findOne({ where: { tenantId: targetTenantId, name: candidate } as any });
+      if (!exists) break;
+      const suffix = i + 2; // يبدأ من -2
+      candidate = `${baseName}-${suffix}`;
+      if (i === MAX_TRIES - 1) {
+        throw new ConflictException('تعذر إيجاد اسم متاح بعد محاولات متعددة');
+      }
+    }
+
+    // إنشاء المنتج الجديد
+  const newProduct = new Product();
+  newProduct.tenantId = targetTenantId;
+  newProduct.name = candidate;
+  newProduct.description = source.description || undefined;
+  (newProduct as any).customImageUrl = (source as any).customImageUrl || undefined;
+  (newProduct as any).customAltText = (source as any).customAltText || undefined;
+  (newProduct as any).thumbSmallUrl = (source as any).thumbSmallUrl || undefined;
+  (newProduct as any).thumbMediumUrl = (source as any).thumbMediumUrl || undefined;
+  (newProduct as any).thumbLargeUrl = (source as any).thumbLargeUrl || undefined;
+  newProduct.isActive = true;
+  const savedProduct = await this.productsRepo.save(newProduct);
+
+    // نسخ الباقات
+    const clones: ProductPackage[] = [];
+    for (const pkg of validPkgs) {
+  const clone = new ProductPackage();
+  clone.tenantId = targetTenantId;
+  clone.publicCode = pkg.publicCode;
+  clone.name = pkg.name;
+  clone.description = pkg.description || undefined;
+  clone.imageUrl = pkg.imageUrl || undefined;
+  clone.basePrice = (pkg.basePrice ?? pkg.capital ?? 0) as any;
+  clone.capital = (pkg.capital ?? pkg.basePrice ?? 0) as any;
+  clone.providerName = pkg.providerName || undefined;
+  clone.isActive = true;
+  clone.product = savedProduct;
+  const savedClone = await this.packagesRepo.save(clone);
+      clones.push(savedClone);
+    }
+    (savedProduct as any).packages = clones;
+    return savedProduct;
+  }
+
+  // ===== ✅ قائمة المنتجات العالمية مع عدد الباقات النشطة ذات publicCode =====
+  async listGlobalProducts(): Promise<any[]> {
+    const GLOBAL_ID = this.DEV_TENANT_ID;
+    const rows = await this.productsRepo.find({
+      where: { tenantId: GLOBAL_ID } as any,
+      relations: ['packages'],
+      order: { name: 'ASC' } as any,
+      take: 800,
+    });
+    return rows
+      .map((product: any) => {
+        const mapped = this.mapEffectiveImage(product);
+        const activePackages = (product.packages || []).filter((p: any) => p.isActive && p.publicCode != null);
+        return {
+          id: product.id,
+            name: product.name,
+          packagesActiveCount: activePackages.length,
+          hasAny: activePackages.length > 0,
+          imageUrl: mapped.imageUrl || null,
+        };
+      })
+      .filter(p => p.packagesActiveCount > 0);
   }
 
   async findOneWithPackages(tenantId: string, id: string): Promise<any> {
@@ -348,6 +413,7 @@ export class ProductsService {
       .leftJoinAndSelect('pkg.prices', 'pp')
       .leftJoinAndSelect('pp.priceGroup', 'pg')
       .where('prod.tenantId = :tenantId', { tenantId })
+  .andWhere('prod.isActive = TRUE')
       .andWhere('pkg.publicCode IS NOT NULL')
       .andWhere('pkg.isActive = TRUE');
 

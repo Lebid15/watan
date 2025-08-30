@@ -105,6 +105,15 @@ export class ProductsController {
     }));
   }
 
+  // ✅ إرجاع قائمة المنتجات العالمية (للاستنساخ) – محمية Roles
+  @Get('global')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
+  async listGlobal(@Req() _req: Request) {
+    const data = await this.productsService.listGlobalProducts();
+    return { items: data, count: data.length };
+  }
+
   @Get(':id')
   async findOne(@Req() req: Request, @Param('id') id: string, @Query('all') all?: string, @Query('includeNull') includeNull?: string): Promise<any> {
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
@@ -204,6 +213,35 @@ export class ProductsController {
     console.log('[PRODUCTS] delete tenantId=', tenantId, 'productId=', id);
     await this.productsService.delete(tenantId, id);
     return { message: 'تم حذف المنتج بنجاح' };
+  }
+
+  // ✅ استنساخ منتج عالمي إلى تينانت المستأجر الحالي
+  @Post(':id/clone-to-tenant')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
+  async cloneToTenant(@Req() req: Request, @Param('id') globalProductId: string) {
+    const targetTenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    if (!targetTenantId) {
+      throw new BadRequestException('لا يمكن تحديد التينانت الهدف');
+    }
+    const cloned = await this.productsService.cloneGlobalProductToTenant(globalProductId, targetTenantId);
+    return {
+      message: 'تم الاستنساخ بنجاح',
+      product: {
+        id: cloned.id,
+        name: cloned.name,
+        isActive: cloned.isActive,
+        description: cloned.description || null,
+        packages: (cloned.packages || []).map(p => ({
+          id: p.id,
+          name: p.name,
+          publicCode: p.publicCode,
+          isActive: p.isActive,
+          imageUrl: p.imageUrl || null,
+          providerName: p.providerName || null,
+        })),
+      },
+    };
   }
 
 

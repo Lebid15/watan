@@ -32,6 +32,22 @@ export default function DevFilteredProductsPage(){
   const [error,setError]=useState<string|null>(null);
   const [backendMeta,setBackendMeta]=useState<{gitSha?:string;buildTime?:string;version?:string}>({});
   const [deleting,setDeleting]=useState<Record<string,boolean>>({});
+  // استنساخ من المخزن
+  const [cloneOpen,setCloneOpen]=useState(false);
+  const [globalLoading,setGlobalLoading]=useState(false);
+  const [globalProducts,setGlobalProducts]=useState<any[]>([]);
+  const [globalQ,setGlobalQ]=useState('');
+  const [globalSelected,setGlobalSelected]=useState<string|undefined>();
+  const [cloning,setCloning]=useState(false);
+  const loadGlobal = async()=>{
+    setGlobalLoading(true);
+    try {
+      const res = await api.get('/products/global');
+      const items = res.data?.items||[];
+      setGlobalProducts(items);
+    }catch(e:any){ console.error('فشل جلب المنتجات العالمية', e?.message); }
+    finally{ setGlobalLoading(false); }
+  };
 
   const load = useCallback(async()=>{
   setLoading(true); setError(null);
@@ -118,6 +134,10 @@ export default function DevFilteredProductsPage(){
           onClick={()=> router.push('/dev/filtered-products/new')}
           className="px-4 py-1.5 rounded text-sm bg-emerald-600 text-white"
         >+ إضافة منتج</button>
+        <button
+          onClick={()=>{ setCloneOpen(true); if(globalProducts.length===0) loadGlobal(); }}
+          className="px-4 py-1.5 rounded text-sm bg-indigo-600 text-white"
+        >+ استنساخ من المخزن</button>
         {/* قائمة المنتجات المنسدلة مع بحث داخلي */}
         <div className="relative" ref={dropdownRef}>
           <button
@@ -217,8 +237,77 @@ export default function DevFilteredProductsPage(){
         ))}
   {!loading && filtered.length===0 && <div className="text-center text-gray-500 py-10">لا توجد منتجات</div>}
         {loading && <div className="text-center text-gray-400 py-10 animate-pulse">تحميل...</div>}
-      </div>
+    </div>
   {/* الواجهة مبسطة حسب المتطلبات */}
+    {/* Modal الاستنساخ */}
+    {cloneOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white w-full max-w-lg rounded shadow-lg p-4 space-y-4 relative">
+            <button onClick={()=> setCloneOpen(false)} className="absolute top-2 left-2 text-gray-400 hover:text-gray-600">✕</button>
+            <h2 className="text-lg font-semibold">استنساخ منتج من المخزن</h2>
+            <div className="flex items-center gap-2">
+              <input
+                value={globalQ}
+                onChange={e=> setGlobalQ(e.target.value)}
+                placeholder="بحث عن منتج عالمي..."
+                className="flex-1 px-2 py-1 rounded border text-sm"
+              />
+              <button
+                onClick={loadGlobal}
+                className="text-xs px-2 py-1 rounded border bg-gray-50 hover:bg-gray-100"
+                disabled={globalLoading}
+              >تحديث</button>
+            </div>
+            <div className="border rounded max-h-72 overflow-auto divide-y">
+              {globalLoading && <div className="p-3 text-sm text-gray-500">تحميل...</div>}
+              {!globalLoading && globalProducts.filter(p=> !globalQ || p.name.toLowerCase().includes(globalQ.toLowerCase())).map(p=> (
+                <button
+                  key={p.id}
+                  onClick={()=> setGlobalSelected(p.id)}
+                  className={`w-full text-right px-3 py-2 text-sm flex items-center gap-3 hover:bg-gray-50 ${globalSelected===p.id? 'bg-indigo-50':''}`}
+                >
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 border font-medium">{p.packagesActiveCount}</span>
+                  {globalSelected===p.id && <span className="text-indigo-500 text-xs">✓</span>}
+                </button>
+              ))}
+              {!globalLoading && globalProducts.filter(p=> !globalQ || p.name.toLowerCase().includes(globalQ.toLowerCase())).length===0 && (
+                <div className="p-3 text-xs text-gray-500">لا نتائج</div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={()=> setCloneOpen(false)}
+                className="px-3 py-1.5 rounded border text-sm bg-white"
+                disabled={cloning}
+              >إلغاء</button>
+              <button
+                onClick={async()=>{
+                  if(!globalSelected) return;
+                  setCloning(true);
+                  try {
+                    const res = await api.post(`/products/${globalSelected}/clone-to-tenant`, {});
+                    const newProd = res.data?.product;
+                    if(newProd){
+                      setProducts(ps=> [
+                        { id:newProd.id, name:newProd.name, isActive:newProd.isActive!==false, packages:(newProd.packages||[]).map((k:any)=> ({ id:k.id, name:k.name, publicCode:k.publicCode, isActive:k.isActive!==false })) },
+                        ...ps,
+                      ]);
+                    }
+                    // يمكن إضافة Toast لاحقاً
+                    setCloneOpen(false); setGlobalSelected(undefined); setGlobalQ('');
+                  }catch(e:any){
+                    let msg = e?.response?.data?.message || e?.message || 'فشل الاستنساخ';
+                    alert(msg);
+                  } finally { setCloning(false); }
+                }}
+                disabled={!globalSelected || cloning}
+                className="px-4 py-1.5 rounded text-sm text-white bg-indigo-600 disabled:opacity-50 flex items-center gap-2"
+              >{cloning && <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full"/>} استنساخ</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
