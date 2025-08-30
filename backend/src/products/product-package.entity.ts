@@ -12,7 +12,8 @@ import { PackagePrice } from './package-price.entity';
 
 @Entity('product_packages')
 // تعديل: جعل uniqueness على (tenantId, publicCode) بدلاً من global publicCode
-@Index('ux_product_packages_tenant_public_code', ['tenantId', 'publicCode'], { unique: true })
+// التفرد الآن داخل نفس المنتج فقط (product_id, publicCode)
+@Index('ux_product_packages_product_public_code', ['product', 'publicCode'], { unique: true })
 @Index('idx_product_packages_tenant_active', ['tenantId', 'isActive'])
 @Index('idx_product_packages_product_id', ['product']) // يُنشئ فهرسًا على product_id
 export class ProductPackage {

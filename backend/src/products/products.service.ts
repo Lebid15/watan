@@ -531,11 +531,11 @@ export class ProductsService {
     if (data.publicCode != null) {
       const pc = Number(data.publicCode);
       if (Number.isInteger(pc) && pc > 0) {
-        // تحقق أنه غير مستخدم داخل نفس المستأجر لهذا المنتج/الكتالوج
-        const existing = await this.packagesRepo.findOne({ where: { tenantId, publicCode: pc } as any });
+        // تحقق أنه غير مستخدم داخل نفس المنتج فقط
+        const existing = await this.packagesRepo.findOne({ where: { product: { id: product.id }, publicCode: pc } as any, relations: ['product'] });
         if (existing) {
-          console.warn('[PKG][CREATE][ERR] publicCode already used', { publicCode: pc });
-          const err: any = new ConflictException('الكود مستخدم مسبقًا');
+          console.warn('[PKG][CREATE][ERR] publicCode already used in product', { publicCode: pc, productId: product.id });
+          const err: any = new ConflictException('الكود مستخدم داخل نفس المنتج');
           (err as any).code = 'PKG_PUBLIC_CODE_CONFLICT';
           throw err;
         }
