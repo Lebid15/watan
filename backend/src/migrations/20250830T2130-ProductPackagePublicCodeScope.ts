@@ -24,11 +24,11 @@ export class ProductPackagePublicCodeScope20250830T2130 implements MigrationInte
       await queryRunner.query(`CREATE TABLE IF NOT EXISTS _backup_removed_products_20250830 AS SELECT p.*, CURRENT_TIMESTAMP as "removedAt" FROM product p WHERE 1=0`);
 
     // Find products where every package has providerName IS NOT NULL and at least one package exists
-    const rows: any[] = await queryRunner.query(`SELECT p.id FROM product p WHERE EXISTS (SELECT 1 FROM product_packages pk WHERE pk.product_id = p.id) AND NOT EXISTS (SELECT 1 FROM product_packages pk2 WHERE pk2.product_id = p.id AND (pk2.providerName IS NULL OR pk2.providerName = ''))`);
+  const rows: any[] = await queryRunner.query(`SELECT p.id FROM product p WHERE EXISTS (SELECT 1 FROM product_packages pk WHERE pk.product_id = p.id) AND NOT EXISTS (SELECT 1 FROM product_packages pk2 WHERE pk2.product_id = p.id AND (pk2."providerName" IS NULL OR pk2."providerName" = ''))`);
     if (rows.length) {
       const ids = rows.map(r => `'${r.id}'`).join(',');
       // Backup products
-        await queryRunner.query(`INSERT INTO _backup_removed_products_20250830 SELECT p.*, CURRENT_TIMESTAMP as "removedAt" FROM product p WHERE p.id IN (${ids})`);
+  await queryRunner.query(`INSERT INTO _backup_removed_products_20250830 SELECT p.*, CURRENT_TIMESTAMP as "removedAt" FROM product p WHERE p.id IN (${ids})`);
       // Cascade delete (FK on product_id has onDelete CASCADE)
       await queryRunner.query(`DELETE FROM product WHERE id IN (${ids})`);
     }
