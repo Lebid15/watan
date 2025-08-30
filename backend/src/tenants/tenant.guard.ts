@@ -15,6 +15,9 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/auth\/request-email-verification$/,
   /^\/api\/auth\/verify-email$/,
   /^\/api\/auth\/bootstrap-developer$/,
+  // السماح بإصدار dev-token بدون مصادقة مسبقة (محمي بالسر DEV_ISSUE_SECRET) - دعم مع وبدون البادئة /api
+  /^\/auth\/dev-token$/,
+  /^\/api\/auth\/dev-token$/,
   /^\/api\/auth\/assume-tenant$/,
   /^\/api\/auth\/passkeys\/options\/register$/,
   /^\/api\/auth\/passkeys\/register$/,
@@ -56,6 +59,8 @@ export class TenantGuard implements CanActivate {
     const req: any = context.switchToHttp().getRequest();
   const path = req.path || req.url || '';
   const original = req.originalUrl || '';
+  // Allow dev-token issuance regardless of prefix variations (defensive)
+  if (path.includes('auth/dev-token')) return true;
     // DEBUG (مؤقت): اطبع المسار وقرار التخطّي
   if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'evaluate', { path, original, pub: PUBLIC_PATHS.some(r=>r.test(path)), noTenant: NO_TENANT_REQUIRED_PATHS.some(r=>r.test(path)) });
 
