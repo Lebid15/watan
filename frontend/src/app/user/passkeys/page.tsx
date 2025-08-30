@@ -47,7 +47,7 @@ export default function PasskeysPage() {
       <div className="mb-6 flex gap-2 items-end">
         <div className="flex-1">
           <label className="block text-sm font-medium mb-1">تسمية الجهاز</label>
-          <input ref={inputRef} value={label} onChange={e=>setLabel(e.target.value)} placeholder="مثال: لابتوب العمل" className="w-full border rounded px-3 py-2 text-sm" />
+          <input ref={inputRef} value={label} onChange={e=>setLabel(e.target.value)} placeholder="مثال: لابتوب العمل" className="w-full border rounded px-3 py-2 text-sm placeholder-gray-500 text-gray-900" />
         </div>
         <button
           disabled={opLoading}
