@@ -23,7 +23,8 @@ interface Product {
   isActive?: boolean;
 }
 
-interface SnapshotProductAvailable { id: string; name: string; packagesCount: number; }
+// منتج عالمي متاح للاستنساخ (استبدال منطق snapshot القديم)
+interface GlobalProductAvailable { id: string; name: string; packagesActiveCount: number; }
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -32,7 +33,7 @@ export default function ProductsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchBusy, setBatchBusy] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
-  const [snapshotList, setSnapshotList] = useState<SnapshotProductAvailable[] | null>(null);
+  const [snapshotList, setSnapshotList] = useState<GlobalProductAvailable[] | null>(null); // تستخدم نفس الحالة لكن بمصدر جديد
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [snapshotSearch, setSnapshotSearch] = useState("");
@@ -61,30 +62,36 @@ export default function ProductsPage() {
   function getImageSrc(p: Product): string { return failed.has(p.id) ? "/images/placeholder.png" : buildImageSrc(pickImageField(p)); }
   function resolveImageSource(p: Product): 'catalog' | 'custom' | 'none' { if (p.imageSource) return p.imageSource || 'none'; const img = pickImageField(p); if (!img) return 'none'; return p.useCatalogImage ? 'catalog' : 'custom'; }
 
-  // جلب منتجات الـ snapshot (مخزن المطوّر) الجاهزة للاستنساخ
+  // جلب المنتجات العالمية الجديدة (بدلاً من snapshot القديمة)
   const fetchSnapshot = async () => {
     if (snapshotLoading) return; setSnapshotLoading(true);
     try {
-      const params: any = {};
-      if (snapshotSearch.trim()) params.q = snapshotSearch.trim();
-      // استخدم axios المثبت عليه التوكن تلقائياً
-      const res = await api.get('/products/snapshot-available', { params, validateStatus: () => true });
+      // حالياً /products/global لا يدعم q في الباك اند (قد يضاف لاحقاً) فنرشّح محلياً
+      const res = await api.get('/products/global', { validateStatus: () => true });
       if (res.status === 401) throw new Error('غير مصرح: تأكد من تسجيل الدخول');
       if (res.status >= 400) throw new Error('فشل في جلب قائمة المخزن');
-      const data = res.data;
-      setSnapshotList(Array.isArray(data) ? data : []);
+      const items = res.data?.items || [];
+      const mapped: GlobalProductAvailable[] = items.map((g: any) => ({
+        id: g.id,
+        name: g.name,
+        packagesActiveCount: g.packagesActiveCount ?? g.packagesCount ?? 0,
+      }));
+      setSnapshotList(mapped);
     } catch (e: any) {
-      console.error('snapshot fetch error', e?.response?.status, e?.response?.data || e);
+      console.error('global products fetch error', e?.response?.status, e?.response?.data || e);
       setSnapshotList([]);
     } finally { setSnapshotLoading(false); }
   };
   const handleClone = async (productId: string) => {
     if (activatingId) return; setActivatingId(productId);
     try {
-      const res = await api.post('/products/clone-from-snapshot', { productId }, { validateStatus: () => true });
+      const res = await api.post(`/products/${productId}/clone-to-tenant`, {}, { validateStatus: () => true });
       if (res.status === 401) throw new Error('غير مصرح');
+      if (res.status === 404) throw new Error('المنتج غير موجود');
+      if (res.status === 409) throw new Error('اسم المنتج موجود مسبقاً (تم رفض الاستنساخ)');
       if (res.status >= 400) throw new Error('فشل استنساخ المنتج');
       await fetchProducts();
+      // إزالة العنصر المستنسخ من القائمة (اختياري)
       setSnapshotList(prev => prev ? prev.filter(p => p.id !== productId) : prev);
       setShowSnapshotModal(false);
     } catch (e:any) { alert(e?.message || 'خطأ في الاستنساخ'); }
@@ -171,7 +178,7 @@ export default function ProductsPage() {
                         <li key={c.id} className="flex items-center gap-3 p-3 bg-[rgb(var(--color-bg-surface))] hover:bg-[rgb(var(--color-bg-hover,#262626))] transition">
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-sm md:text-base truncate">{c.name}</div>
-                            <div className="text-[11px] md:text-xs text-[rgb(var(--color-text-secondary))]">باقات: {c.packagesCount}</div>
+                            <div className="text-[11px] md:text-xs text-[rgb(var(--color-text-secondary))]">باقات: {c.packagesActiveCount}</div>
                           </div>
                           <button onClick={()=>handleClone(c.id)} disabled={busy}
                             className="px-3 py-1.5 rounded-md text-xs md:text-sm bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-hover))] text-[rgb(var(--color-primary-contrast))] disabled:opacity-50">{busy?'...جارٍ':'استنساخ'}</button>
