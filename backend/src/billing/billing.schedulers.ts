@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { BillingService } from './billing.service';
 import { isFeatureEnabled } from '../common/feature-flags';
@@ -22,7 +22,7 @@ class BillingJobLocks {
 }
 
 @Injectable()
-export class BillingSchedulers {
+export class BillingSchedulers implements OnModuleDestroy {
   private readonly logger = new Logger('BillingSchedulers');
   private readonly ISSUE_KEY = 'billing:issue';
   private readonly REMIND_KEY = 'billing:reminders';
@@ -139,5 +139,11 @@ export class BillingSchedulers {
 
   getLastRuns() {
     return { issue: this.lastIssueAt, enforce: this.lastEnforceAt, remind: this.lastRemindAt };
+  }
+
+  async onModuleDestroy() {
+    if (this.redis) {
+      try { await this.redis.quit(); } catch {}
+    }
   }
 }

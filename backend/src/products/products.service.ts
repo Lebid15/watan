@@ -71,159 +71,6 @@ export class ProductsService {
     return this.packagesRepo.findOne({ where: { id } as any });
   }
 
-  // Phase2: تفعيل منتج من الكتالوج للـ tenant
-  async activateCatalogProduct(tenantId: string, catalogProductId: string): Promise<Product> {
-    if (!catalogProductId) throw new BadRequestException('catalogProductId مطلوب');
-    // تحقق أن الكتالوج منشور وقابل للتفعيل
-    const catalogRow = await this.productsRepo.manager.query(
-      'SELECT id, "isPublishable" FROM catalog_product WHERE id = $1 AND "isPublishable" = true LIMIT 1',
-      [catalogProductId],
-    );
-    if (!catalogRow || catalogRow.length === 0) {
-      throw new NotFoundException('المنتج غير متاح أو غير منشور في الكتالوج');
-    }
-    // تحقق من عدم وجود منتج مفعّل سابقًا لنفس catalogProductId داخل نفس التينانت
-    const existing = await this.productsRepo.findOne({ where: { tenantId, catalogProductId } as any });
-    if (existing) return existing; // idempotent
-
-    const product = this.productsRepo.create({
-      tenantId,
-      name: 'Catalog Product', // يمكن لاحقًا سحب الاسم من catalog_product
-      description: '',
-      isActive: true,
-      catalogProductId,
-      useCatalogImage: true,
-    } as Partial<Product>);
-    return this.productsRepo.save(product);
-  }
-
-  // قائمة المنتجات الكتالوجية القابلة للتفعيل (لم تُفعل بعد لهذا التينانت)
-  async listAvailableCatalogProducts(tenantId: string, limit = 100): Promise<{ id: string; name: string; packagesCount: number }[]> {
-    // اجلب ids المنتجات المفعّلة لهذا التينانت
-    const existing: { catalogProductId: string }[] = await this.productsRepo.query(
-      'SELECT "catalogProductId" FROM product WHERE "tenantId" = $1 AND "catalogProductId" IS NOT NULL',
-      [tenantId],
-    );
-    const existingSet = new Set(existing.map(r => r.catalogProductId));
-    // اجلب مجموعة من الكتالوج منشورة وقابلة للتفعيل
-    const rows: { id: string; name: string; packagescount: string }[] = await this.productsRepo.manager.query(
-      `SELECT p.id, p.name,
-              (SELECT count(*) FROM catalog_package cp WHERE cp."catalogProductId" = p.id) AS packagesCount
-         FROM catalog_product p
-        WHERE p."isPublishable" = true
-        ORDER BY p.name
-        LIMIT $1`,
-      [limit],
-    );
-    return rows
-      .filter(r => !existingSet.has(r.id))
-      .map(r => ({ id: r.id, name: r.name, packagesCount: Number(r.packagescount || (r as any).packagesCount || 0) }));
-  }
-
-  /**
-   * Return available bridge codes (publicCode) for a tenant's product.
-   * Logic Phase1: If product has catalogProductId, pull all developer (pseudo tenant) packages sharing that catalogProductId
-   * where publicCode IS NOT NULL, then subtract codes already used by tenant's own packages for that catalogProductId.
-   * If product has no catalogProductId => return empty (later could derive from a manual pool).
-   */
-  async getAvailableBridges(tenantId: string, productId: string): Promise<{ available: number[]; used: number[] }> {
-    const product = await this.productsRepo.findOne({ where: { id: productId, tenantId } as any });
-    if (!product) throw new NotFoundException('المنتج غير موجود');
-    if (!product.catalogProductId) return { available: [], used: [] };
-    const DEV_TENANT = '00000000-0000-0000-0000-000000000000';
-    // Developer pool
-    const rows: { publicCode: number }[] = await this.packagesRepo.query(
-      `SELECT DISTINCT ppk."publicCode"::int AS "publicCode"
-         FROM product_packages ppk
-         JOIN product dp ON ppk."product_id" = dp.id
-        WHERE dp."tenantId" = $1 AND dp."catalogProductId" = $2 AND ppk."publicCode" IS NOT NULL
-        ORDER BY ppk."publicCode" ASC`,
-      [DEV_TENANT, product.catalogProductId]
-    );
-    const pool = rows.map(r => r.publicCode).filter(n => Number.isInteger(n) && n > 0);
-    // Used by this tenant for same catalogProductId
-    const usedRows: { publicCode: number }[] = await this.packagesRepo.query(
-      `SELECT DISTINCT ppk."publicCode"::int AS "publicCode"
-         FROM product_packages ppk
-         JOIN product tp ON ppk."product_id" = tp.id
-        WHERE tp."tenantId" = $1 AND tp."catalogProductId" = $2 AND ppk."publicCode" IS NOT NULL`,
-      [tenantId, product.catalogProductId]
-    );
-    const used = usedRows.map(r => r.publicCode).filter(n => Number.isInteger(n) && n > 0);
-    const usedSet = new Set(used);
-    const available = pool.filter(c => !usedSet.has(c));
-    return { available, used };
-  }
-
-  // ===== Snapshot Products Listing =====
-  async listSnapshotProducts(tenantId: string, q?: string) {
-    if (!tenantId) {
-      console.warn('[SNAPSHOT][SVC] Missing tenantId in listSnapshotProducts');
-      throw new BadRequestException('missing tenant context');
-    }
-    const DEV_TENANT = '00000000-0000-0000-0000-000000000000';
-    const tenantProducts = await this.productsRepo.find({ where: { tenantId } as any });
-    const existingCatalogIds = new Set(tenantProducts.filter(p => p.catalogProductId).map(p => p.catalogProductId));
-    const existingNames = new Set(tenantProducts.map(p => p.name.toLowerCase()));
-    let qb = this.productsRepo.createQueryBuilder('p')
-      .leftJoinAndSelect('p.packages', 'pk')
-      .where('p.tenantId = :dev', { dev: DEV_TENANT });
-    if (q && q.trim()) {
-      qb = qb.andWhere('LOWER(p.name) LIKE :q', { q: `%${q.toLowerCase()}%` });
-    }
-    const rows = await qb.orderBy('p.name', 'ASC').getMany();
-    console.log('[SNAPSHOT][SVC] rows=%d tenantProducts=%d', rows.length, tenantProducts.length);
-    return rows
-      .filter(r => !(r.catalogProductId && existingCatalogIds.has(r.catalogProductId)) && !existingNames.has(r.name.toLowerCase()))
-      .map(r => ({ id: r.id, name: r.name, packagesCount: (r.packages || []).length }));
-  }
-
-  // ===== Clone snapshot product to tenant =====
-  async cloneSnapshotProduct(tenantId: string, snapshotProductId: string, opts: { copyPublicCode?: boolean }) {
-    const DEV_TENANT = '00000000-0000-0000-0000-000000000000';
-    const base = await this.productsRepo.findOne({ where: { id: snapshotProductId, tenantId: DEV_TENANT } as any, relations: ['packages'] });
-    if (!base) throw new NotFoundException('المنتج غير موجود في snapshot');
-    const dup = await this.productsRepo.findOne({ where: [
-      { tenantId, catalogProductId: base.catalogProductId || null },
-      { tenantId, name: base.name },
-    ] as any });
-    if (dup) return dup;
-    const product = this.productsRepo.create({
-      tenantId,
-      name: base.name,
-      description: base.description || '',
-      isActive: true,
-      catalogProductId: base.catalogProductId || null,
-      useCatalogImage: true,
-      catalogImageUrl: (base as any).catalogImageUrl || (base as any).imageUrl || null,
-      isSource: false,
-      sourceProductId: base.id,
-    } as Partial<Product>);
-    const saved = await this.productsRepo.save(product);
-  for (const pkg of base.packages || []) {
-      const newPkg = this.packagesRepo.create({
-        tenantId,
-        product: saved,
-        name: pkg.name,
-        description: pkg.description || '',
-        basePrice: 0,
-        capital: 0,
-        isActive: pkg.isActive,
-        publicCode: opts.copyPublicCode ? (pkg.publicCode ?? null) : null,
-        catalogLinkCode: (pkg as any).catalogLinkCode || null,
-        providerName: pkg.providerName || null,
-        imageUrl: pkg.imageUrl || null,
-    isSource: false,
-    sourcePackageId: pkg.id,
-      } as Partial<ProductPackage>);
-      if (newPkg.publicCode != null) {
-        const conflict = await this.packagesRepo.findOne({ where: { tenantId, publicCode: newPkg.publicCode } as any });
-        if (conflict) (newPkg as any).publicCode = null; // resolve intra-tenant conflict
-      }
-      await this.packagesRepo.save(newPkg as any);
-    }
-    return saved;
-  }
 
   // ---------- Helpers خاصة بالـ tenant ----------
   private ensureSameTenant(entityTenantId?: string | null, expectedTenantId?: string) {
@@ -382,9 +229,8 @@ export class ProductsService {
   async updateImage(tenantId: string, id: string, imageUrl: string): Promise<Product> {
     const product = await this.productsRepo.findOne({ where: { id, tenantId } as any });
     if (!product) throw new NotFoundException('Product not found');
-    // Store into customImageUrl and disable catalog usage
-    (product as any).customImageUrl = imageUrl;
-    (product as any).useCatalogImage = false;
+  // Store into customImageUrl (catalog system removed)
+  (product as any).customImageUrl = imageUrl;
     return this.productsRepo.save(product);
   }
 
@@ -572,7 +418,6 @@ export class ProductsService {
     try {
   // تأكد من وجود قيم افتراضية لكل الحقول لتجنّب أي قيود مستقبلية
   if (!product.name) product.name = 'منتج جديد';
-  if (product.useCatalogImage === undefined) product.useCatalogImage = true;
   if (product.isActive === undefined) product.isActive = true;
   // إذا أنشأ المطوّر منتجًا جديدًا (ليس نسخة من مصدر آخر) عيّنه كمصدر
   if (product.tenantId === this.DEV_TENANT_ID && product.sourceProductId == null) {
@@ -638,7 +483,7 @@ export class ProductsService {
   async addPackageToProduct(
     tenantId: string,
     productId: string,
-    data: Partial<ProductPackage> & { catalogLinkCode?: string },
+  data: Partial<ProductPackage>,
     ctx?: { userId?: string; finalRole?: string },
   ): Promise<ProductPackage> {
     // Lightweight debug log (avoid dumping large objects)
@@ -646,8 +491,7 @@ export class ProductsService {
       console.log('[PKG][CREATE][START]', {
         tenantId: tenantId?.slice(0, 8),
         productId: productId?.slice(0, 8),
-        name: data?.name,
-        catalogLinkCode: (data as any)?.catalogLinkCode,
+  name: data?.name,
         publicCode: (data as any)?.publicCode,
         by: ctx?.finalRole || 'unknown',
       });
@@ -678,37 +522,7 @@ export class ProductsService {
       }
     }
 
-    if (isFeatureEnabled('catalogLinking')) {
-      if (!product) throw new NotFoundException('المنتج غير متاح');
-      if (product.catalogProductId) {
-        const link = (data as any).catalogLinkCode?.trim();
-        if (!link) {
-          // لا نرمى الآن؛ قد نشتقه من publicCode لاحقاً
-          console.warn('[PKG][CREATE][WARN] catalogLinkCode missing (will attempt derive later)');
-        }
-        if (link) {
-          const row = await this.productsRepo.manager.query(
-            'SELECT 1 FROM catalog_package WHERE "catalogProductId" = $1 AND "linkCode" = $2 LIMIT 1',
-            [product.catalogProductId, link],
-          );
-          if (!row || row.length === 0) {
-            console.warn('[PKG][CREATE][ERR] invalid catalogLinkCode for catalogProduct', {
-              productId: product.id,
-              link,
-            });
-            throw new BadRequestException('catalogLinkCode غير صالح لهذا المنتج الكتالوجي');
-          }
-          (data as any).catalogLinkCode = link;
-        }
-        if (ctx?.finalRole === 'distributor' && ctx?.userId) {
-          (data as any).createdByDistributorId = ctx.userId;
-        }
-      } else {
-        // المنتج ليس كتالوجياً: نتجاهل catalogLinkCode ونسمح بالإنشاء (مرونة للمطور/المستأجر)
-        if ((data as any).catalogLinkCode) delete (data as any).catalogLinkCode;
-        console.log('[PKG][CREATE][INFO] non-catalog product; skipping catalogLinkCode validation');
-      }
-    }
+  // Catalog linking removed: no catalogLinkCode validation required.
 
     const initialCapital = Number(data.capital ?? data.basePrice ?? 0);
 
@@ -720,8 +534,7 @@ export class ProductsService {
       capital: initialCapital,
       isActive: data.isActive ?? true,
       imageUrl: data.imageUrl,
-      product,
-      catalogLinkCode: (data as any).catalogLinkCode || null,
+  product,
       createdByDistributorId: (data as any).createdByDistributorId || null,
   providerName: (data as any).providerName || null,
       // إذا كانت الحزمة تُنشأ داخل منتج مصدر (تينانت المطوّر و المنتج isSource=true) نعتبر الحزمة مصدرية
@@ -741,30 +554,8 @@ export class ProductsService {
           (err as any).code = 'PKG_PUBLIC_CODE_CONFLICT';
           throw err;
         }
-        // إن كان المنتج مرتبطًا بالكتالوج: قَيِّد الكود بقائمة المطور
-        if (product && product.catalogProductId) {
-          const { available, used } = await this.getAvailableBridges(tenantId, productId);
-          const allPotential = [...available, ...used];
-      if (!allPotential.includes(pc)) {
-            // إذا كان السياق دور مطوّر اسمح بالتمديد (إضافة كود جديد للمصدر لاحقًا)
-            const devLike = (ctx?.finalRole || '').toLowerCase() === 'developer' || tenantId === this.DEV_TENANT_ID;
-            if (devLike) {
-              console.warn('[PKG][CREATE][WARN] developer adding NEW publicCode outside pool', { pc, productId: product.id });
-              // السماح، ويمكن لاحقًا إدراج الكود في مصدر المطوّر ضمن عملية sync
-            } else {
-        const err: any = new BadRequestException('publicCode غير ضمن الأكواد المرجعية');
-        err.code = 'PKG_PUBLIC_CODE_OUT_OF_POOL';
-        throw err;
-            }
-          }
-          // في حال لم يُرسل catalogLinkCode وحُدد publicCode نحاول توليد linkCode مساويًا للكود
-          if (isFeatureEnabled('catalogLinking') && !(data as any).catalogLinkCode) {
-            (data as any).catalogLinkCode = String(pc);
-          }
-        } else {
-          // منتج غير كتالوجي: لا نتحقق من التجمع، فقط نسمح بالكود طالما غير مكرر في التينانت
-          console.log('[PKG][CREATE][INFO] assigning publicCode to non-catalog product', { pc });
-        }
+  // لم يعد هناك كتالوج: نسمح بالكود إذا غير مكرر فقط
+  if (product) console.log('[PKG][CREATE][INFO] assigning publicCode', { pc, productId: product.id });
         (newPackage as any).publicCode = pc;
       } else if (data.publicCode !== null) {
         console.warn('[PKG][CREATE][ERR] invalid publicCode value', { value: data.publicCode });
@@ -793,8 +584,7 @@ export class ProductsService {
     try {
       console.log('[PKG][CREATE][OK]', {
         id: saved.id?.slice(0, 8),
-        publicCode: (saved as any).publicCode,
-        catalogLinkCode: (saved as any).catalogLinkCode,
+  publicCode: (saved as any).publicCode,
         capital: saved.capital,
       });
     } catch (_) {}
@@ -1808,11 +1598,10 @@ export class ProductsService {
       id: product.id,
       name: product.name,
       description: (product as any)['description'] ?? null,
-      imageUrl: img.imageUrl, // effective
-      imageSource: img.imageSource,
-      useCatalogImage: img.useCatalogImage,
-      hasCustomImage: img.hasCustomImage,
-      customImageUrl: img.customImageUrl,
+  imageUrl: img.imageUrl,
+  imageSource: img.imageSource,
+  hasCustomImage: img.hasCustomImage,
+  customImageUrl: img.customImageUrl,
   catalogAltText: (product as any).catalogAltText ?? null,
   customAltText: (product as any).customAltText ?? null,
   thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
@@ -1880,31 +1669,14 @@ export class ProductsService {
   }
 
   /**
-   * Compute effective image for product.
-   * Priority: if customImageUrl present & useCatalogImage=false => effective = customImageUrl (imageSource='custom')
-   * else if imageUrl present (legacy / catalog) => effective = imageUrl (imageSource='catalog')
-   * else null.
+   * Compute effective image for product (catalog removed): just returns customImageUrl if present.
    */
   private mapEffectiveImage(product: any) {
     const customImageUrl = product.customImageUrl ?? null;
-    const useCatalogImage = product.useCatalogImage !== undefined ? !!product.useCatalogImage : true;
-  const catalogImage = product.catalogImageUrl ?? null;
-
-    let effective = null;
-    let source: 'custom' | 'catalog' | null = null;
-
-    if (customImageUrl && useCatalogImage === false) {
-      effective = customImageUrl;
-      source = 'custom';
-    } else if (catalogImage) {
-      effective = catalogImage;
-      source = 'catalog';
-    }
-
-    if (!isFeatureEnabled('productImageFallback')) {
-  return { imageUrl: catalogImage, imageSource: null, hasCustomImage: false, customImageUrl: null, useCatalogImage: true };
-    }
-    return { imageUrl: effective, imageSource: source, hasCustomImage: !!customImageUrl, customImageUrl, useCatalogImage };
+  // Catalog fields removed: just return custom image if present
+  const effective = customImageUrl || null;
+  const source: 'custom' | null = customImageUrl ? 'custom' : null;
+  return { imageUrl: effective, imageSource: source, hasCustomImage: !!customImageUrl, customImageUrl };
   }
 
   async listOrdersWithPagination(dto: ListOrdersDto, tenantId?: string) {

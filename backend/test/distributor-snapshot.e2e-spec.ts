@@ -18,7 +18,6 @@ describe('Distributor Snapshot & FX Freeze (E2E)', () => {
   const USER_CHILD = '00000000-0000-0000-0000-00000000chil';
   const PROD_ID    = '00000000-0000-0000-0000-00000000prod';
   const PKG_ID     = '00000000-0000-0000-0000-00000000pkg1';
-  const CATALOG_PROD = '00000000-0000-0000-0000-00000000cprd';
   const DIST_GROUP = '00000000-0000-0000-0000-00000000dpg1';
 
   // helpers
@@ -65,16 +64,9 @@ describe('Distributor Snapshot & FX Freeze (E2E)', () => {
     await insert('users', { id: USER_DIST, tenantId: TID, role: 'distributor', username: 'dist', email: 'd@x', password: 'x', isActive: 1, preferredCurrencyCode: 'SAR', price_group_id: PG_STORE_DIST });
   await insert('users', { id: USER_CHILD, tenantId: TID, role: 'end_user', username: 'child', email: 'c@x', password: 'x', isActive: 1, parentUserId: USER_DIST, balance: 100 });
 
-    // Catalog product + package
-  // Minimal catalog tables (include tenantId to satisfy NOT NULL in real schema)
-  await q('CREATE TABLE IF NOT EXISTS catalog_product (id uuid primary key, "tenantId" uuid, "name" varchar(200), "isPublishable" boolean)');
-  await q('CREATE TABLE IF NOT EXISTS catalog_package (id uuid primary key, "tenantId" uuid, "catalogProductId" uuid, "name" varchar(200), "publicCode" varchar(120), "linkCode" varchar)');
-  await insert('catalog_product', { id: CATALOG_PROD, tenantId: TID, name: 'Catalog Prod', isPublishable: 1 });
-  await insert('catalog_package', { id: '00000000-0000-0000-0000-00000000cpkg', tenantId: TID, catalogProductId: CATALOG_PROD, name: 'Catalog PKG', publicCode: 'CPKG', linkCode: '325' });
-
-  // Product + package (store) - use actual table/column names (product_packages with product_id)
-  await insert('product', { id: PROD_ID, tenantId: TID, name: 'Prod', isActive: 1, catalogProductId: CATALOG_PROD, useCatalogImage: 1 });
-  await insert('product_packages', { id: PKG_ID, tenantId: TID, name: 'PKG1', isActive: 1, basePrice: 1.200, capital: 1.200, product_id: PROD_ID, catalogLinkCode: '325' });
+    // Product + package (store)
+    await insert('product', { id: PROD_ID, tenantId: TID, name: 'Prod', isActive: 1 });
+    await insert('product_packages', { id: PKG_ID, tenantId: TID, name: 'PKG1', isActive: 1, basePrice: 1.200, capital: 1.200, product_id: PROD_ID });
 
     // package_prices row for distributor capital group
     await insert('package_prices', { id: '00000000-0000-0000-0000-00000000pp01', tenantId: TID, price: 1.200, package_id: PKG_ID, price_group_id: PG_STORE_DIST });

@@ -20,10 +20,6 @@ export class Product {
   @Index()
   sourceProductId?: string | null;
 
-  // Phase2: الربط بالكتالوج (nullable في البداية ثم سنقيد لاحقًا حسب الحاجة)
-  @Column({ type: 'uuid', nullable: true })
-  @Index()
-  catalogProductId?: string | null;
 
   @Column()
   name: string;
@@ -31,9 +27,6 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  // catalogImageUrl: صورة مرجعية من الكتالوج (نُحضّر لاستبدال legacy imageUrl مستقبلاً)
-  @Column({ type: 'varchar', length: 500, nullable: true })
-  catalogImageUrl?: string | null;
 
   // New fallback fields (Phase 1)
   // customImageUrl: صورة مخصصة لهذا المنتج (أولوية أولى إن وُجدت وكان useCatalogImage=false)
@@ -58,9 +51,6 @@ export class Product {
   @Column({ type: 'varchar', length: 500, nullable: true })
   thumbLargeUrl?: string | null;
 
-  // useCatalogImage: هل نستعمل صورة كتالوج مشتركة (true) أو الصورة المخصصة (false)
-  @Column({ type: 'boolean', default: true })
-  useCatalogImage: boolean;
 
   @Column({ default: true })
   isActive: boolean;

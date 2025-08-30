@@ -38,8 +38,7 @@ export class DevSeedProductsController {
         name: spec.name,
         description: 'Seed demo',
         tenantId: pseudoTenant,
-        isActive: true,
-        useCatalogImage: true,
+  isActive: true,
       }) as any);
       createdIds.push(prod.id);
       for (const p of spec.packages) {

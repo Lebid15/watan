@@ -20,7 +20,7 @@ export class ThumbnailScheduler {
       const candidates = await this.products.find({ take: 2000 });
       let updated = 0;
       for (const p of candidates as any[]) {
-        const effective = p.customImageUrl && p.useCatalogImage === false ? p.customImageUrl : p.catalogImageUrl;
+        const effective = p.customImageUrl || p.imageUrl || null;
         if (!effective) continue;
         const needs = !p.thumbSmallUrl || !p.thumbMediumUrl || !p.thumbLargeUrl;
         if (!needs) continue;

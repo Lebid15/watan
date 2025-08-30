@@ -23,8 +23,6 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/dev\/filtered-products-sync$/, // POST sync
   /^\/api\/dev\/filtered-products-sync\/status$/, // GET status
   /^\/api\/dev\/filtered-products-sync\/repair$/, // POST/GET repair
-  /^\/api\/dev\/filtered-products-sync\/catalog-preview$/, // GET catalog preview
-  /^\/api\/dev\/filtered-products-sync\/catalog-preview-grouped$/, // GET grouped catalog preview
   /^\/api\/dev\/seed-products$/, // POST seed demo products
   // Public catalog product listing (image fallback test)
   /^\/api\/products$/,
@@ -38,7 +36,6 @@ const PUBLIC_PATHS: RegExp[] = [
 // (Express gives originalUrl='/api/...', path may be '/admin/...'). So we allow optional (api/)? group.
 const NO_TENANT_REQUIRED_PATHS: RegExp[] = [
   /^\/(api\/)?admin\/providers\/dev(\/?|$)/,
-  /^\/(api\/)?admin\/providers\/[^/]+\/catalog-import(\/|$)/,
   /^\/(api\/)?admin\/providers\/import-jobs\/[^/]+$/,
   /^\/(api\/)?admin\/catalog\/products(\/?|$)/,
   /^\/(api\/)?admin\/catalog\/products\/[^/]+\/packages$/,

@@ -38,10 +38,6 @@ export class ProductPackage {
   @Column({ type: 'varchar', length: 160, nullable: true })
   name: string | null;
 
-  // Phase2: catalogLinkCode يربط هذه الباقة بباقات الكتالوج (nullable مؤقتًا حتى الترحيل)
-  @Column({ type: 'varchar', length: 80, nullable: true })
-  @Index('idx_product_packages_catalogLinkCode_field')
-  catalogLinkCode?: string | null;
 
   // عند إنشائها من موزّع نحدد المالك
   @Column({ type: 'uuid', nullable: true })

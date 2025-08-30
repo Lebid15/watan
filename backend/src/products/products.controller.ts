@@ -80,22 +80,6 @@ export class ProductsController {
   // NOTE: Place the more specific static GET routes BEFORE the dynamic ':id' route.
   // Otherwise requests like /products/snapshot-available would be captured as id='snapshot-available'.
 
-  // 🔹 المنتجات الكتالوجية المتاحة (غير المفعّلة بعد) لهذا المستأجر
-  @Get('catalog-available')
-  async listAvailableCatalog(@Req() req: Request, @Query('limit') limitQ?: string) {
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    const limit = Math.min(Math.max(parseInt(limitQ || '100', 10) || 100, 1), 500);
-    const rows = await this.productsService.listAvailableCatalogProducts(tenantId, limit);
-    return { items: rows };
-  }
-
-  // ✅ قائمة الـ snapshot (مخزن المطوّر) لمنتجات قابلة للاستنساخ
-  @Get('snapshot-available')
-  async listSnapshot(@Req() req: Request, @Query('q') q?: string) {
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    console.log('[SNAPSHOT][CTRL] listSnapshot tenantId=%s q=%s', tenantId, q);
-    return this.productsService.listSnapshotProducts(tenantId, q);
-  }
 
   @Get()
   async findAll(@Req() req: Request, @Query('all') all?: string, @Query('includeNull') includeNull?: string): Promise<any[]> {
@@ -115,7 +99,6 @@ export class ProductsController {
       packagesCount: product.packages?.length ?? 0,
       imageUrl: product.imageUrl,
       imageSource: product.imageSource,
-      useCatalogImage: product.useCatalogImage,
       hasCustomImage: product.hasCustomImage,
       customImageUrl: product.customImageUrl,
       catalogAltText: (product as any).catalogAltText ?? null,
@@ -140,7 +123,6 @@ export class ProductsController {
       })),
       imageUrl: product.imageUrl,
       imageSource: product.imageSource,
-      useCatalogImage: product.useCatalogImage,
       hasCustomImage: product.hasCustomImage,
       customImageUrl: product.customImageUrl,
       catalogAltText: (product as any).catalogAltText ?? null,
@@ -226,33 +208,9 @@ export class ProductsController {
     return { message: 'تم حذف المنتج بنجاح' };
   }
 
-  // Phase2 temporary backward compatibility: redirect old activation path to new tenant/catalog endpoint
-  @Post('activate-catalog')
-  async deprecatedActivate(@Req() req: Request, @Body('catalogProductId') catalogProductId: string) {
-    // Simply call service then respond with 302 style object (API clients can adjust)
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    const product = await this.productsService.activateCatalogProduct(tenantId, catalogProductId);
-    return { redirect: '/api/tenant/catalog/activate-product', productId: product.id };
-  }
-
-  // Phase2: تفعيل منتج من الكتالوج
-  @Post('activate-catalog')
-  async activateCatalog(@Req() req: Request, @Body('catalogProductId') catalogProductId: string) {
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    const product = await this.productsService.activateCatalogProduct(tenantId, catalogProductId);
-    return { id: product.id, catalogProductId: product.catalogProductId };
-  }
 
   // (moved catalog-available & snapshot-available routes above @Get(':id') to avoid dynamic capture)
 
-  // ✅ استنساخ منتج من snapshot (مستودع المطوّر) إلى التينانت مع باقاته وأسعاره (basePrice=0)
-  @Post('clone-from-snapshot')
-  async cloneFromSnapshot(@Req() req: Request, @Body('productId') snapshotProductId: string) {
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    if (!snapshotProductId) throw new BadRequestException('productId مطلوب');
-    const created = await this.productsService.cloneSnapshotProduct(tenantId, snapshotProductId, { copyPublicCode: true });
-    return { id: created.id };
-  }
 
   // 🔹 رفع صورة المنتج إلى Cloudinary
   @Post(':id/image')
@@ -315,8 +273,7 @@ export class ProductsController {
     @Req() req: Request,
     @Param('id') productId: string,
     @UploadedFile() file: Express.Multer.File,
-    @Body('name') name: string,
-  @Body('catalogLinkCode') catalogLinkCode: string,
+  @Body('name') name: string,
     @Body('capital') capitalStr?: string,
     @Body('basePrice') basePriceStr?: string,
     @Body('price') priceStr?: string,
@@ -386,7 +343,6 @@ export class ProductsController {
         name,
         imageUrl,
         capital,
-        catalogLinkCode,
         publicCode,
         isActive,
         providerName: providerNameClean,
@@ -529,10 +485,4 @@ export class ProductsController {
     return this.productsService.findOneForUser((req as any).tenant?.id || (req as any).user?.tenantId, id, req.user.id);
   }
 
-  // ✅ الجسور المتاحة لمنتج: يعتمد على catalogProductId ويطابق باقات التينانت المطوّر
-  @Get(':id/bridges')
-  async getAvailableBridges(@Req() req: Request, @Param('id') productId: string) {
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    return this.productsService.getAvailableBridges(tenantId, productId);
-  }
 }

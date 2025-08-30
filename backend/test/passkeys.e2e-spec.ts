@@ -56,6 +56,8 @@ describe('Passkeys (e2e, mocked)', () => {
         }
       }
     }
+  // Force exit of remaining timers / redis mocks if any
+  await new Promise(r => setTimeout(r, 10));
   });
 
   let jwt: string;

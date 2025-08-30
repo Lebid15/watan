@@ -28,8 +28,7 @@ export class DevSeedController {
         name,
         description: name + ' description',
         tenantId: '00000000-0000-0000-0000-000000000000', // pseudo tenant for global dev
-        isActive: true,
-        useCatalogImage: true,
+  isActive: true,
       } as any);
   const saved = await this.productsRepo.save(p);
       created.push(saved);
