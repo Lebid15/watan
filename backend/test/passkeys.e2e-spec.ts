@@ -1,3 +1,6 @@
+// Force test mode & disable redis so challenge store uses in-memory
+process.env.NODE_ENV = 'test';
+delete process.env.REDIS_URL; // ensure no redis attempts
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
