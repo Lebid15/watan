@@ -24,8 +24,9 @@ ENV NODE_ENV=production
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package*.json ./
-# Copy helper scripts (create-developer, etc.)
+# Copy helper scripts & scripts directory (for build meta script if invoked at runtime)
 COPY create-developer.js ./
+COPY scripts ./scripts
 # Ensure no stale .env baked in
 RUN rm -f .env || true
 EXPOSE 3000
