@@ -486,11 +486,43 @@ export class ProductsService {
   async getAvailableBridges(tenantId: string, productId: string): Promise<number[]> {
     const product = await this.productsRepo.findOne({ where: { id: productId, tenantId } as any });
     if (!product) throw new NotFoundException('المنتج غير موجود');
+    // محاولة استدلال المنتج العالمي للمستنسخات القديمة التي لا تحمل مرجعاً
     if (!(product as any).sourceGlobalProductId) {
-      // إذا لم يكن مستنسخاً من منتج عالمي فليست هناك جسور مرجعية
-      return [];
+      try {
+        // 1) جمع أكواد الباقات المحلية (نشطة أو لا) للمقارنة
+        const localPkgs = await this.packagesRepo.find({ where: { product: { id: productId } } as any });
+        const localCodes = new Set<number>(localPkgs.filter(p => p.publicCode != null).map(p => p.publicCode as number));
+        if (localCodes.size > 0) {
+          // 2) محاولة مطابقة بالاسم أولاً
+          const sameNameGlobals = await this.productsRepo.find({ where: { tenantId: this.DEV_TENANT_ID, name: product.name } as any, relations: ['packages'] });
+          let inferred: any = null;
+          if (sameNameGlobals.length === 1) {
+            const overlap = (sameNameGlobals[0].packages || []).some((gp: any) => gp.publicCode != null && localCodes.has(gp.publicCode));
+            if (overlap) inferred = sameNameGlobals[0];
+          }
+          // 3) إن لم ينجح بالاسم، ابحث عن منتج عالمي يشارك ≥2 أكواد أو (1 كود إذا لم يوجد أكثر)
+          if (!inferred) {
+            const allGlobals = await this.productsRepo.find({ where: { tenantId: this.DEV_TENANT_ID } as any, relations: ['packages'] });
+            let best: any = null; let bestOverlap = 0;
+            for (const g of allGlobals) {
+              const overlapCount = (g.packages || []).reduce((acc: number, gp: any) => acc + (gp.publicCode != null && localCodes.has(gp.publicCode) ? 1 : 0), 0);
+              if (overlapCount > bestOverlap) { bestOverlap = overlapCount; best = g; }
+            }
+            if (best && (bestOverlap >= 2 || (bestOverlap === 1 && localCodes.size === 1))) {
+              inferred = best;
+            }
+          }
+          if (inferred) {
+            (product as any).sourceGlobalProductId = inferred.id;
+            try { await this.productsRepo.update(product.id, { sourceGlobalProductId: inferred.id } as any); } catch { /* ignore persist error */ }
+          }
+        }
+      } catch (e) {
+        // تجاهل أخطاء الاستدلال ولا تُفشل الطلب الأساسي
+      }
     }
-    const globalId = (product as any).sourceGlobalProductId;
+    if (!(product as any).sourceGlobalProductId) return [];
+    const globalId = (product as any).sourceGlobalProductId as string;
     // جلب الباقات العالمية المصدر
     const global = await this.productsRepo.findOne({ where: { id: globalId, tenantId: this.DEV_TENANT_ID } as any, relations: ['packages'] });
     if (!global) return [];
