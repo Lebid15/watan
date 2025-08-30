@@ -314,7 +314,7 @@ export default function AdminProductDetailsPage() {
       />
       <div className="grid md:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-[12px] text-text-secondary mb-1">نص بديل (كتالوج)</label>
+          <label className="block text-[12px] text-text-secondary mb-1">نص بديل 1(كتالوج)</label>
           <input
             className="w-full border border-border p-2 rounded bg-bg-surface-alt text-text-primary"
             value={editCatalogAlt}

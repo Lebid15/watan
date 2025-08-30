@@ -399,8 +399,12 @@ export class ProductsController {
 
   @Delete('packages/:id')
   async deletePackage(@Req() req: Request, @Param('id') id: string): Promise<{ message: string }> {
-    // ✅ استخدم tenant context من middleware
-    await this.productsService.deletePackage((req as any).tenant?.id || (req as any).user?.tenantId, id);
+    // ✅ تمرير السياق الكامل لدعم حذف المطور للباقات العالمية والسجلات
+    await this.productsService.deletePackage({
+      tenantId: (req as any).tenant?.id || (req as any).user?.tenantId || null,
+      role: (req as any).user?.roleFinal || (req as any).user?.role || null,
+      userId: (req as any).user?.id || null,
+    }, id);
     return { message: 'تم حذف الباقة بنجاح' };
   }
 

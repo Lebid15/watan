@@ -710,21 +710,47 @@ export class ProductsService {
     return { id: pkg.id, providerName };
   }
 
-  /** ✅ حذف باقة (مع أسعارها) */
-  async deletePackage(tenantId: string, id: string): Promise<void> {
-    // اجلب الحزمة دون تقييد tenantId أولاً لمعرفة إن كانت مصدر
+  /** ✅ حذف باقة (مع أسعارها)
+   * السلوك:
+   * - يسمح بالحذف إن كانت الباقة ضمن نفس tenantId المستدعي.
+   * - يسمح للمطور / instance_owner بحذف الباقات العالمية (DEV_TENANT_ID) حتى بدون تمرير tenantId.
+   * - يمنع المطور من حذف باقة Tenant أخرى مختلفة (حماية إضافية).
+   * سجلات تشخيص لمتابعة أي التباس في الواجهة.
+   */
+  async deletePackage(context: { tenantId?: string | null; role?: string | null; userId?: string | null }, id: string): Promise<void> {
+    const { tenantId, role, userId } = context || {};
     const pkg = await this.packagesRepo.findOne({ where: { id } as any, relations: ['prices', 'product'] });
     if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
 
-    // حماية: التأكد أن المستدعي يملك صلاحية على هذه الحزمة (باستثناء المطوّر على مصدره)
-  if (pkg.tenantId !== tenantId) {
+    const isGlobal = pkg.tenantId === this.DEV_TENANT_ID;
+    const roleLower = (role || '').toLowerCase();
+    const isDevRole = roleLower === 'developer' || roleLower === 'instance_owner';
+
+    console.log('[PKG][DELETE][REQ]', {
+      packageId: id,
+      pkgTenantId: pkg.tenantId,
+      reqTenantId: tenantId || null,
+      isGlobal,
+      role: roleLower || null,
+      userId: userId?.slice(0,8) || null,
+    });
+
+    // السماح: نفس التينانت
+    if (tenantId && pkg.tenantId === tenantId) {
+      // ok
+    } else if (isGlobal && isDevRole) {
+      // السماح للمطور بحذف باقة عالمية
+    } else {
+      // منع أي حالة أخرى (خاصة حذف باقة تينانت آخر أو محاولة مطور حذف باقة تينانت عادي)
       throw new ForbiddenException('لا تملك صلاحية حذف هذه الباقة');
     }
-  // حذف فعلي الآن
+
     if (Array.isArray(pkg.prices) && pkg.prices.length) {
       await this.packagePriceRepo.remove(pkg.prices);
     }
     await this.packagesRepo.remove(pkg);
+
+    console.log('[PKG][DELETE][DONE]', { packageId: id, global: isGlobal, byDev: isGlobal && isDevRole });
   }
 
   /** ✅ تحديث رأس المال وأسعار الباقة لكل مجموعة */
