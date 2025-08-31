@@ -338,14 +338,13 @@ function getCookie(name: string): string | null {
 }
 
 // Ø¯Ø§Ù„Ø© Ù…Ø´ØªØ±ÙƒØ© Ù„Ø¥Ø¶Ø§ÙØ© headers (Ù…ÙˆØ­Ù‘Ø¯Ø©)
-function addTenantHeaders(config: unknown) {
-  const axiosConfig = config as { headers?: Record<string, unknown>; [key: string]: unknown };
-  axiosConfig.headers = axiosConfig.headers || {};
+function addTenantHeaders(config: any): any {
+  config.headers = config.headers || {};
 
   // 1) Ø­Ø§ÙˆÙ„ Ø£Ø®Ø° subdomain Ù…Ù† Ø§Ù„ÙƒÙˆÙƒÙŠ (ÙŠÙÙŠØ¯ Ø£Ø«Ù†Ø§Ø¡ SSR Ø£Ùˆ Ù‚Ø¨Ù„ ØªÙˆÙØ± window)
   const tenantCookie = getCookie('tenant_host');
-  if (tenantCookie && !(axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host']) {
-    (axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host'] = tenantCookie;
+  if (tenantCookie && !config.headers['X-Tenant-Host']) {
+    config.headers['X-Tenant-Host'] = tenantCookie;
   }
 
   // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§Ø´Ø±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
@@ -355,8 +354,8 @@ function addTenantHeaders(config: unknown) {
       const sub = currentHost.split('.')[0];
       if (sub && sub !== 'localhost' && sub !== 'www') {
         const tenantHost = `${sub}.localhost`;
-        if (!(axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host']) {
-          (axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host'] = tenantHost;
+        if (!config.headers['X-Tenant-Host']) {
+          config.headers['X-Tenant-Host'] = tenantHost;
         }
         // Ø®Ø²Ù‘Ù†Ù‡ ÙÙŠ ÙƒÙˆÙƒÙŠ Ù„ÙŠØ³ØªÙÙŠØ¯ Ù…Ù†Ù‡ Ø£ÙŠ Ø·Ù„Ø¨ ÙŠØªÙ… Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ± (SSR) Ø£Ùˆ fetch Ø¨Ø¯ÙˆÙ† window Ù„Ø§Ø­Ù‚Ø§Ù‹
         document.cookie = `tenant_host=${tenantHost}; path=/`;
@@ -368,8 +367,8 @@ function addTenantHeaders(config: unknown) {
       if (hostParts.length > 2) {
         const sub = hostParts[0].toLowerCase();
         if (!['www', 'api'].includes(sub)) {
-          if (!(axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host']) {
-            (axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host'] = currentHost;
+          if (!config.headers['X-Tenant-Host']) {
+            config.headers['X-Tenant-Host'] = currentHost;
           }
           document.cookie = `tenant_host=${currentHost}; path=/`;
         }
@@ -381,12 +380,12 @@ function addTenantHeaders(config: unknown) {
   if (typeof window !== 'undefined') {
     let token: string | null = localStorage.getItem('token');
     if (!token) token = getCookie('access_token');
-    if (token && !(axiosConfig.headers as Record<string, unknown>).Authorization) {
-      (axiosConfig.headers as Record<string, unknown>).Authorization = `Bearer ${token}`;
+    if (token && !config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
   }
 
-  return axiosConfig;
+  return config;
 }
 // Patch Ù„Ù„Ù€ fetch Ù„ØªØºØ·ÙŠØ© Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªÙŠ Ù„Ø§ ØªÙ…Ø± Ø¹Ø¨Ø± axios
 if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: boolean }).__TENANT_FETCH_PATCHED__) {
@@ -437,10 +436,10 @@ if (!ANY_AXIOS.__TENANT_HEADERS_ATTACHED__) {
   ANY_AXIOS.__TENANT_HEADERS_ATTACHED__ = true;
   api.interceptors.request.use((config) => {
     // console.log(`[API] -> ${config.method} ${config.url}`);
-    return addTenantHeaders(config as unknown);
+    return addTenantHeaders(config);
   });
   axios.interceptors.request.use((config) => {
-    return addTenantHeaders(config as unknown);
+    return addTenantHeaders(config);
   });
 }
 
