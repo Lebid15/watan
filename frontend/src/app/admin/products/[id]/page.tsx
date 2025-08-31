@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { API_ROUTES } from "@/utils/api";
+import { ErrorResponse } from "@/types/common";
 
 interface ProductPackage {
   id: string;
@@ -37,7 +39,7 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
       headers: { Authorization: `Bearer ${token}` },
       body: fd,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Network/DNS errors: surface minimal message
     throw new Error('تعذر الاتصال بالخادم أثناء الرفع');
   }
@@ -45,9 +47,9 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
     // Map status codes
     if (res.status === 401 || res.status === 403) throw new Error('جلسة منتهية، يرجى تسجيل الدخول');
     if (res.status === 413) throw new Error('الصورة كبيرة جدًا');
-    let payload: any = null;
+    let payload: Record<string, unknown> | null = null;
     try { payload = await res.json(); } catch { /* ignore */ }
-    const msg: string = payload?.message || payload?.error || '';
+    const msg: string = String(payload?.message || payload?.error || '');
     if (/cloudinary/i.test(msg) && /غير صحيحة|bad credential|cloudinary/i.test(msg)) {
       throw new Error('إعدادات Cloudinary غير صحيحة');
     }
@@ -56,7 +58,9 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
     throw new Error(msg || 'فشل رفع الملف…');
   }
   const data = await res.json().catch(() => ({}));
-  const url: string | undefined = data?.url || data?.secure_url || (data as any)?.imageUrl || data?.data?.url || data?.data?.secure_url || (data as any)?.data?.imageUrl;
+  const dataRecord = data as Record<string, unknown>;
+  const dataData = dataRecord?.data as Record<string, unknown> | undefined;
+  const url: string | undefined = String(dataRecord?.url || '') || String(dataRecord?.secure_url || '') || String(dataRecord?.imageUrl || '') || String(dataData?.url || '') || String(dataData?.secure_url || '') || String(dataData?.imageUrl || '') || undefined;
   if (!url) {
     console.error('Upload response payload:', data);
     throw new Error('لم يتم استلام رابط الصورة');
@@ -88,7 +92,7 @@ export default function AdminProductDetailsPage() {
   const apiHost = API_ROUTES.products.base.replace("/api/products", ""); // لعرض الصور النسبية إن وجدت
   const apiBase = `${apiHost}/api`;
 
-  const fetchProduct = async () => {
+  const fetchProduct = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token") || "";
@@ -104,16 +108,17 @@ export default function AdminProductDetailsPage() {
   setEditUseCatalog(Boolean(data.useCatalogImage));
   setEditCatalogAlt(data.catalogAltText || "");
   setEditCustomAlt(data.customAltText || "");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      setError(error.message || 'حدث خطأ غير متوقع');
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     if (id) fetchProduct();
-  }, [id]);
+  }, [id, fetchProduct]);
 
   const handleUpdateProduct = async () => {
     try {
@@ -159,8 +164,9 @@ export default function AdminProductDetailsPage() {
       setEditImage(null);
       await fetchProduct();
       alert("تم حفظ التغييرات بنجاح");
-    } catch (err: any) {
-  alert(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      alert(error.message || 'حدث خطأ غير متوقع');
     }
   };
 
@@ -174,8 +180,9 @@ export default function AdminProductDetailsPage() {
       });
       if (!res.ok) throw new Error("فشل في حذف المنتج");
       router.push("/admin/products");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      alert(error.message || 'حدث خطأ غير متوقع');
     }
   };
 
@@ -202,8 +209,9 @@ export default function AdminProductDetailsPage() {
       setPkgPrice(0);
       setShowPackageForm(false);
       fetchProduct();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      alert(error.message || 'حدث خطأ غير متوقع');
     }
   };
 
@@ -216,8 +224,9 @@ export default function AdminProductDetailsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchProduct();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      alert(error.message || 'حدث خطأ غير متوقع');
     }
   };
 
@@ -346,9 +355,11 @@ export default function AdminProductDetailsPage() {
       <div className="mb-6">
         {imgSrc ? (
           <div className="relative inline-block">
-            <img
+            <Image
               src={imgSrc}
               alt={product.name}
+              width={80}
+              height={80}
               className="w-20 h-20 object-cover rounded border border-border shadow"
               onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png'; }}
             />

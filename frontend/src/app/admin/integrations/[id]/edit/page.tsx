@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
+import { ErrorResponse } from '@/types/common';
 
 type ProviderKind = 'barakat' | 'apstore' | 'znet';
 
@@ -36,8 +37,9 @@ export default function EditIntegrationPage() {
       try {
         const { data } = await api.get<Integration>(API_ROUTES.admin.integrations.byId(String(id)));
         setItem(data);
-      } catch (e: any) {
-        setError(e?.response?.data?.message || e?.message || 'فشل في جلب البيانات');
+      } catch (e: unknown) {
+        const error = e as ErrorResponse;
+        setError(error?.response?.data?.message || error?.message || 'فشل في جلب البيانات');
       } finally {
         setLoading(false);
       }
@@ -45,7 +47,7 @@ export default function EditIntegrationPage() {
   }, [id]);
 
   // دالة جلب الرصيد
-  const fetchBalance = async (provider: ProviderKind, creds: any, integId: string) => {
+  const fetchBalance = async (provider: ProviderKind, creds: Record<string, string>, integId: string) => {
     setLoadingBalance(true);
     try {
       const { data } = await api.post<{ balance: string }>(
@@ -68,7 +70,7 @@ export default function EditIntegrationPage() {
       if (item.apiToken) {
         fetchBalance(
           item.provider,
-          { apiToken: item.apiToken, baseUrl: item.baseUrl },
+          { apiToken: item.apiToken, baseUrl: item.baseUrl || '' },
           item.id
         );
       }
@@ -76,12 +78,12 @@ export default function EditIntegrationPage() {
       if (item.kod && item.sifre) {
         fetchBalance(
           item.provider,
-          { kod: item.kod, sifre: item.sifre, baseUrl: item.baseUrl },
+          { kod: item.kod, sifre: item.sifre, baseUrl: item.baseUrl || '' },
           item.id
         );
       }
     }
-  }, [item]);
+  }, [item, fetchBalance]);
 
   const onChange = (patch: Partial<Integration>) =>
     setItem((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -91,7 +93,7 @@ export default function EditIntegrationPage() {
     setSaving(true);
     setError('');
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         name: item.name?.trim(),
         provider: item.provider,
         baseUrl: item.baseUrl || undefined,
@@ -104,8 +106,9 @@ export default function EditIntegrationPage() {
       }
       await api.put(API_ROUTES.admin.integrations.byId(String(item.id)), payload);
       router.push('/admin/products/api-settings');
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'فشل حفظ التعديلات');
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      setError(error?.response?.data?.message || error?.message || 'فشل حفظ التعديلات');
     } finally {
       setSaving(false);
     }
