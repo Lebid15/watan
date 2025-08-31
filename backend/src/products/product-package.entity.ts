@@ -1,3 +1,4 @@
+
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -30,6 +31,7 @@ export class ProductPackage {
   @Column({ type: 'varchar', length: 160, nullable: true })
   name: string | null;
 
+  // catalogLinkCode removed
 
   // عند إنشائها من موزّع نحدد المالك
   @Column({ type: 'uuid', nullable: true })

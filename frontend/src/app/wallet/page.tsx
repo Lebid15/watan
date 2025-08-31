@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useAuthRequired } from '@/hooks/useAuthRequired';
+import { ErrorResponse } from '@/types/common';
 
 type DepositStatus = 'pending' | 'approved' | 'rejected';
 
@@ -29,7 +30,7 @@ type WalletPageResponse =
   | {
       items: MyDeposit[];
       pageInfo?: PageInfo;
-      meta?: any;
+      meta?: Record<string, unknown>;
     };
 
 const PAGE_LIMIT = 20;
@@ -89,10 +90,11 @@ export default function WalletPage() {
             setHasMore(Boolean(page.hasMore));
           }
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
+          const error = e as ErrorResponse;
           const msg =
-            e?.response?.data?.message || e?.message || 'تعذّر جلب الحركات';
+            error?.response?.data?.message || error?.message || 'تعذّر جلب الحركات';
           setErr(Array.isArray(msg) ? msg.join(', ') : msg);
           setRows([]);
         }
@@ -134,9 +136,10 @@ export default function WalletPage() {
       setRows((prev) => [...prev, ...items]);
       setNextCursor(page.nextCursor ?? null);
       setHasMore(Boolean(page.hasMore));
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
       const msg =
-        e?.response?.data?.message || e?.message || 'تعذّر تحميل المزيد';
+        error?.response?.data?.message || error?.message || 'تعذّر تحميل المزيد';
       setErr(Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setLoadingMore(false);

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import api, { API_ROUTES } from '@/utils/api';
+import { ErrorResponse } from '@/types/common';
 
 type DepositStatus = 'pending' | 'approved' | 'rejected';
 
@@ -23,7 +24,7 @@ interface DepositRow {
 }
 
 interface DepositsResponse {
-  items: any[];
+  items: Record<string, unknown>[];
   pageInfo: { nextCursor: string | null; hasMore: boolean };
   meta?: { limit?: number; appliedFilters?: Record<string, string> };
 }
@@ -42,7 +43,7 @@ const fmt = (v: number | string | undefined | null, maxFrac = 2) => {
 };
 
 // يلتقط أول قيمة موجودة
-const first = <T = any>(obj: any, ...keys: string[]): T | undefined => {
+const first = <T = unknown>(obj: Record<string, unknown>, ...keys: string[]): T | undefined => {
   for (const k of keys) {
     const v = obj?.[k];
     if (v !== undefined && v !== null) return v as T;
@@ -50,9 +51,9 @@ const first = <T = any>(obj: any, ...keys: string[]): T | undefined => {
   return undefined;
 };
 
-function normalizeRow(x: any): DepositRow {
-  const userRaw   = first<any>(x, 'user', 'account') ?? null;
-  const methodRaw = first<any>(x, 'method', 'paymentMethod', 'payment_method') ?? null;
+function normalizeRow(x: Record<string, unknown>): DepositRow {
+  const userRaw   = first<Record<string, unknown>>(x, 'user', 'account') ?? null;
+  const methodRaw = first<Record<string, unknown>>(x, 'method', 'paymentMethod', 'payment_method') ?? null;
 
   const originalAmount =
     first<number | string>(x, 'originalAmount', 'original_amount', 'amount', 'origAmount', 'value') ?? 0;
@@ -65,7 +66,7 @@ function normalizeRow(x: any): DepositRow {
 
   const walletCurrency =
     first<string>(x, 'walletCurrency', 'wallet_currency', 'creditCurrency', 'credit_currency', 'toCurrency') ??
-    first<string>(userRaw, 'currencyCode', 'currency', 'code') ??
+    (userRaw ? first<string>(userRaw, 'currencyCode', 'currency', 'code') : null) ??
     'TRY';
 
   let convertedAmount =
@@ -81,7 +82,7 @@ function normalizeRow(x: any): DepositRow {
     convertedAmount = (isFinite(oa) && isFinite(r)) ? oa * r : 0;
   }
 
-  const createdAtRaw = first<any>(x, 'createdAt', 'created_at') ?? new Date().toISOString();
+  const createdAtRaw = first<string | Date>(x, 'createdAt', 'created_at') ?? new Date().toISOString();
   const statusRaw = String(first<string>(x, 'status', 'state') ?? 'pending').toLowerCase();
   const status: DepositStatus = statusRaw === 'approved' ? 'approved' : statusRaw === 'rejected' ? 'rejected' : 'pending';
 
@@ -142,10 +143,12 @@ export default function AdminDepositsPage() {
     `${API_ROUTES.admin.deposits.base}?${new URLSearchParams(params).toString()}`;
 
   const buildSetStatusUrl = (id: string) => {
-    const fn = (API_ROUTES as any)?.admin?.deposits?.setStatus;
+    const adminRoutes = (API_ROUTES as Record<string, unknown>)?.admin as Record<string, unknown> | undefined;
+    const depositsRoutes = adminRoutes?.deposits as Record<string, unknown> | undefined;
+    const fn = depositsRoutes?.setStatus;
     return typeof fn === 'function'
       ? fn(id)
-      : `${API_ROUTES.admin.deposits.base}/${id}/status`;
+      : `${(API_ROUTES as { admin: { deposits: { base: string } } }).admin.deposits.base}/${id}/status`;
   };
 
   const fetchPage = async (reset = false) => {
@@ -166,8 +169,9 @@ export default function AdminDepositsPage() {
       setRows(prev => (reset ? normalized : [...prev, ...normalized]));
       setNextCursor(data?.pageInfo?.nextCursor ?? null);
       setHasMore(!!data?.pageInfo?.hasMore);
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'تعذّر جلب الإيداعات';
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      const msg = error?.response?.data?.message || error?.message || 'تعذّر جلب الإيداعات';
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
       if (reset) setRows([]);
     } finally {
@@ -175,8 +179,8 @@ export default function AdminDepositsPage() {
     }
   };
 
-  useEffect(() => { fetchPage(true); }, []);
-  useEffect(() => { fetchPage(true); }, [activeTab]);
+  useEffect(() => { fetchPage(true); }, [fetchPage]);
+  useEffect(() => { fetchPage(true); }, [activeTab, fetchPage]);
 
   const setStatus = async (row: DepositRow, status: DepositStatus) => {
     const verb =
@@ -197,9 +201,10 @@ export default function AdminDepositsPage() {
       setRows(prev => prev.map(it => it.id === row.id ? { ...it, status } : it));
 
       await fetchPage(true);
-    } catch (e: any) {
-      console.error('[ADMIN][DEPOSITS] setStatus error:', e);
-      const msg = e?.response?.data?.message || e?.message || `تعذّر ${verb} الإيداع`;
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      console.error('[ADMIN][DEPOSITS] setStatus error:', error);
+      const msg = error?.response?.data?.message || error?.message || `تعذّر ${verb} الإيداع`;
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setActionRowId(null);

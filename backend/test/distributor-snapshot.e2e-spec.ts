@@ -64,9 +64,9 @@ describe('Distributor Snapshot & FX Freeze (E2E)', () => {
     await insert('users', { id: USER_DIST, tenantId: TID, role: 'distributor', username: 'dist', email: 'd@x', password: 'x', isActive: 1, preferredCurrencyCode: 'SAR', price_group_id: PG_STORE_DIST });
   await insert('users', { id: USER_CHILD, tenantId: TID, role: 'end_user', username: 'child', email: 'c@x', password: 'x', isActive: 1, parentUserId: USER_DIST, balance: 100 });
 
-    // Product + package (store)
-    await insert('product', { id: PROD_ID, tenantId: TID, name: 'Prod', isActive: 1 });
-    await insert('product_packages', { id: PKG_ID, tenantId: TID, name: 'PKG1', isActive: 1, basePrice: 1.200, capital: 1.200, product_id: PROD_ID });
+  // Product + package (store) (catalog removed)
+  await insert('product', { id: PROD_ID, tenantId: TID, name: 'Prod', isActive: 1 });
+  await insert('product_packages', { id: PKG_ID, tenantId: TID, name: 'PKG1', isActive: 1, basePrice: 1.200, capital: 1.200, product_id: PROD_ID });
 
     // package_prices row for distributor capital group
     await insert('package_prices', { id: '00000000-0000-0000-0000-00000000pp01', tenantId: TID, price: 1.200, package_id: PKG_ID, price_group_id: PG_STORE_DIST });

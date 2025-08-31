@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
+import { ErrorResponse } from '@/types/common';
 
 /* =======================
    عناصر مساعدة مع بحث
@@ -246,16 +247,17 @@ type CurrencyRow = { code?: string; currencyCode?: string; rate?: number; value?
 async function loadTryRateFromApi(): Promise<number | null> {
   // نحاول أكثر من مسار محتمل حسب بنية الـ API لديك
   const candidates: string[] = [
-    (API_ROUTES as any)?.currencies?.base,
-    (API_ROUTES as any)?.admin?.currencies?.base,
+    ((API_ROUTES as Record<string, unknown>)?.currencies as Record<string, unknown>)?.base as string,
+    (((API_ROUTES as Record<string, unknown>)?.admin as Record<string, unknown>)?.currencies as Record<string, unknown>)?.base as string,
     `${API_BASE_URL}/currencies`,
     `${API_BASE_URL}/admin/currencies`,
   ].filter((u): u is string => Boolean(u));
 
   for (const url of candidates) {
     try {
-      const { data } = await api.get<any>(url);
-      const list: CurrencyRow[] = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+      const { data } = await api.get<unknown>(url);
+      const dataRecord = data as Record<string, unknown>;
+      const list: CurrencyRow[] = Array.isArray(data) ? data : Array.isArray(dataRecord?.items) ? dataRecord.items as CurrencyRow[] : [];
       const tryRow =
         list.find((c) => String(c.code || c.currencyCode).toUpperCase() === 'TRY') || null;
 
@@ -353,7 +355,6 @@ export default function IntegrationMappingPage() {
 
   useEffect(() => {
     loadProductOptions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // fallback محلي لو فشل جلب المنتجات
@@ -380,8 +381,9 @@ export default function IntegrationMappingPage() {
       const listRes = await api.get<IntegrationConfigRow[]>(API_ROUTES.admin.integrations.base);
       const found = (listRes.data || []).find((x) => x.id === String(id)) || null;
       setIntegrationConfig(found);
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Failed to load mapping');
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      setError(error?.response?.data?.message || error?.message || 'Failed to load mapping');
     } finally {
       setLoading(false);
     }
@@ -389,8 +391,7 @@ export default function IntegrationMappingPage() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, product]);
 
   const applyFilter = async (nextProduct: string) => {
     const qp = new URLSearchParams(searchParams.toString());
@@ -419,8 +420,9 @@ export default function IntegrationMappingPage() {
       await api.post(API_ROUTES.admin.integrations.packages(String(id)), payload);
       setMsg('تم حفظ الربط بنجاح.');
       await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Failed to save mappings');
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      setError(error?.response?.data?.message || error?.message || 'Failed to save mappings');
     } finally {
       setSaving(false);
     }
@@ -435,8 +437,9 @@ export default function IntegrationMappingPage() {
       await api.post(API_ROUTES.admin.integrations.syncProducts(String(id)));
       setMsg('تمت مزامنة باقات المزود. يتم التحديث…');
       await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Failed to sync provider products');
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      setError(error?.response?.data?.message || error?.message || 'Failed to sync provider products');
     } finally {
       setSyncing(false);
     }

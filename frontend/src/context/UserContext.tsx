@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { clearAuthArtifacts } from '@/utils/authCleanup';
 import api, { API_ROUTES } from '@/utils/api';
+import { ErrorResponse } from '@/types/common';
 
 type User = {
   id: string;
@@ -108,16 +109,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
         res = await api.get<User>(API_ROUTES.users.profileWithCurrency, {
           headers: { 'Authorization': `Bearer ${effectiveToken}` },
         });
-      } catch (e: any) {
+      } catch (e: unknown) {
         // في حالة 404 أو 501 أو مسار غير متاح، جرّب /users/profile كـ fallback (ليس مفيداً لــ 401)
-        const status = e?.response?.status;
-        if ([404, 500, 501].includes(status)) {
+        const error = e as ErrorResponse;
+        const status = error?.response?.status;
+        if (status && [404, 500, 501].includes(status)) {
           try {
             res = await api.get<User>(API_ROUTES.users.profile, {
               headers: { 'Authorization': `Bearer ${effectiveToken}` },
             });
           } catch (e2) {
-            throw e; // احتفظ بالخطأ الأصلي لو فشل fallback
+            throw error; // احتفظ بالخطأ الأصلي لو فشل fallback
           }
         } else if (status === 401) {
           // إعادة محاولة صامتة بعد 250ms (سباق خلال التحديث) لمرة واحدة فقط
@@ -134,29 +136,30 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 headers: { 'Authorization': `Bearer ${retryToken}` },
               });
             } else {
-              throw e;
+              throw error;
             }
           } catch (retryErr) {
-            throw e; // أعد نفس الخطأ الأول لو فشلت الإعادة
+            throw error; // أعد نفس الخطأ الأول لو فشلت الإعادة
           }
         } else {
-          throw e;
+          throw error;
         }
       }
       // قد يأتي backend بحقل currencyCode وليس currency، فنطبّق التطبيع
-      const anyRes: any = res.data;
+      const anyRes = res.data as Record<string, unknown>;
       const currency = anyRes.currencyCode || anyRes.currency || 'USD';
       setUser({
-        id: anyRes.id,
-        email: anyRes.email,
-        name: anyRes.fullName || anyRes.email || 'User',
-        role: anyRes.role || (fallback?.role ?? 'user'),
+        id: String(anyRes.id || ''),
+        email: String(anyRes.email || ''),
+        name: String(anyRes.fullName || anyRes.email || 'User'),
+        role: String(anyRes.role || (fallback?.role ?? 'user')),
         balance: Number(anyRes.balance ?? 0),
-        currency,
+        currency: String(currency),
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       // عند 401: لا نمسح التوكن أثناء التواجد في مناطق backoffice (/admin أو /dev) حتى لا نطرد المستخدم بسبب 401 عابر
-      if (e?.response?.status === 401 && typeof window !== 'undefined') {
+      const error = e as ErrorResponse;
+      if (error?.response?.status === 401 && typeof window !== 'undefined') {
         const p = window.location.pathname || '';
         const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
         const onAuthPages = p === '/login' || p === '/register';
@@ -199,7 +202,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     // انتظار microtask لضمان تحميل interceptors
     const t = setTimeout(run, 0);
     return () => { cancelled = true; clearTimeout(t); };
-  }, []);
+  }, [refreshUser]);
 
   return (
     <UserContext.Provider value={{ user, loading, refreshUser, logout }}>

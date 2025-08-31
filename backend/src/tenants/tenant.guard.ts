@@ -104,11 +104,11 @@ export class TenantGuard implements CanActivate {
       const roleLower = (user.role || '').toLowerCase();
       const isGlobalRole = roleLower === 'developer' || roleLower === 'instance_owner';
       if (userTenantId && tenant.id !== userTenantId && !isGlobalRole) {
-  if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH diff ids', { userTenantId, tenantId: tenant.id, roleLower, path });
+        if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH diff ids', { userTenantId, tenantId: tenant.id, roleLower, path });
         throw new UnauthorizedException('TENANT_MISMATCH');
       }
       if (!userTenantId && tenant.id && !isGlobalRole) {
-  if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH null user tenantId', { tenantId: tenant.id, roleLower, path });
+        if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH null user tenantId', { tenantId: tenant.id, roleLower, path });
         throw new UnauthorizedException('TENANT_MISMATCH');
       }
     }
@@ -117,11 +117,10 @@ export class TenantGuard implements CanActivate {
     if (isTenantPath) {
       if (isExternalTenantPath && req.externalToken) {
         if (req.externalToken.tenantId !== tenant.id) throw new ForbiddenException('Cross-tenant access (external)');
-        // no role enforcement for external token usage
       } else {
         if (!user) throw new UnauthorizedException('Auth required');
         if (user.tenantId !== tenant.id) throw new ForbiddenException('Cross-tenant access blocked');
-        const finalRole = user.roleFinal || user.role; // fallback to legacy if not injected
+        const finalRole = user.roleFinal || user.role;
         if (!['tenant_owner', 'distributor'].includes(finalRole)) {
           throw new ForbiddenException('Role not permitted for tenant API');
         }

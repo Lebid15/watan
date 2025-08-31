@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import api, { API_BASE_URL } from '@/utils/api';
 
 type SupervisorRow = {
@@ -36,7 +37,7 @@ export default function StatsDetailsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // قوائم للأقسام الأخرى
-  const [list, setList] = useState<any>(null);
+  const [list, setList] = useState<SupervisorRow[] | Record<string, unknown> | null>(null);
 
   // تفاصيل المشرف
   const [supervisor, setSupervisor] = useState<SupervisorDetails | null>(null);
@@ -117,11 +118,11 @@ export default function StatsDetailsPage() {
         } else if (id === 'users') {
           const res = await api.get(`${API_BASE_URL}/admin/stats/users`);
           if (!mounted) return;
-          setList(res.data);
+          setList(res.data as Record<string, unknown>);
         } else if (id === 'orders') {
           const res = await api.get(`${API_BASE_URL}/admin/stats/orders`);
           if (!mounted) return;
-          setList(res.data);
+          setList(res.data as Record<string, unknown>);
         } else if (isUuid) {
           // تحميل أولي بدون فلاتر
           const res = await api.get(`${API_BASE_URL}/admin/stats/supervisors/${id}`);
@@ -264,12 +265,12 @@ export default function StatsDetailsPage() {
                   <td className="px-3 py-2 border text-center">{r.usersCount}</td>
                   <td className="px-3 py-2 border text-center">{r.approvedOrdersCount}</td>
                   <td className="px-3 py-2 border text-center">
-                    <a
+                    <Link
                       href={`/dev/stats/${r.id}`}
                       className="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 inline-block"
                     >
                       تفاصيل
-                    </a>
+                    </Link>
                   </td>
                 </tr>
               ))}
@@ -289,26 +290,28 @@ export default function StatsDetailsPage() {
   }
 
   if (id === 'users') {
+    const userData = list as Record<string, unknown>;
     return (
       <div className="p-6">
         <h1 className="text-xl font-bold mb-4">{title}</h1>
         <div className="space-y-2">
-          <p>👥 العدد الكلي: {list?.total}</p>
-          <p>✅ نشطون: {list?.active}</p>
-          <p>🚫 غير نشطين: {list?.inactive}</p>
+          <p>👥 العدد الكلي: {String(userData?.total || 0)}</p>
+          <p>✅ نشطون: {String(userData?.active || 0)}</p>
+          <p>🚫 غير نشطين: {String(userData?.inactive || 0)}</p>
         </div>
       </div>
     );
   }
 
   if (id === 'orders') {
+    const orderData = list as Record<string, unknown>;
     return (
       <div className="p-6">
         <h1 className="text-xl font-bold mb-4">{title}</h1>
         <div className="space-y-2">
-          <p>📦 إجمالي الطلبات: {list?.total}</p>
-          <p>✅ المقبولة: {list?.approved}</p>
-          <p>❌ المرفوضة: {list?.rejected}</p>
+          <p>📦 إجمالي الطلبات: {String(orderData?.total || 0)}</p>
+          <p>✅ المقبولة: {String(orderData?.approved || 0)}</p>
+          <p>❌ المرفوضة: {String(orderData?.rejected || 0)}</p>
         </div>
       </div>
     );

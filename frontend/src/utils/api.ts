@@ -336,7 +336,7 @@ function getCookie(name: string): string | null {
 }
 
 // Ø¯Ø§Ù„Ø© Ù…Ø´ØªØ±ÙƒØ© Ù„Ø¥Ø¶Ø§ÙØ© headers (Ù…ÙˆØ­Ù‘Ø¯Ø©)
-function addTenantHeaders(config: any) {
+function addTenantHeaders(config: any): any {
   config.headers = config.headers || {};
 
   // 1) Ø­Ø§ÙˆÙ„ Ø£Ø®Ø° subdomain Ù…Ù† Ø§Ù„ÙƒÙˆÙƒÙŠ (ÙŠÙÙŠØ¯ Ø£Ø«Ù†Ø§Ø¡ SSR Ø£Ùˆ Ù‚Ø¨Ù„ ØªÙˆÙØ± window)
@@ -377,9 +377,8 @@ function addTenantHeaders(config: any) {
   // 3) Ø§Ù„ØªÙˆÙƒÙ†
   if (typeof window !== 'undefined') {
     let token: string | null = localStorage.getItem('token');
-  // Support both legacy 'access_token' and current httpOnly 'auth' cookie names
-  if (!token) token = getCookie('access_token');
-  if (!token) token = getCookie('auth');
+    if (!token) token = getCookie('access_token');
+    if (!token) token = getCookie('auth'); // legacy/httpOnly support
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -388,12 +387,12 @@ function addTenantHeaders(config: any) {
   return config;
 }
 // Patch Ù„Ù„Ù€ fetch Ù„ØªØºØ·ÙŠØ© Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªÙŠ Ù„Ø§ ØªÙ…Ø± Ø¹Ø¨Ø± axios
-if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) {
-  (window as any).__TENANT_FETCH_PATCHED__ = true;
+if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: boolean }).__TENANT_FETCH_PATCHED__) {
+  (window as { __TENANT_FETCH_PATCHED__?: boolean }).__TENANT_FETCH_PATCHED__ = true;
   const originalFetch = window.fetch;
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const newInit: RequestInit = init ? { ...init } : {};
-    const headers = new Headers(newInit.headers || (typeof input === 'object' && (input as any).headers) || {});
+    const headers = new Headers(newInit.headers || (typeof input === 'object' && (input as { headers?: HeadersInit }).headers) || {});
 
     // Ø¥Ù† Ù„Ù… ÙŠÙˆØ¬Ø¯ Ø§Ù„Ø¹Ù†ÙˆØ§Ù† Ø£Ø¶ÙÙÙ‡
     if (!headers.has('X-Tenant-Host')) {
@@ -432,7 +431,7 @@ if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) 
   };
 }
 // ØªØ£ÙƒØ¯ Ù…Ù† Ø¹Ø¯Ù… ØªÙƒØ±Ø§Ø± ØªØ³Ø¬ÙŠÙ„ Ù†ÙØ³ Ø§Ù„Ù€ interceptor (Ù†ÙØ­Øµ flag Ø¹Ù„Ù‰ axios Ø§Ù„Ø¹Ø§Ù„Ù…ÙŠ)
-const ANY_AXIOS: any = axios as any;
+const ANY_AXIOS = axios as typeof axios & { __TENANT_HEADERS_ATTACHED__?: boolean };
 if (!ANY_AXIOS.__TENANT_HEADERS_ATTACHED__) {
   ANY_AXIOS.__TENANT_HEADERS_ATTACHED__ = true;
   api.interceptors.request.use((config) => {

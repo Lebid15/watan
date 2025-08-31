@@ -77,7 +77,22 @@ export class AdminBillingController {
       suspendedTenants,
     };
   }
-
+  @UseGuards(JwtAuthGuard)
+  @Get('health')
+  async health(@Req() req: any) {
+    this.assertInstanceOwner(req);
+    if (!isFeatureEnabled('billingV1')) return { status: 'disabled' };
+    const openInvoices = await (this as any).svc['invRepo'].count({ where: { status: 'open' } });
+    const suspendedTenants = await (this as any).svc['subRepo'].count({ where: { status: 'suspended' } });
+    const runs = this.sched.getLastRuns();
+    return {
+      lastIssueAt: runs.issue?.toISOString() || null,
+      lastEnforceAt: runs.enforce?.toISOString() || null,
+      lastRemindAt: runs.remind?.toISOString() || null,
+      openInvoices,
+      suspendedTenants,
+    };
+  }
   private assertInstanceOwner(req: any) {
     const role = req.user?.roleFinal || req.user?.role;
     if (role !== 'instance_owner') throw new ForbiddenException({ code: 'FORBIDDEN', message: 'FORBIDDEN' });

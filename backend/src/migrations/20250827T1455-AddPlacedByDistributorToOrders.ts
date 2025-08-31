@@ -4,13 +4,12 @@ export class AddPlacedByDistributorToOrders20250827T1455 implements MigrationInt
   name = 'AddPlacedByDistributorToOrders20250827T1455';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Use correct table name product_orders (plural). Guard if table missing.
+    // Guarded plural table version (idempotent)
     await queryRunner.query(`
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='product_orders') THEN
     ALTER TABLE "product_orders" ADD COLUMN IF NOT EXISTS "placedByDistributorId" uuid;
-    -- create index separately (can't IF NOT EXISTS inside ALTER TABLE)
     BEGIN
       CREATE INDEX IF NOT EXISTS "IDX_product_orders_placedByDistributor" ON "product_orders" ("placedByDistributorId");
     EXCEPTION WHEN others THEN NULL; END;

@@ -11,34 +11,26 @@ export class Product {
   @Index()
   tenantId: string;
 
-
   @Column()
   name: string;
 
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-
-  // New fallback fields (Phase 1)
-  // customImageUrl: صورة مخصصة لهذا المنتج (أولوية أولى إن وُجدت وكان useCatalogImage=false)
+  // حقول الصور المخصصة (لم يعد هناك fallback للكتالوج)
   @Column({ type: 'varchar', length: 500, nullable: true })
   customImageUrl?: string | null;
 
-
-  // customAltText: نص بديل مخصص (أولوية إذا كانت الصورة مخصصة أو حتى مع الكتالوج بهدف تحسين الوصولية)
   @Column({ type: 'varchar', length: 300, nullable: true })
   customAltText?: string | null;
 
-  // Stored derivative thumbnails (generated once on upload / change)
+  // Thumbnails المخزنة
   @Column({ type: 'varchar', length: 500, nullable: true })
   thumbSmallUrl?: string | null;
-
   @Column({ type: 'varchar', length: 500, nullable: true })
   thumbMediumUrl?: string | null;
-
   @Column({ type: 'varchar', length: 500, nullable: true })
   thumbLargeUrl?: string | null;
-
 
   @Column({ default: true })
   isActive: boolean;

@@ -3,15 +3,18 @@
 import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
+import { ErrorResponse } from '@/types/common';
 
 type ErrorLog = {
   id: string; source: string; level: string; status: string; message: string; path?: string | null;
   userId?: string | null; tenantId?: string | null; occurrenceCount: number; lastOccurredAt?: string; createdAt: string;
+  resolvedAt?: string | null; stack?: string | null; context?: unknown; userAgent?: string | null;
+  _error?: string;
 };
 
-type Paged<T> = { items: T[]; total?: number; skip?: number; take?: number } | T[] | any;
+type Paged<T> = { items: T[]; total?: number; skip?: number; take?: number } | T[] | unknown;
 
-function extractItems<T>(data: Paged<T>): T[] { if (Array.isArray(data)) return data as T[]; if (data && typeof data==='object' && Array.isArray((data as any).items)) return (data as any).items as T[]; return []; }
+function extractItems<T>(data: Paged<T>): T[] { if (Array.isArray(data)) return data as T[]; if (data && typeof data==='object' && Array.isArray((data as Record<string, unknown>).items)) return (data as Record<string, unknown>).items as T[]; return []; }
 
 function ErrorsInner() {
   const sp = useSearchParams();
@@ -25,7 +28,7 @@ function ErrorsInner() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<any | null>(null);
+  const [detail, setDetail] = useState<ErrorLog | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const q = sp.get('q') || '';
@@ -58,9 +61,10 @@ function ErrorsInner() {
       const data = res.data;
       const list = extractItems<ErrorLog>(data);
       setItems(list);
-      setTotal((data as any).total ?? list.length);
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e.message || 'فشل التحميل');
+      setTotal((data as { total?: number }).total ?? list.length);
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      setError(error?.response?.data?.message || error.message || 'فشل التحميل');
     } finally { setLoading(false); }
   }, [q, level, status, source, skip, take]);
 
@@ -73,8 +77,9 @@ function ErrorsInner() {
       await api.post(API_ROUTES.dev.errors.resolve(id));
       // حدّث محلياً بدون إعادة التحميل الكامل لتحسين التجربة
       setItems(prev => prev.map(it => it.id === id ? { ...it, status: 'resolved' } : it));
-    } catch (e: any) {
-      alert(e?.response?.data?.message || e.message || 'فشل تحديث الحالة');
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      alert(error?.response?.data?.message || error.message || 'فشل تحديث الحالة');
     } finally { setResolvingId(null); }
   };
 
@@ -87,8 +92,9 @@ function ErrorsInner() {
       setTotal(t => t > 0 ? t - 1 : 0);
       // إن أصبحت الصفحة فارغة ولديك صفحات سابقة، ارجع خطوة
       if (items.length === 1 && page > 1) setPage(page - 1);
-    } catch (e:any) {
-      alert(e?.response?.data?.message || e.message || 'فشل الحذف');
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      alert(error?.response?.data?.message || error.message || 'فشل الحذف');
     } finally { setDeletingId(null); }
   };
 
@@ -98,9 +104,14 @@ function ErrorsInner() {
     setDetailLoading(true);
     try {
       const res = await api.get(API_ROUTES.dev.errors.byId(id));
-      setDetail(res.data);
-    } catch (e:any) {
-      setDetail({ _error: e?.response?.data?.message || e.message || 'فشل جلب التفاصيل' });
+      setDetail(res.data as ErrorLog);
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      setDetail({ 
+        id: '', source: '', level: '', status: '', message: '', 
+        occurrenceCount: 0, createdAt: '', 
+        _error: error?.response?.data?.message || error.message || 'فشل جلب التفاصيل' 
+      } as ErrorLog & { _error: string });
     } finally { setDetailLoading(false); }
   };
 
@@ -243,7 +254,7 @@ function ErrorsInner() {
                     <pre className="whitespace-pre-wrap bg-gray-800 text-green-200 p-2 rounded max-h-72 overflow-auto text-[11px]" dir="ltr">{detail.stack}</pre>
                   </div>
                 )}
-                {detail.context && (
+                {Boolean(detail.context) && (
                   <div>
                     <div className="font-semibold mb-1">Context:</div>
                     <pre className="whitespace-pre-wrap bg-gray-100 dark:bg-gray-800 p-2 rounded max-h-60 overflow-auto text-[11px]" dir="ltr">{JSON.stringify(detail.context, null, 2)}</pre>

@@ -15,7 +15,7 @@ describe('External API E2E', () => {
   let externalUserId: string;
   let externalUserId2: string;
   let orderId: string;
-  let publicCode: number;
+  let publicCode: number; // using publicCode (catalog removed)
   let tokenId: string; // primary token id (db)
   let tokenFull2: string; // second user token
 
@@ -39,8 +39,8 @@ describe('External API E2E', () => {
 
     const productId = uuid();
   await ds.query(`INSERT INTO product(id, tenantId, name, isActive) VALUES($1,$2,'Prod',true)`, [productId, tenantId]);
-    const packageId = uuid();
-    publicCode = 101;
+  const packageId = uuid();
+  publicCode = 101;
   await ds.query(`INSERT INTO product_packages(id, tenantId, product_id, name, basePrice, capital, isActive, publicCode) VALUES($1,$2,$3,'Pack',10,5,true,$4)`, [packageId, tenantId, productId, publicCode]);
 
     // Create token manually (bypassing controller) with scopes
@@ -82,16 +82,15 @@ describe('External API E2E', () => {
     expect(res.body.balanceUSD3).toMatch(/^[0-9]+\.[0-9]{3}$/);
   });
 
-  // Removed catalog listing test.
-
+  // Catalog listing removed; create order via publicCode.
   it('create order + idempotent repeat', async () => {
-  const payload = { publicCode, quantity: 1 };
+	const payload = { publicCode, quantity: 1 };
     const first = await request(app.getHttpServer())
       .post('/api/tenant/external/v1/orders')
       .set('Authorization', 'Bearer ' + tokenFull)
       .set('Idempotency-Key', 'A1')
       .send(payload)
-  .expect([200,201]); // accept 200 or 201 depending on controller implementation
+  .expect([200,201]); // accept 200 or 201
     orderId = first.body.orderId;
     const second = await request(app.getHttpServer())
       .post('/api/tenant/external/v1/orders')
@@ -147,10 +146,10 @@ describe('External API E2E', () => {
   it('idempotency in-progress conflict', async () => {
     // Manually insert idempotency row without orderId then call endpoint
     const key = 'A2';
-  const body = { publicCode, quantity: 1 };
-    function stableStringify(v: any): string { if (v === null || typeof v !== 'object') return JSON.stringify(v); if (Array.isArray(v)) return '['+v.map(stableStringify).join(',')+']'; const ks = Object.keys(v).sort(); return '{'+ks.map(k=>JSON.stringify(k)+':'+stableStringify((v as any)[k])).join(',')+'}'; }
-    const crypto = require('crypto');
-  const requestHash = crypto.createHash('sha256').update('POST' + '|' + '/api/tenant/external/v1/orders' + '|' + stableStringify(body)).digest('hex');
+	const body = { publicCode, quantity: 1 };
+  function stableStringify(v: any): string { if (v === null || typeof v !== 'object') return JSON.stringify(v); if (Array.isArray(v)) return '['+v.map(stableStringify).join(',')+']'; const ks = Object.keys(v).sort(); return '{'+ks.map(k=>JSON.stringify(k)+':'+stableStringify((v as any)[k])).join(',')+'}'; }
+  const crypto = require('crypto');
+	const requestHash = crypto.createHash('sha256').update('POST' + '|' + '/api/tenant/external/v1/orders' + '|' + stableStringify(body)).digest('hex');
     await ds.query(`INSERT INTO idempotency_keys(id, tokenId, key, requestHash, ttlSeconds, createdAt) VALUES($1,$2,$3,$4,86400,datetime('now'))`, [uuid(), tokenId, key, requestHash]);
     const r = await request(app.getHttpServer())
       .post('/api/tenant/external/v1/orders')

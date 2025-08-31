@@ -360,7 +360,6 @@ export class ProductsController {
     try {
       const dbgUser: any = (req as any).user || null;
       console.log('[PKG][CTRL][ADD][START]', {
-        productId,
         userId: dbgUser?.id || null,
         role: dbgUser?.role || dbgUser?.roleFinal || null,
         tenantCtx: (req as any).tenant?.id || dbgUser?.tenantId || null,
@@ -378,32 +377,24 @@ export class ProductsController {
         const cloudinary = getCloud();
         const result: any = await new Promise((resolve, reject) => {
           const upload = cloudinary.uploader.upload_stream(
-            { folder: 'packages', resource_type: 'image' },
-            (error, uploadResult) => (error ? reject(error) : resolve(uploadResult)),
-          );
-          upload.end(file.buffer);
         });
         imageUrl = result.secure_url;
       } catch (err: any) {
         console.error('[Add Package Image] Cloudinary error:', {
           message: err?.message,
-          name: err?.name,
           http_code: err?.http_code,
         });
         throw new InternalServerErrorException('فشل رفع صورة الباقة.');
-      }
-    }
-
     const capital = parseMoney(capitalStr ?? basePriceStr ?? priceStr);
 
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId || '00000000-0000-0000-0000-000000000000';
-    // Parse optional fields
     let publicCode: number | null = null;
     if (publicCodeRaw != null && String(publicCodeRaw).trim() !== '') {
       const pc = Number(publicCodeRaw);
-      if (Number.isInteger(pc) && pc > 0) publicCode = pc; else throw new BadRequestException('publicCode غير صالح');
+      if (Number.isInteger(pc) && pc > 0) publicCode = pc;
+      else throw new BadRequestException('publicCode غير صالح');
     }
-    const isActive = ((): boolean => {
+    const isActive = (() => {
       if (isActiveRaw === undefined || isActiveRaw === null || isActiveRaw === '') return true;
       if (typeof isActiveRaw === 'boolean') return isActiveRaw;
       const s = String(isActiveRaw).toLowerCase();
@@ -417,10 +408,10 @@ export class ProductsController {
       {
         name,
         imageUrl,
-        capital,
-        publicCode,
-        isActive,
-        providerName: providerNameClean,
+  capital,
+  publicCode,
+  isActive,
+  providerName: providerNameClean,
       },
       { userId: (req as any).user?.id, finalRole: (req as any).user?.roleFinal },
     );
