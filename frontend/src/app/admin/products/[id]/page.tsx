@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { API_ROUTES } from "@/utils/api";
+import { ErrorResponse } from "@/types/common";
 
 interface ProductPackage {
   id: string;
@@ -10,7 +12,11 @@ interface ProductPackage {
   description?: string;
   basePrice: number;
   isActive: boolean;
+  publicCode?: number | null;
 }
+
+// لم يعد هناك قائمة ثابتة؛ نستخرج الأكواد المتاحة من باقات المنتج نفسها
+// بحيث لا يمكن للمستأجر إضافة كود جديد خارج ما وفره المطوّر مسبقًا.
 
 interface Product {
   id: string;
@@ -37,7 +43,7 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
       headers: { Authorization: `Bearer ${token}` },
       body: fd,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Network/DNS errors: surface minimal message
     throw new Error('تعذر الاتصال بالخادم أثناء الرفع');
   }
@@ -45,9 +51,9 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
     // Map status codes
     if (res.status === 401 || res.status === 403) throw new Error('جلسة منتهية، يرجى تسجيل الدخول');
     if (res.status === 413) throw new Error('الصورة كبيرة جدًا');
-    let payload: any = null;
+    let payload: Record<string, unknown> | null = null;
     try { payload = await res.json(); } catch { /* ignore */ }
-    const msg: string = payload?.message || payload?.error || '';
+    const msg: string = String(payload?.message || payload?.error || '');
     if (/cloudinary/i.test(msg) && /غير صحيحة|bad credential|cloudinary/i.test(msg)) {
       throw new Error('إعدادات Cloudinary غير صحيحة');
     }
@@ -56,7 +62,9 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
     throw new Error(msg || 'فشل رفع الملف…');
   }
   const data = await res.json().catch(() => ({}));
-  const url: string | undefined = data?.url || data?.secure_url || (data as any)?.imageUrl || data?.data?.url || data?.data?.secure_url || (data as any)?.data?.imageUrl;
+  const dataRecord = data as Record<string, unknown>;
+  const dataData = dataRecord?.data as Record<string, unknown> | undefined;
+  const url: string | undefined = String(dataRecord?.url || '') || String(dataRecord?.secure_url || '') || String(dataRecord?.imageUrl || '') || String(dataData?.url || '') || String(dataData?.secure_url || '') || String(dataData?.imageUrl || '') || undefined;
   if (!url) {
     console.error('Upload response payload:', data);
     throw new Error('لم يتم استلام رابط الصورة');
@@ -83,16 +91,19 @@ export default function AdminProductDetailsPage() {
   const [pkgName, setPkgName] = useState("");
   const [pkgDesc, setPkgDesc] = useState("");
   const [pkgPrice, setPkgPrice] = useState<number>(0);
+  const [pkgBridge, setPkgBridge] = useState<string>("");
+  const [bridges, setBridges] = useState<number[]>([]);
+  const [bridgesLoading, setBridgesLoading] = useState<boolean>(false);
   const [showPackageForm, setShowPackageForm] = useState(false);
 
   const apiHost = API_ROUTES.products.base.replace("/api/products", ""); // لعرض الصور النسبية إن وجدت
   const apiBase = `${apiHost}/api`;
 
-  const fetchProduct = async () => {
+  const fetchProduct = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token") || "";
-      const res = await fetch(`${API_ROUTES.products.base}/${id}`, {
+  const res = await fetch(`${API_ROUTES.products.base}/${id}?all=1`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("فشل في جلب بيانات المنتج");
@@ -104,16 +115,34 @@ export default function AdminProductDetailsPage() {
   setEditUseCatalog(Boolean(data.useCatalogImage));
   setEditCatalogAlt(data.catalogAltText || "");
   setEditCustomAlt(data.customAltText || "");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      setError(error.message || 'حدث خطأ غير متوقع');
     } finally {
       setLoading(false);
+    }
+  }, [id]);
+
+  const fetchBridges = async () => {
+    if (!id) return;
+    try {
+      setBridgesLoading(true);
+      const token = localStorage.getItem("token") || "";
+      const res = await fetch(`${API_ROUTES.products.base}/${id}/bridges`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setBridges(Array.isArray(data.available) ? data.available : []);
+    } catch {
+      setBridges([]);
+    } finally {
+      setBridgesLoading(false);
     }
   };
 
   useEffect(() => {
     if (id) fetchProduct();
-  }, [id]);
+    if (id) fetchBridges();
+  }, [id, fetchProduct]);
 
   const handleUpdateProduct = async () => {
     try {
@@ -159,8 +188,9 @@ export default function AdminProductDetailsPage() {
       setEditImage(null);
       await fetchProduct();
       alert("تم حفظ التغييرات بنجاح");
-    } catch (err: any) {
-  alert(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      alert(error.message || 'حدث خطأ غير متوقع');
     }
   };
 
@@ -174,13 +204,15 @@ export default function AdminProductDetailsPage() {
       });
       if (!res.ok) throw new Error("فشل في حذف المنتج");
       router.push("/admin/products");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      alert(error.message || 'حدث خطأ غير متوقع');
     }
   };
 
   const handleAddPackage = async () => {
-    if (!pkgName || !pkgPrice) return alert("يرجى إدخال اسم وسعر الباقة");
+  if (!pkgName) return alert("يرجى إدخال اسم الباقة");
+  if (!pkgBridge) return alert("يرجى اختيار الجسر");
     try {
       const token = localStorage.getItem("token") || "";
       const res = await fetch(`${API_ROUTES.products.base}/${id}/packages`, {
@@ -193,6 +225,7 @@ export default function AdminProductDetailsPage() {
           name: pkgName,
           description: pkgDesc,
           basePrice: pkgPrice,
+          publicCode: pkgBridge, // نرسله ليتوافق مع واجهة التحديث العامة
           isActive: true,
         }),
       });
@@ -200,10 +233,13 @@ export default function AdminProductDetailsPage() {
       setPkgName("");
       setPkgDesc("");
       setPkgPrice(0);
+    setPkgBridge("");
       setShowPackageForm(false);
       fetchProduct();
-    } catch (err: any) {
-      alert(err.message);
+      fetchBridges();
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      alert((error && error.message) || 'حدث خطأ غير متوقع');
     }
   };
 
@@ -216,8 +252,9 @@ export default function AdminProductDetailsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchProduct();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: unknown) {
+      const error = err as ErrorResponse;
+      alert(error.message || 'حدث خطأ غير متوقع');
     }
   };
 
@@ -285,7 +322,7 @@ export default function AdminProductDetailsPage() {
       />
       <div className="grid md:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-[12px] text-text-secondary mb-1">نص بديل (كتالوج)</label>
+          <label className="block text-[12px] text-text-secondary mb-1">نص بديل 1(كتالوج)</label>
           <input
             className="w-full border border-border p-2 rounded bg-bg-surface-alt text-text-primary"
             value={editCatalogAlt}
@@ -346,9 +383,11 @@ export default function AdminProductDetailsPage() {
       <div className="mb-6">
         {imgSrc ? (
           <div className="relative inline-block">
-            <img
+            <Image
               src={imgSrc}
               alt={product.name}
+              width={80}
+              height={80}
               className="w-20 h-20 object-cover rounded border border-border shadow"
               onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png'; }}
             />
@@ -361,36 +400,45 @@ export default function AdminProductDetailsPage() {
         )}
       </div>
 
-      <h2 className="text-xl font-semibold mb-2">الباقات</h2>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold">الباقات</h2>
+        <button
+          onClick={() => setShowPackageForm((prev) => !prev)}
+          className="px-3 py-2 bg-primary text-primary-contrast rounded hover:bg-primary-hover text-sm"
+        >
+          {showPackageForm ? "إغلاق النموذج" : "+ إضافة باقة جديدة"}
+        </button>
+      </div>
       {product.packages && product.packages.length > 0 ? (
-        <ul className="space-y-3">
-          {product.packages.map((pkg) => (
-            <li key={pkg.id} className="flex justify-between items-center gap-3 bg-bg-surface-alt p-2 rounded border border-border">
-              <div>
-                <strong>{pkg.name}</strong> – {pkg.basePrice}
-                {pkg.description && (
-                  <p className="text-sm text-text-secondary">{pkg.description}</p>
-                )}
-              </div>
-              <button
-                onClick={() => handleDeletePackage(pkg.id)}
-                className="px-3 py-1 bg-danger text-text-inverse rounded hover:brightness-110 text-sm"
-              >
-                حذف
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-x-auto border border-border rounded mb-4">
+          <table className="min-w-full text-sm">
+            <thead className="bg-bg-surface-alt text-text-secondary text-xs">
+              <tr>
+                <th className="p-2 text-right">الاسم</th>
+                <th className="p-2 text-right">الكود / الجسر</th>
+                <th className="p-2 text-right">الوصف</th>
+                <th className="p-2 text-right">رأس المال</th>
+                <th className="p-2 text-right">الحالة</th>
+                <th className="p-2 text-right">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {product.packages.map((pkg) => (
+                <PackageRow
+                  key={pkg.id}
+                  pkg={pkg}
+                  allPackages={product.packages || []}
+                  availableBridges={bridges}
+                  onChanged={() => { fetchProduct(); fetchBridges(); }}
+                  onDelete={() => handleDeletePackage(pkg.id)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <p className="text-text-secondary">لا توجد باقات</p>
+        <p className="text-text-secondary mb-4">لا توجد باقات</p>
       )}
-
-      <button
-        onClick={() => setShowPackageForm((prev) => !prev)}
-        className="mt-6 px-4 py-2 bg-primary text-primary-contrast rounded hover:bg-primary-hover"
-      >
-        {showPackageForm ? "إغلاق النموذج" : "+ إضافة باقة جديدة"}
-      </button>
 
       {showPackageForm && (
         <div className="mt-4 p-4 border border-border rounded bg-bg-surface-alt">
@@ -406,14 +454,41 @@ export default function AdminProductDetailsPage() {
             value={pkgDesc}
             onChange={(e) => setPkgDesc(e.target.value)}
           />
-          <h2 className="text-text-secondary">السعر</h2>
+          <h2 className="text-text-secondary">رأس المال (يمكن أن يكون صفراً)</h2>
           <input
             type="number"
             className="w-full border border-border p-2 mb-2 rounded bg-bg-surface text-text-primary"
-            placeholder="السعر الأساسي"
+            placeholder="رأس المال"
             value={pkgPrice}
             onChange={(e) => setPkgPrice(parseFloat(e.target.value))}
           />
+          <div className="mb-2">
+            <label className="block text-text-secondary text-sm mb-1 flex items-center gap-2">
+              <span>الجسر (مطلوب)</span>
+              <button
+                type="button"
+                onClick={fetchBridges}
+                className="text-[11px] px-2 py-0.5 rounded bg-bg-surface border border-border hover:bg-bg-surface-alt"
+                disabled={bridgesLoading}
+              >تحديث</button>
+            </label>
+            <select
+              className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary"
+              value={pkgBridge}
+              onChange={(e) => setPkgBridge(e.target.value)}
+            >
+              <option value="">-- اختر الجسر --</option>
+              {bridgesLoading && <option value="" disabled>جاري التحميل...</option>}
+              {!bridgesLoading && bridges.length === 0 && <option value="" disabled>لا توجد جسور متاحة (اطلب من المطوّر إضافة كود)</option>}
+              {bridges
+                .filter(b => !isNaN(Number(b)))
+                .sort((a,b)=>a-b)
+                .map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+            </select>
+            <div className="text-[11px] mt-1 text-text-secondary">يتم جلب الأكواد من مصدر المطوّر؛ لا يمكنك إدخال رقم جديد يدويًا.</div>
+          </div>
           <button
             onClick={handleAddPackage}
             className="px-4 py-2 bg-success text-text-inverse rounded hover:brightness-110"
@@ -423,5 +498,116 @@ export default function AdminProductDetailsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// ===== صف الباقة =====
+function PackageRow({ pkg, allPackages, availableBridges, onChanged, onDelete }: { pkg: ProductPackage; allPackages: ProductPackage[]; availableBridges: number[]; onChanged: () => void; onDelete: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(pkg.name);
+  const [desc, setDesc] = useState(pkg.description || "");
+  const [basePrice, setBasePrice] = useState<number>(pkg.basePrice);
+  const [isActive, setIsActive] = useState<boolean>(pkg.isActive);
+  const [codeOptions, setCodeOptions] = useState<number[]>([]);
+  const [code, setCode] = useState<string>(pkg.publicCode ? String(pkg.publicCode) : "");
+  const [saving, setSaving] = useState(false);
+  const token = (typeof window !== 'undefined') ? localStorage.getItem('token') || '' : '';
+
+  // الأكواد المسموح اختيارها = (الكود الحالي) + الأكواد المتاحة غير المستخدمة من API
+  useEffect(() => {
+    const current = (pkg.publicCode && typeof pkg.publicCode === 'number') ? [pkg.publicCode] : [];
+    const union = Array.from(new Set([...current, ...availableBridges]))
+      .filter((v): v is number => typeof v === 'number')
+      .sort((a,b)=>a-b);
+    setCodeOptions(union);
+  }, [allPackages.map(p => p.publicCode).join(','), availableBridges.join(','), pkg.publicCode]);
+
+  const saveBasic = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_ROUTES.products.base}/packages/${pkg.id}/basic`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name, description: desc || null, basePrice, isActive })
+      });
+      if (!res.ok) throw new Error('فشل حفظ التعديلات');
+      // حفظ الكود (إن تغير)
+      if ((code || '').trim() !== String(pkg.publicCode || '')) {
+        const body: any = { publicCode: code ? Number(code) : null };
+        const r2 = await fetch(`${API_ROUTES.products.base}/packages/${pkg.id}/code`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(body)
+        });
+        if (!r2.ok) throw new Error('تم حفظ الباقة لكن فشل تحديث الكود');
+      }
+      setEditing(false);
+      onChanged();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <tr className="border-t border-border">
+      <td className="p-2 align-top">
+        {editing ? (
+          <input className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={name} onChange={e => setName(e.target.value)} />
+        ) : (
+          <span className="font-medium">{pkg.name}</span>
+        )}
+      </td>
+      <td className="p-2 align-top">
+        {editing ? (
+          <select className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={code} onChange={e => setCode(e.target.value)}>
+            <option value="">اختر</option>
+            {codeOptions.map(c => (<option key={c} value={c}>{c}</option>))}
+          </select>
+        ) : (
+          pkg.publicCode ? <span>{pkg.publicCode}</span> : <span className="text-text-secondary">—</span>
+        )}
+      </td>
+      <td className="p-2 align-top max-w-[200px]">
+        {editing ? (
+          <textarea className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" rows={2} value={desc} onChange={e => setDesc(e.target.value)} />
+        ) : (
+          pkg.description ? (
+            <span title={pkg.description} className="line-clamp-2 whitespace-pre-wrap text-[12px] text-text-secondary">{pkg.description}</span>
+          ) : <span className="text-text-secondary">—</span>
+        )}
+      </td>
+      <td className="p-2 align-top">
+        {editing ? (
+          <input type="number" className="w-24 text-sm p-1 rounded bg-bg-surface-alt border border-border" value={basePrice} onChange={e => setBasePrice(Number(e.target.value))} />
+        ) : (
+          <span>{pkg.basePrice}</span>
+        )}
+      </td>
+      <td className="p-2 align-top">
+        {editing ? (
+          <label className="inline-flex items-center gap-1 text-xs">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
+            <span>{isActive ? 'فعال' : 'متوقف'}</span>
+          </label>
+        ) : (
+          <span className={`text-xs px-2 py-1 rounded-full ${pkg.isActive ? 'bg-emerald-600/20 text-emerald-500' : 'bg-gray-600/30 text-gray-400'}`}>{pkg.isActive ? 'فعال' : 'متوقف'}</span>
+        )}
+      </td>
+      <td className="p-2 align-top space-x-1 space-x-reverse flex gap-2">
+        {editing ? (
+          <>
+            <button disabled={saving} onClick={saveBasic} className="px-2 py-1 bg-success text-text-inverse rounded text-xs disabled:opacity-50">حفظ</button>
+            <button disabled={saving} onClick={() => { setEditing(false); setName(pkg.name); setDesc(pkg.description || ''); setBasePrice(pkg.basePrice); setIsActive(pkg.isActive); setCode(pkg.publicCode ? String(pkg.publicCode) : ''); }} className="px-2 py-1 bg-gray-600 text-text-inverse rounded text-xs">إلغاء</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setEditing(true)} className="px-2 py-1 bg-primary text-primary-contrast rounded text-xs">تعديل</button>
+            <button onClick={onDelete} className="px-2 py-1 bg-danger text-text-inverse rounded text-xs">حذف</button>
+          </>
+        )}
+      </td>
+    </tr>
   );
 }

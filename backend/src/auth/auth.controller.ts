@@ -7,6 +7,7 @@ import { User } from '../user/user.entity';
 // ...existing code...
 import * as bcrypt from 'bcrypt';
 import { ApiTags, ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { AuthTokenService } from './auth-token.service';
 import { AuditService } from '../audit/audit.service';
@@ -36,8 +37,9 @@ export class AuthController {
     private readonly authService: AuthService,
     @InjectRepository(Tenant) private readonly tenantsRepo: Repository<Tenant>,
     @InjectRepository(User) private readonly usersRepo: Repository<User>,
-  private tokens: AuthTokenService,
-  private audit: AuditService,
+    private tokens: AuthTokenService,
+    private audit: AuditService,
+    private jwt: JwtService,
   ) {}
 
   @Post('login')
@@ -83,7 +85,40 @@ export class AuthController {
     return { token: access_token };
   }
 
-  // ================= Developer Bootstrap Endpoint =================
+  @Post('logout')
+  @ApiOperation({ summary: 'تسجيل الخروج ومسح كوكي auth' })
+  async logout(@Res({ passthrough: true }) res: Response) {
+    // Clear the auth cookie using same attributes (domain/path) so browser actually removes it.
+    const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.syrz1.com';
+    try {
+      const names = ['auth', 'access_token', 'role', 'tenant_host'];
+      for (const n of names) {
+        // clearCookie ensures expiry header
+        res.clearCookie(n, {
+          httpOnly: n === 'auth',
+          secure: true,
+          sameSite: 'none',
+          domain: cookieDomain,
+          path: '/',
+        });
+        // Extra defensive explicit expired cookie (Safari quirk)
+        res.cookie(n, '', {
+          httpOnly: n === 'auth',
+          secure: true,
+          sameSite: 'none',
+          domain: cookieDomain,
+          path: '/',
+          expires: new Date(0),
+          maxAge: 0,
+        });
+      }
+      console.log('[AUTH][LOGOUT] cleared cookies domain=', cookieDomain);
+    } catch (e) {
+      console.warn('[AUTH] failed to clear auth cookie:', (e as any)?.message);
+    }
+    return { ok: true };
+  }
+
   // يسمح بإنشاء حساب مطوّر (tenantId NULL) مرة واحدة عبر سر بيئة BOOTSTRAP_DEV_SECRET.
   // الاستخدام: POST /api/auth/bootstrap-developer { secret, email, password }
   // الحماية:
@@ -122,6 +157,33 @@ export class AuthController {
   return { ok: true, id: saved.id, email: saved.email, role: saved.role };
   }
 
+  // إصدار توكن مطوّر / مرتفع الصلاحية مباشرة بدون كلمة مرور لتجاوز مشاكل إرسال JSON داخل الحاويات.
+  // الاستخدام: POST /api/auth/dev-token { secret, email, tenantId? }
+  // الحماية: DEV_ISSUE_SECRET في البيئة.
+  @Post('dev-token')
+  @ApiOperation({ summary: 'إصدار JWT للمطور مباشرة عبر سر بيئة (للاستخدام التشغيلي)' })
+  @ApiBody({ schema: { properties: { secret: { type: 'string' }, email: { type: 'string' }, tenantId: { type: 'string' } }, required: ['secret','email'] } })
+  async issueDevToken(@Body() body: { secret: string; email: string; tenantId?: string }) {
+    const envSecret = process.env.DEV_ISSUE_SECRET;
+    if (!envSecret) throw new ForbiddenException('Issuing disabled (no DEV_ISSUE_SECRET)');
+    if (!body?.secret || body.secret !== envSecret) throw new ForbiddenException('Invalid secret');
+    if (!body.email) throw new BadRequestException('email required');
+    const user = await this.usersRepo.findOne({ where: { email: body.email } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!(user.role === 'developer' || user.role === 'instance_owner')) {
+      throw new ForbiddenException('User not elevated');
+    }
+    const payload: any = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: body.tenantId === undefined ? (user.tenantId ?? null) : body.tenantId || null,
+    };
+    const token = this.jwt.sign(payload);
+    return { token, payload };
+  }
+
+
   @Post('register')
   @ApiOperation({ summary: 'إنشاء حساب جديد' })
   @ApiResponse({ status: 201, description: 'تم إنشاء الحساب بنجاح' })
@@ -151,7 +213,6 @@ export class AuthController {
     return { ok: true };
   }
 
-  // ================= Impersonation (assume-tenant) =================
   @Post('assume-tenant')
   @UseGuards(JwtAuthGuard)
   async assumeTenant(@Req() req: any, @Body() body: { tenantId: string }) {
@@ -169,7 +230,6 @@ export class AuthController {
     return { token, tenantId: tenant.id, impersonated: true, expiresIn: 1800 };
   }
 
-  // ================= Email Verification =================
   @Post('request-email-verification')
   @UseGuards(JwtAuthGuard)
   @RateLimit({ windowMs: 10*60*1000, max: 5, id: 'emailverify' })
@@ -205,7 +265,6 @@ export class AuthController {
     return { ok: true };
   }
 
-  // ================= Password Reset =================
   @Post('request-password-reset')
   @RateLimit({ windowMs: 10*60*1000, max: 5, id: 'pwdresetreq' })
   async requestPasswordReset(@Body() body: { emailOrUsername: string; tenantCode?: string }) {

@@ -1,8 +1,9 @@
-import { Controller, Get, Query, Param, Patch, Body, Post, NotFoundException, ConflictException, ForbiddenException, Req } from '@nestjs/common';
+import { Controller, Get, Query, Param, Patch, Body, Post, NotFoundException, ConflictException, ForbiddenException, Req, UseGuards } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { BillingInvoiceStatus } from './billing-invoice.entity';
 import { isFeatureEnabled } from '../common/feature-flags';
 import { BillingSchedulers } from './billing.schedulers';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('admin/billing')
 export class AdminBillingController {
@@ -60,6 +61,38 @@ export class AdminBillingController {
     return { items: list.map(i => ({ id: i.id, status: i.status, amountUsd: i.amountUsd, amountUSD3: Number(i.amountUsd).toFixed(3), periodStart: i.periodStart, periodEnd: i.periodEnd, dueAt: i.dueAt, issuedAt: i.issuedAt, paidAt: i.paidAt })) };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('health')
+  async health(@Req() req: any) {
+    this.assertInstanceOwner(req);
+    if (!isFeatureEnabled('billingV1')) return { status: 'disabled' };
+    const openInvoices = await (this as any).svc['invRepo'].count({ where: { status: 'open' } });
+    const suspendedTenants = await (this as any).svc['subRepo'].count({ where: { status: 'suspended' } });
+    const runs = this.sched.getLastRuns();
+    return {
+      lastIssueAt: runs.issue?.toISOString() || null,
+      lastEnforceAt: runs.enforce?.toISOString() || null,
+      lastRemindAt: runs.remind?.toISOString() || null,
+      openInvoices,
+      suspendedTenants,
+    };
+  }
+  @UseGuards(JwtAuthGuard)
+  @Get('health')
+  async health(@Req() req: any) {
+    this.assertInstanceOwner(req);
+    if (!isFeatureEnabled('billingV1')) return { status: 'disabled' };
+    const openInvoices = await (this as any).svc['invRepo'].count({ where: { status: 'open' } });
+    const suspendedTenants = await (this as any).svc['subRepo'].count({ where: { status: 'suspended' } });
+    const runs = this.sched.getLastRuns();
+    return {
+      lastIssueAt: runs.issue?.toISOString() || null,
+      lastEnforceAt: runs.enforce?.toISOString() || null,
+      lastRemindAt: runs.remind?.toISOString() || null,
+      openInvoices,
+      suspendedTenants,
+    };
+  }
   private assertInstanceOwner(req: any) {
     const role = req.user?.roleFinal || req.user?.role;
     if (role !== 'instance_owner') throw new ForbiddenException({ code: 'FORBIDDEN', message: 'FORBIDDEN' });

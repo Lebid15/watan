@@ -5,56 +5,15 @@ import axios from 'axios';
    Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª ÙˆØ¨ÙŠØ¦Ø© Ø§Ù„ØªØ´ØºÙŠÙ„
    ========================= */
 
-// Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ù€ API (Ù…Ø«Ø§Ù„ Ù…Ø­Ù„ÙŠ: http://localhost:3001/api)
-// Ø§Ù„Ù‚ÙŠÙ…Ø© Ø§Ù„Ø®Ø§Ù… Ù…Ù† Ø§Ù„Ø¨ÙŠØ¦Ø© (Ù‚Ø¯ ØªÙƒÙˆÙ† Ø®Ø§Ø·Ø¦Ø© Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ÙŠÙ‹Ø§)
-let RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
-// Dynamic production fallback: if env not provided (still localhost) but we're on a real domain, derive https://api.<root>/api
-if (typeof window !== 'undefined') {
-  try {
-    if (/localhost:3001\/api$/.test(RAW_API_BASE_URL)) {
-      const host = window.location.hostname; // e.g. syrz1.com or www.syrz1.com
-      const parts = host.split('.');
-      if (parts.length >= 2 && !/^api\./i.test(host)) {
-        const root = parts.slice(-2).join('.');
-        // Avoid using www as subdomain base twice
-        const apiHost = `api.${root}`;
-        const proto = window.location.protocol === 'https:' ? 'https' : 'http';
-        RAW_API_BASE_URL = `${proto}://${apiHost}/api`;
-        console.log('[API][AUTO-FALLBACK] Derived API base URL =>', RAW_API_BASE_URL);
-      }
-    }
-  } catch {}
-}
+// عنوان الـ API (مثال إنتاج: https://api.syrz1.com/api) نستخدمه كما هو بدون أي fallback نسبي.
+const RAW_API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/$/, '');
 
 // Prefer relative /api when on a tenant subdomain (non api/www) of syrz1.com to eliminate cross-origin & CORS preflight.
 // This should help with mysterious timeouts in normal browser mode while incognito works.
-if (typeof window !== 'undefined') {
-  try {
-    // Allow opt-out via env flag
-    if (process.env.NEXT_PUBLIC_FORCE_API_ABSOLUTE === '1') {
-      // eslint-disable-next-line no-console
-      console.log('[API][RELATIVE] Skipped relative /api because NEXT_PUBLIC_FORCE_API_ABSOLUTE=1');
-    } else {
-      const h = window.location.hostname; // sham.syrz1.com
-      if (/\.syrz1\.com$/i.test(h)) {
-        const parts = h.split('.');
-        if (parts.length > 2) {
-          const sub = parts[0].toLowerCase();
-          if (!['www', 'api'].includes(sub)) {
-            // Switch to relative only if current base points to api.<root> (derived) or localhost default
-            if (/api\.[A-Za-z0-9-]+\.[A-Za-z0-9-]+\/api$/.test(RAW_API_BASE_URL) || /localhost:3001\/api$/.test(RAW_API_BASE_URL)) {
-              RAW_API_BASE_URL = '/api';
-              // eslint-disable-next-line no-console
-              console.log('[API][RELATIVE] Using relative /api base for tenant subdomain =>', h);
-            }
-          }
-        }
-      }
-    }
-  } catch {}
-}
+// Disabled: relative /api caused 404 on tenant subdomains because frontend host doesn't serve backend endpoints.
+// Keeping absolute api.<root>/api base to avoid redirect loops & 404.
 
-// Ø­Ø§Ø±Ø³ Ø¯ÙØ§Ø¹ÙŠ: Ø¥Ø°Ø§ Ø§Ù„ØµÙØ­Ø© Ù†ÙØ³Ù‡Ø§ https Ù„ÙƒÙ† Ø§Ù„Ù€ API_BASE_URL ÙŠØ¨Ø¯Ø£ Ø¨Ù€ http Ù„Ù†ÙØ³ Ø§Ù„Ø¯ÙˆÙ…ÙŠÙ† Ø§Ù„Ø£Ø³Ø§Ø³ÙŠ -> Ø§Ø±ÙØ¹ Ù„Ù„Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ https Ù„ØªÙØ§Ø¯ÙŠ Mixed Content
+// Ø­Ø§Ø±Ø³ Ø¯ÙƒØ§Ø±Ø§Øª: Ø¥Ø°Ø§ Ø§Ù„ØµÙØ­Ø© Ù†ÙØ³Ù‡Ø§ https Ù„ÙƒÙ† Ø§Ù„Ù€ API_BASE_URL ÙŠØ¨Ø¯Ø£ Ø¨Ù€ http Ù„Ù†ÙØ³ Ø§Ù„Ø¯ÙˆÙ…ÙŠÙ† Ø§Ù„Ø£Ø³Ø§Ø³ÙŠ -> Ø§Ø±ÙØ¹ Ù„Ù„Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ https Ù„ØªÙØ§Ø¯ÙŠ Mixed Content
 function upgradeToHttpsIfNeeded(raw: string): string {
   try {
     if (typeof window === 'undefined') return raw; // Ø£Ø«Ù†Ø§Ø¡ Ø§Ù„Ù€ SSR Ù„Ø§ Ù†Ø¹Ø±Ù Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„ Ø§Ù„Ù…ØªØµÙØ­
@@ -87,9 +46,9 @@ const isLocalhostApi = /^https?:\/\/localhost(?::\d+)?/i.test(
   API_BASE_URL.replace(/\/api\/?$/, '')
 );
 
-/** ÙÙ„Ø§Øº Ù„Ù„ØªØ­ÙƒÙ… Ø¨Ø·Ù„Ø¨ "ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø·Ù„Ø¨":
+/** ÙÙ„Ø§Øº Ù„Ù„ØªØ­ÙƒÙ… Ø¨Ø·Ù„Ø¨ "ØªÙƒØ§Ù„ Ø§Ù„Ø·Ù„Ø¨":
  * - ÙŠÙ‚Ø±Ø£ Ù…Ù† NEXT_PUBLIC_ORDERS_DETAILS_ENABLED
- * - Ø¥Ù† Ù„Ù… ÙŠØ­Ø¯ÙŽÙ‘Ø¯ØŒ Ù†Ø¹Ø·Ù„Ù‡Ø§ ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ø¹Ù†Ø¯Ù…Ø§ ÙŠÙƒÙˆÙ† Ø§Ù„Ù€ API Ù…Ø­Ù„ÙŠÙ‹Ø§ Ù„ØªØ¬Ù†Ù‘Ø¨ 404
+ * - Ø¥Ù† Ù„Ù… ÙŠØ­Ø¯ÙŽÙ‘Ø¯ØŒ Ù†Ø¹Ø·Ù„Ù‡Ø§ ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ù¹Ù†Ø¯Ù…Ø§ ÙŠÙƒÙˆÙ† Ø§Ù„Ù€ API Ù…Ø­Ù„ÙŠÙ‹Ø§ Ù„ØªØ¬Ù†Ù‘Ø¨ 404
  */
 export const ORDERS_DETAILS_ENABLED = (() => {
   const v = process.env.NEXT_PUBLIC_ORDERS_DETAILS_ENABLED;
@@ -207,20 +166,6 @@ export const API_ROUTES = {
   admin: {
     upload: `${EFFECTIVE_API_BASE_URL}/admin/upload`,
 
-    catalog: {
-      listProducts: (withCounts = false, q?: string) => {
-  const base = `${EFFECTIVE_API_BASE_URL}/admin/catalog/products`;
-        const params = new URLSearchParams();
-        if (withCounts) params.set('withCounts', '1');
-        if (q?.trim()) params.set('q', q.trim());
-        const qs = params.toString();
-        return qs ? `${base}?${qs}` : base;
-      },
-  getProduct: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/catalog/products/${id}`,
-  setProductImage: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/catalog/products/${id}/image`,
-  enableProvider: (providerId: string) => `${EFFECTIVE_API_BASE_URL}/admin/catalog/providers/${providerId}/enable-all`,
-  refreshPrices: (providerId: string) => `${EFFECTIVE_API_BASE_URL}/admin/catalog/providers/${providerId}/refresh-prices`,
-    },
 
     paymentMethods: {
   base: `${EFFECTIVE_API_BASE_URL}/admin/payment-methods`,
@@ -275,6 +220,26 @@ export const API_ROUTES = {
     },
   },
 
+  billing: {
+    overview: `${EFFECTIVE_API_BASE_URL}/tenant/billing/overview`,
+    invoices: (p?: { status?: string; overdue?: boolean }) => {
+      const base = `${EFFECTIVE_API_BASE_URL}/tenant/billing/invoices`;
+      if (!p) return base;
+      const qs = new URLSearchParams();
+      if (p.status) qs.set('status', p.status);
+      if (p.overdue) qs.set('overdue', 'true');
+      const s = qs.toString();
+      return s ? `${base}?${s}` : base;
+    },
+    pay: `${EFFECTIVE_API_BASE_URL}/tenant/billing/payments/request`,
+  },
+  adminBilling: {
+    tenants: (limit=20, offset=0) => `${EFFECTIVE_API_BASE_URL}/admin/billing/tenants?limit=${limit}&offset=${offset}`,
+    invoices: (tenantId: string) => `${EFFECTIVE_API_BASE_URL}/admin/billing/tenants/${tenantId}/invoices`,
+    markPaid: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/billing/invoices/${id}/mark-paid`,
+    health: `${EFFECTIVE_API_BASE_URL}/admin/billing/health`,
+  },
+
   /* ===== ØµÙØ­Ø§Øª Ø¹Ø§Ù…Ø© ÙŠÙØ­Ø±Ø±Ù‡Ø§ Ø§Ù„Ø£Ø¯Ù…Ù† (Ù…Ù† Ù†Ø­Ù† / ØªØ¹Ù„ÙŠÙ…Ø§Øª) ===== */
   site: {
     public: {
@@ -315,6 +280,11 @@ export const API_ROUTES = {
       resolve: (id: string) => `${EFFECTIVE_API_BASE_URL}/dev/errors/${id}/resolve`,
       delete: (id: string) => `${EFFECTIVE_API_BASE_URL}/dev/errors/${id}`,
     }
+  ,
+  seed: `${EFFECTIVE_API_BASE_URL}/dev/seed-products`,
+  filteredSync: `${EFFECTIVE_API_BASE_URL}/dev/filtered-products-sync`,
+  filteredStatus: `${EFFECTIVE_API_BASE_URL}/dev/filtered-products-sync/status`,
+  filteredRepair: `${EFFECTIVE_API_BASE_URL}/dev/filtered-products-sync/repair`,
   },
 };
 
@@ -323,9 +293,37 @@ export const API_ROUTES = {
    ========================= */
 
 const api = axios.create({
-  baseURL: EFFECTIVE_API_BASE_URL,
+  baseURL: EFFECTIVE_API_BASE_URL, // هذا ينتهي بـ /api
   headers: { 'Content-Type': 'application/json' },
+  // ضروري لإرسال كوكي auth (SameSite=None) عبر الدومين api.<root>
+  withCredentials: true,
 });
+
+// Convenience high-level methods (avoid scattering relative /api calls)
+export const Api = {
+  client: api,
+  // baseURL يحتوي /api بالفعل، فلا نضيف /api هنا
+  // Prefer simplified profile-with-currency endpoint (lighter joins, robust fallbacks)
+  me: () => api.get('/users/profile-with-currency'),
+  logout: async () => {
+    try {
+      const res = await api.post('/auth/logout');
+      return res;
+    } catch (e) {
+      // حتى لو فشل (شبكة أو 404 قديم قبل نشر) نمسح الكوكي client-side كـ fallback
+      try { document.cookie = 'auth=; Max-Age=0; path=/; domain=.syrz1.com; secure; SameSite=None'; } catch {}
+      throw e;
+    }
+  },
+  admin: {
+    pendingOrders: () => api.get('/admin/pending-orders-count'),
+    pendingDeposits: () => api.get('/admin/pending-deposits-count'),
+  },
+  users: {
+    profile: () => api.get('/users/profile'),
+    profileWithCurrency: () => api.get('/users/profile-with-currency'),
+  }
+};
 
 // helper Ø¨Ø³ÙŠØ· Ù„Ù‚Ø±Ø§Ø¡Ø© ÙƒÙˆÙƒÙŠ Ø¨Ø§Ù„Ø§Ø³Ù…
 function getCookie(name: string): string | null {
@@ -338,7 +336,7 @@ function getCookie(name: string): string | null {
 }
 
 // Ø¯Ø§Ù„Ø© Ù…Ø´ØªØ±ÙƒØ© Ù„Ø¥Ø¶Ø§ÙØ© headers (Ù…ÙˆØ­Ù‘Ø¯Ø©)
-function addTenantHeaders(config: any) {
+function addTenantHeaders(config: any): any {
   config.headers = config.headers || {};
 
   // 1) Ø­Ø§ÙˆÙ„ Ø£Ø®Ø° subdomain Ù…Ù† Ø§Ù„ÙƒÙˆÙƒÙŠ (ÙŠÙÙŠØ¯ Ø£Ø«Ù†Ø§Ø¡ SSR Ø£Ùˆ Ù‚Ø¨Ù„ ØªÙˆÙØ± window)
@@ -347,7 +345,7 @@ function addTenantHeaders(config: any) {
     config.headers['X-Tenant-Host'] = tenantCookie;
   }
 
-  // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§Ø´Ø±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
+  // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§ØšØ±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
   if (typeof window !== 'undefined') {
     const currentHost = window.location.host;          // Ù…Ø«Ø§Ù„: saeed.localhost:3000
     if (currentHost.includes('.localhost')) {
@@ -380,6 +378,7 @@ function addTenantHeaders(config: any) {
   if (typeof window !== 'undefined') {
     let token: string | null = localStorage.getItem('token');
     if (!token) token = getCookie('access_token');
+    if (!token) token = getCookie('auth'); // legacy/httpOnly support
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -388,12 +387,12 @@ function addTenantHeaders(config: any) {
   return config;
 }
 // Patch Ù„Ù„Ù€ fetch Ù„ØªØºØ·ÙŠØ© Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªÙŠ Ù„Ø§ ØªÙ…Ø± Ø¹Ø¨Ø± axios
-if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) {
-  (window as any).__TENANT_FETCH_PATCHED__ = true;
+if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: boolean }).__TENANT_FETCH_PATCHED__) {
+  (window as { __TENANT_FETCH_PATCHED__?: boolean }).__TENANT_FETCH_PATCHED__ = true;
   const originalFetch = window.fetch;
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const newInit: RequestInit = init ? { ...init } : {};
-    const headers = new Headers(newInit.headers || (typeof input === 'object' && (input as any).headers) || {});
+    const headers = new Headers(newInit.headers || (typeof input === 'object' && (input as { headers?: HeadersInit }).headers) || {});
 
     // Ø¥Ù† Ù„Ù… ÙŠÙˆØ¬Ø¯ Ø§Ù„Ø¹Ù†ÙˆØ§Ù† Ø£Ø¶ÙÙÙ‡
     if (!headers.has('X-Tenant-Host')) {
@@ -422,7 +421,8 @@ if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) 
     // Ø£Ø¶Ù Ø§Ù„ØªÙˆÙƒÙ† Ø¥Ù† Ù„Ù… ÙŠÙƒÙ† Ù…ÙˆØ¬ÙˆØ¯Ø§Ù‹
     if (!headers.has('Authorization')) {
       let token: string | null = localStorage.getItem('token');
-      if (!token) token = getCookie('access_token');
+  if (!token) token = getCookie('access_token');
+  if (!token) token = getCookie('auth');
       if (token) headers.set('Authorization', `Bearer ${token}`);
     }
 
@@ -431,7 +431,7 @@ if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) 
   };
 }
 // ØªØ£ÙƒØ¯ Ù…Ù† Ø¹Ø¯Ù… ØªÙƒØ±Ø§Ø± ØªØ³Ø¬ÙŠÙ„ Ù†ÙØ³ Ø§Ù„Ù€ interceptor (Ù†ÙØ­Øµ flag Ø¹Ù„Ù‰ axios Ø§Ù„Ø¹Ø§Ù„Ù…ÙŠ)
-const ANY_AXIOS: any = axios as any;
+const ANY_AXIOS = axios as typeof axios & { __TENANT_HEADERS_ATTACHED__?: boolean };
 if (!ANY_AXIOS.__TENANT_HEADERS_ATTACHED__) {
   ANY_AXIOS.__TENANT_HEADERS_ATTACHED__ = true;
   api.interceptors.request.use((config) => {
@@ -447,14 +447,25 @@ if (!ANY_AXIOS.__TENANT_HEADERS_ATTACHED__) {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (error?.response?.status === 401 && typeof window !== 'undefined') {
-      const p = window.location.pathname || '';
-      const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
-      const onAuthPages  = p === '/login' || p === '/register';
-
-      if (!inBackoffice && !onAuthPages) {
-        localStorage.removeItem('token');
-        window.location.assign('/login');
+    const status = error?.response?.status;
+    const code = error?.response?.data?.code;
+    if (typeof window !== 'undefined') {
+      if (code === 'TENANT_MISMATCH') {
+        try { localStorage.removeItem('token'); } catch {}
+        try { document.cookie = 'tenant_host=; Max-Age=0; path=/'; } catch {}
+        const current = window.location.pathname || '/';
+        if (!/login/.test(current)) {
+          const url = '/login?cause=tenant_mismatch';
+          window.location.replace(url);
+        }
+      } else if (status === 401) {
+        const p = window.location.pathname || '';
+        const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
+        const onAuthPages  = p === '/login' || p === '/register';
+        if (!inBackoffice && !onAuthPages) {
+          try { localStorage.removeItem('token'); } catch {}
+          window.location.assign('/login');
+        }
       }
     }
     return Promise.reject(error);

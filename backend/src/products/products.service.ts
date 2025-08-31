@@ -1,115 +1,98 @@
 // src/products/products.service.ts
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-  BadRequestException,
-  ForbiddenException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Brackets } from 'typeorm';
 import { Product } from './product.entity';
 import { ProductPackage } from './product-package.entity';
 import { PackagePrice } from './package-price.entity';
 import { PriceGroup } from './price-group.entity';
-import { User } from '../user/user.entity';
 import { ProductOrder } from './product-order.entity';
-import { NotificationsService } from '../notifications/notifications.service';
+import { User } from '../user/user.entity';
+import { DistributorPackagePrice } from '../distributor/distributor-package-price.entity';
+import { DistributorUserPriceGroup } from '../distributor/distributor-user-price-group.entity';
+import { CodeItem } from '../codes/code-item.entity';
+import { OrderDispatchLog } from '../codes/order-dispatch-log.entity';
 import { Currency } from '../currencies/currency.entity';
-import { OrderDispatchLog } from './order-dispatch-log.entity';
-import { PackageRouting } from '../integrations/package-routing.entity';
-import { PackageMapping } from '../integrations/package-mapping.entity';
-import { IntegrationsService } from '../integrations/integrations.service';
-import { AccountingPeriodsService } from '../accounting/accounting-periods.service';
-import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { ListOrdersDto } from './dto/list-orders.dto';
-import { CodeItem } from '../codes/entities/code-item.entity';
+import { OrderStatus } from './types';
+import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { isFeatureEnabled } from '../common/feature-flags';
-import {
-  DistributorPackagePrice,
-  DistributorUserPriceGroup,
-} from '../distributor/distributor-pricing.entities';
-
-type OrderView = {
-  id: string;
-  status: string;
-  quantity: number;
-  priceUSD: number;
-  unitPriceUSD: number;
-  display: {
-    currencyCode: string;
-    unitPrice: number;
-    totalPrice: number;
-  };
-  product: { id: string; name: string };
-  package: { id: string; name: string };
-  userIdentifier: string | null;
-  extraField: string | null;
-  createdAt: Date;
-};
-
-export type OrderStatus = 'pending' | 'approved' | 'rejected';
+import { IntegrationsService } from '../integrations/integrations.service';
+import { ProductRouting } from './product-routing.entity';
+import { ProductPackageMapping } from './product-package-mapping.entity';
+import { AccountingService } from '../accounting/accounting.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ProductsService {
   constructor(
-    @InjectRepository(Product) private productsRepo: Repository<Product>,
-    @InjectRepository(ProductPackage)
-    private packagesRepo: Repository<ProductPackage>,
-    @InjectRepository(PackagePrice)
-    private packagePriceRepo: Repository<PackagePrice>,
-    @InjectRepository(PriceGroup)
-    private priceGroupsRepo: Repository<PriceGroup>,
-    @InjectRepository(User) private usersRepo: Repository<User>,
-    @InjectRepository(ProductOrder)
-    private ordersRepo: Repository<ProductOrder>,
-    @InjectRepository(DistributorPackagePrice)
-    private distPkgPriceRepo: Repository<DistributorPackagePrice>,
-    @InjectRepository(DistributorUserPriceGroup)
-    private distUserGroupRepo: Repository<DistributorUserPriceGroup>,
-    @InjectRepository(Currency) private currenciesRepo: Repository<Currency>,
-    @InjectRepository(OrderDispatchLog)
-    private readonly logsRepo: Repository<OrderDispatchLog>,
-    @InjectRepository(PackageRouting)
-    private readonly routingRepo: Repository<PackageRouting>,
-    @InjectRepository(PackageMapping)
-    private readonly mappingRepo: Repository<PackageMapping>,
+    @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
+    @InjectRepository(ProductPackage) private readonly packagesRepo: Repository<ProductPackage>,
+    @InjectRepository(PackagePrice) private readonly packagePriceRepo: Repository<PackagePrice>,
+    @InjectRepository(PriceGroup) private readonly priceGroupsRepo: Repository<PriceGroup>,
+    @InjectRepository(ProductOrder) private readonly ordersRepo: Repository<ProductOrder>,
+    @InjectRepository(User) private readonly usersRepo: Repository<User>,
+    @InjectRepository(DistributorPackagePrice) private readonly distPkgPriceRepo: Repository<DistributorPackagePrice>,
+    @InjectRepository(DistributorUserPriceGroup) private readonly distUserGroupRepo: Repository<DistributorUserPriceGroup>,
+    @InjectRepository(CodeItem) private readonly codeItemRepo: Repository<CodeItem>,
+    @InjectRepository(OrderDispatchLog) private readonly logsRepo: Repository<OrderDispatchLog>,
+    @InjectRepository(Currency) private readonly currenciesRepo: Repository<Currency>,
+    @InjectRepository(ProductRouting) private readonly routingRepo: Repository<ProductRouting>,
+    @InjectRepository(ProductPackageMapping) private readonly mappingRepo: Repository<ProductPackageMapping>,
     private readonly integrations: IntegrationsService,
+    private readonly accounting: AccountingService,
     private readonly notifications: NotificationsService,
-    private readonly accounting: AccountingPeriodsService,
   ) {}
 
-  // Phase2: تفعيل منتج من الكتالوج للـ tenant
-  async activateCatalogProduct(
-    tenantId: string,
-    catalogProductId: string,
-  ): Promise<Product> {
-    if (!catalogProductId)
-      throw new BadRequestException('catalogProductId مطلوب');
-    // تحقق أن الكتالوج منشور وقابل للتفعيل
-    const catalogRow = await this.productsRepo.manager.query(
-      'SELECT id, "isPublishable" FROM catalog_product WHERE id = $1 AND "isPublishable" = true LIMIT 1',
-      [catalogProductId],
-    );
-    if (!catalogRow || catalogRow.length === 0) {
-      throw new NotFoundException('المنتج غير متاح أو غير منشور في الكتالوج');
-    }
-    // تحقق من عدم وجود منتج مفعّل سابقًا لنفس catalogProductId داخل نفس التينانت
-    const existing = await this.productsRepo.findOne({
-      where: { tenantId, catalogProductId } as any,
-    });
-    if (existing) return existing; // idempotent
+  // معرف التينانت الخاص بالمطور (مستودع عالمي)
+  private readonly DEV_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
-    const product = this.productsRepo.create({
-      tenantId,
-      name: 'Catalog Product', // يمكن لاحقًا سحب الاسم من catalog_product
-      description: '',
-      isActive: true,
-      catalogProductId,
-      useCatalogImage: true,
-    } as Partial<Product>);
-    return this.productsRepo.save(product);
+  // Helper: fetch single package by id (lightweight)
+  async findPackageById(id: string): Promise<ProductPackage | null> {
+    if (!id) return null;
+    return this.packagesRepo.findOne({ where: { id } as any });
+  }
+
+  // ✅ تحديث اسم المزود لباقات المنتج
+  async updatePackageProvider(packageId: string, providerName: string) {
+    const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any });
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+    (pkg as any).providerName = providerName;
+    await this.packagesRepo.save(pkg);
+    return { id: pkg.id, providerName };
+  }
+
+  /** ✅ حذف باقة (مع أسعارها) مع دعم الحذف العالمي للمطور */
+  async deletePackage(context: { tenantId?: string | null; role?: string | null; userId?: string | null }, id: string): Promise<void> {
+    const { tenantId, role, userId } = context || {};
+    const pkg = await this.packagesRepo.findOne({ where: { id } as any, relations: ['prices', 'product'] });
+    if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
+
+    const isGlobal = pkg.tenantId === this.DEV_TENANT_ID;
+    const roleLower = (role || '').toLowerCase();
+    const isDevRole = roleLower === 'developer' || roleLower === 'instance_owner';
+
+    console.log('[PKG][DELETE][REQ]', {
+      packageId: id,
+      pkgTenantId: pkg.tenantId,
+      reqTenantId: tenantId || null,
+      isGlobal,
+      role: roleLower || null,
+      userId: userId?.slice(0,8) || null,
+    });
+
+    if (tenantId && pkg.tenantId === tenantId) {
+      // ok
+    } else if (isGlobal && isDevRole) {
+      // allow
+    } else {
+      throw new ForbiddenException('لا تملك صلاحية حذف هذه الباقة');
+    }
+
+    if (Array.isArray(pkg.prices) && pkg.prices.length) {
+      await this.packagePriceRepo.remove(pkg.prices);
+    }
+    await this.packagesRepo.remove(pkg);
   }
 
   // ---------- Helpers خاصة بالـ tenant ----------
@@ -307,13 +290,38 @@ export class ProductsService {
       where: { id, tenantId } as any,
     });
     if (!product) throw new NotFoundException('Product not found');
-    // Store into customImageUrl and disable catalog usage
-    (product as any).customImageUrl = imageUrl;
-    (product as any).useCatalogImage = false;
+  // Store into customImageUrl (catalog system removed)
+  (product as any).customImageUrl = imageUrl;
     return this.productsRepo.save(product);
   }
 
-  async findAllWithPackages(tenantId: string): Promise<any[]> {
+  async findAllWithPackages(tenantId?: string): Promise<any[]> {
+    // Dev fallback: إذا لم يوجد tenantId (صفحة /dev من الدومين الرئيسي أو بدون تسجيل دخول)
+    // سابقاً: كان يتم إرجاع كل المنتجات لكل التينانت مما سبب التباس بأن منتجات المستأجر تظهر كأنها "عالمية".
+    // الآن: نقيّد العرض إلى الحاوية العالمية فقط (DEV_TENANT_ID) عند غياب tenantId.
+    if (!tenantId) {
+      const products = await this.productsRepo.find({
+        where: { tenantId: this.DEV_TENANT_ID } as any,
+        relations: ['packages'],
+        take: 500,
+        order: { name: 'ASC' } as any,
+      });
+      console.log('[PRODUCTS][LIST][NO-TENANT] returned', products.length, 'global products');
+      return products.map((product: any) => {
+        const mapped = this.mapEffectiveImage(product);
+        return {
+          ...product,
+          ...mapped,
+          packages: (product.packages || []).map((pkg: any) => ({
+            ...pkg,
+            basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+            prices: [],
+          })),
+        };
+      });
+    }
+
+    // السياق الطبيعي: مقيّد بالتينانت (لا fallback تلقائي للمنتجات العالمية الآن)
     const products = await this.productsRepo.find({
       where: { tenantId } as any,
       relations: ['packages', 'packages.prices', 'packages.prices.priceGroup'],
@@ -344,6 +352,96 @@ export class ProductsService {
         })),
       };
     });
+  }
+
+  // ===== ✅ استنساخ منتج عالمي (الحاوية العامة) إلى تينانت مستهدف =====
+  async cloneGlobalProductToTenant(globalProductId: string, targetTenantId: string): Promise<Product> {
+    const GLOBAL_ID = this.DEV_TENANT_ID; // نفس المعرف المستخدم كحاوية عالمية
+    // احضار المنتج العالمي مع باقاته
+    const source = await this.productsRepo.findOne({
+      where: { id: globalProductId, tenantId: GLOBAL_ID } as any,
+      relations: ['packages'],
+    });
+    if (!source) throw new NotFoundException('المنتج العالمي غير موجود');
+
+    // فلترة الباقات الصالحة (نشطة ولها publicCode)
+    const validPkgs = (source.packages || []).filter((p: any) => p.isActive && p.publicCode != null);
+    if (validPkgs.length === 0) {
+      throw new UnprocessableEntityException('لا توجد باقات نشطة ذات publicCode لنسخها');
+    }
+
+    // معالجة تعارض الاسم داخل التينانت المستهدف
+    const baseName = source.name?.trim() || 'منتج';
+    let candidate = baseName;
+    const MAX_TRIES = 12;
+    for (let i = 0; i < MAX_TRIES; i++) {
+      const exists = await this.productsRepo.findOne({ where: { tenantId: targetTenantId, name: candidate } as any });
+      if (!exists) break;
+      const suffix = i + 2; // يبدأ من -2
+      candidate = `${baseName}-${suffix}`;
+      if (i === MAX_TRIES - 1) {
+        throw new ConflictException('تعذر إيجاد اسم متاح بعد محاولات متعددة');
+      }
+    }
+
+    // إنشاء المنتج الجديد
+  const newProduct = new Product();
+  newProduct.tenantId = targetTenantId;
+  newProduct.name = candidate;
+  newProduct.description = source.description || undefined;
+  // حفظ مرجع المنتج العالمي الأصلي
+  (newProduct as any).sourceGlobalProductId = source.id;
+  (newProduct as any).customImageUrl = (source as any).customImageUrl || undefined;
+  (newProduct as any).customAltText = (source as any).customAltText || undefined;
+  (newProduct as any).thumbSmallUrl = (source as any).thumbSmallUrl || undefined;
+  (newProduct as any).thumbMediumUrl = (source as any).thumbMediumUrl || undefined;
+  (newProduct as any).thumbLargeUrl = (source as any).thumbLargeUrl || undefined;
+  newProduct.isActive = true;
+  const savedProduct = await this.productsRepo.save(newProduct);
+
+    // نسخ الباقات
+    const clones: ProductPackage[] = [];
+    for (const pkg of validPkgs) {
+  const clone = new ProductPackage();
+  clone.tenantId = targetTenantId;
+  clone.publicCode = pkg.publicCode;
+  clone.name = pkg.name;
+  clone.description = pkg.description || undefined;
+  clone.imageUrl = pkg.imageUrl || undefined;
+  clone.basePrice = (pkg.basePrice ?? pkg.capital ?? 0) as any;
+  clone.capital = (pkg.capital ?? pkg.basePrice ?? 0) as any;
+  clone.providerName = pkg.providerName || undefined;
+  clone.isActive = true;
+  clone.product = savedProduct;
+  const savedClone = await this.packagesRepo.save(clone);
+      clones.push(savedClone);
+    }
+    (savedProduct as any).packages = clones;
+    return savedProduct;
+  }
+
+  // ===== ✅ قائمة المنتجات العالمية مع عدد الباقات النشطة ذات publicCode =====
+  async listGlobalProducts(): Promise<any[]> {
+    const GLOBAL_ID = this.DEV_TENANT_ID;
+    const rows = await this.productsRepo.find({
+      where: { tenantId: GLOBAL_ID } as any,
+      relations: ['packages'],
+      order: { name: 'ASC' } as any,
+      take: 800,
+    });
+    return rows
+      .map((product: any) => {
+        const mapped = this.mapEffectiveImage(product);
+        const activePackages = (product.packages || []).filter((p: any) => p.isActive && p.publicCode != null);
+        return {
+          id: product.id,
+            name: product.name,
+          packagesActiveCount: activePackages.length,
+          hasAny: activePackages.length > 0,
+          imageUrl: mapped.imageUrl || null,
+        };
+      })
+      .filter(p => p.packagesActiveCount > 0);
   }
 
   async findOneWithPackages(tenantId: string, id: string): Promise<any> {
@@ -378,8 +476,151 @@ export class ProductsService {
     };
   }
 
+  // ===== ✅ منتجات وباقات مرئية للمتجر فقط (publicCode != NULL) =====
+  async getTenantVisibleProducts(tenantId: string): Promise<any[]> {
+    const qb = this.productsRepo.createQueryBuilder('prod')
+      .leftJoinAndSelect('prod.packages', 'pkg')
+      .leftJoinAndSelect('pkg.prices', 'pp')
+      .leftJoinAndSelect('pp.priceGroup', 'pg')
+      .where('prod.tenantId = :tenantId', { tenantId })
+  .andWhere('prod.isActive = TRUE')
+      .andWhere('pkg.publicCode IS NOT NULL')
+      .andWhere('pkg.isActive = TRUE');
+
+    const products = await qb.getMany();
+    const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
+
+    return products.map((product: any) => {
+      // أعد استخدام المنطق نفسه لإضافة الصورة الفعالة والأسعار بطريقة موحدة
+      const mapped = this.mapEffectiveImage(product);
+      return {
+        ...product,
+        ...mapped,
+        packages: (product.packages || []).filter((pkg: any) => pkg.publicCode != null && pkg.isActive).map((pkg: any) => ({
+          ...pkg,
+          basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+          prices: allPriceGroups.map((group) => {
+            const existingPrice = (pkg.prices || []).find(
+              (price: any) => price.priceGroup?.id === group.id,
+            );
+            return {
+              id: existingPrice?.id ?? null,
+              groupId: group.id,
+              groupName: group.name,
+              price: existingPrice?.price ?? 0,
+            };
+          }),
+        })),
+      };
+    });
+  }
+
+  async getTenantVisibleProductById(tenantId: string, productId: string): Promise<any> {
+    // لا تشترط وجود باقات نشطة لاعتبار المنتج موجودًا
+    const qb = this.productsRepo.createQueryBuilder('prod')
+      .leftJoinAndSelect('prod.packages', 'pkg')
+      .leftJoinAndSelect('pkg.prices', 'pp')
+      .leftJoinAndSelect('pp.priceGroup', 'pg')
+      .where('prod.tenantId = :tenantId', { tenantId })
+      .andWhere('prod.id = :productId', { productId });
+
+    const product: any = await qb.getOne();
+    if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
+
+    const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
+    const mapped = this.mapEffectiveImage(product);
+    return {
+      ...product,
+      ...mapped,
+      packages: (product.packages || []).filter((pkg: any) => pkg.publicCode != null && pkg.isActive).map((pkg: any) => ({
+        ...pkg,
+        basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+        prices: allPriceGroups.map((group) => {
+          const existingPrice = (pkg.prices || []).find(
+            (price: any) => price.priceGroup?.id === group.id,
+          );
+          return {
+            id: existingPrice?.id ?? null,
+            groupId: group.id,
+            groupName: group.name,
+            price: existingPrice?.price ?? 0,
+          };
+        }),
+      })),
+    };
+  }
+
+  // ===== ✅ الجسور المتاحة لمنتج (أكواد publicCode من المنتج العالمي المصدر غير الموجودة محلياً) =====
+  async getAvailableBridges(tenantId: string, productId: string): Promise<number[]> {
+    const product = await this.productsRepo.findOne({ where: { id: productId, tenantId } as any });
+    if (!product) throw new NotFoundException('المنتج غير موجود');
+    // محاولة استدلال المنتج العالمي للمستنسخات القديمة التي لا تحمل مرجعاً
+    if (!(product as any).sourceGlobalProductId) {
+      try {
+        // 1) جمع أكواد الباقات المحلية (نشطة أو لا) للمقارنة
+        const localPkgs = await this.packagesRepo.find({ where: { product: { id: productId } } as any });
+        const localCodes = new Set<number>(localPkgs.filter(p => p.publicCode != null).map(p => p.publicCode as number));
+        if (localCodes.size > 0) {
+          // 2) محاولة مطابقة بالاسم أولاً
+          const sameNameGlobals = await this.productsRepo.find({ where: { tenantId: this.DEV_TENANT_ID, name: product.name } as any, relations: ['packages'] });
+          let inferred: any = null;
+          if (sameNameGlobals.length === 1) {
+            const overlap = (sameNameGlobals[0].packages || []).some((gp: any) => gp.publicCode != null && localCodes.has(gp.publicCode));
+            if (overlap) inferred = sameNameGlobals[0];
+          }
+          // 3) إن لم ينجح بالاسم، ابحث عن منتج عالمي يشارك ≥2 أكواد أو (1 كود إذا لم يوجد أكثر)
+          if (!inferred) {
+            const allGlobals = await this.productsRepo.find({ where: { tenantId: this.DEV_TENANT_ID } as any, relations: ['packages'] });
+            let best: any = null; let bestOverlap = 0;
+            for (const g of allGlobals) {
+              const overlapCount = (g.packages || []).reduce((acc: number, gp: any) => acc + (gp.publicCode != null && localCodes.has(gp.publicCode) ? 1 : 0), 0);
+              if (overlapCount > bestOverlap) { bestOverlap = overlapCount; best = g; }
+            }
+            if (best && (bestOverlap >= 2 || (bestOverlap === 1 && localCodes.size === 1))) {
+              inferred = best;
+            }
+          }
+          if (inferred) {
+            (product as any).sourceGlobalProductId = inferred.id;
+            try { await this.productsRepo.update(product.id, { sourceGlobalProductId: inferred.id } as any); } catch { /* ignore persist error */ }
+          }
+        }
+      } catch (e) {
+        // تجاهل أخطاء الاستدلال ولا تُفشل الطلب الأساسي
+      }
+    }
+    if (!(product as any).sourceGlobalProductId) return [];
+    const globalId = (product as any).sourceGlobalProductId as string;
+    // جلب الباقات العالمية المصدر
+    const global = await this.productsRepo.findOne({ where: { id: globalId, tenantId: this.DEV_TENANT_ID } as any, relations: ['packages'] });
+    if (!global) return [];
+    const globalCodes = new Set<number>(
+      (global.packages || [])
+        .filter((p: any) => p.isActive && p.publicCode != null)
+        .map((p: any) => p.publicCode as number)
+    );
+    // جلب الباقات المحلية (نشطة أو معطلة) لإخفاء الأكواد المستخدمة
+    const localPkgs = await this.packagesRepo.find({ where: { product: { id: productId } } as any });
+    for (const lp of localPkgs) {
+      if (lp.publicCode != null) globalCodes.delete(lp.publicCode as any);
+    }
+    return Array.from(globalCodes).sort((a,b)=>a-b);
+  }
+
   async create(product: Product): Promise<Product> {
-    return this.productsRepo.save(product);
+    try {
+  // تأكد من وجود قيم افتراضية لكل الحقول لتجنّب أي قيود مستقبلية
+  if (!product.name) product.name = 'منتج جديد';
+  if (product.isActive === undefined) product.isActive = true;
+  // إذا أنشأ المطوّر منتجًا جديدًا (ليس نسخة من مصدر آخر) عيّنه كمصدر
+  // حافظ على nulls الاختيارية كما هي
+      const saved = await this.productsRepo.save(product);
+      console.log('[PRODUCTS][SERVICE] created product id=', saved.id, 'tenantId=', saved.tenantId);
+      return saved;
+    } catch (e) {
+      console.error('[PRODUCTS][SERVICE][ERROR] create failed:', e);
+      throw e;
+    }
   }
 
   async update(
@@ -395,12 +636,37 @@ export class ProductsService {
     return this.productsRepo.save(product);
   }
 
-  async delete(tenantId: string, id: string): Promise<void> {
-    const product = await this.productsRepo.findOne({
-      where: { id, tenantId } as any,
-    });
+  async delete(opts: { tenantId?: string | null; role?: string | null; allowGlobal?: boolean }, id: string): Promise<void> {
+    const { tenantId, role, allowGlobal } = opts || {};
+    const roleLower = (role || '').toLowerCase();
+    const isDev = roleLower === 'developer' || roleLower === 'instance_owner';
+
+    if (!tenantId) {
+      if (!(isDev && allowGlobal)) {
+        throw new ForbiddenException('لا يوجد سياق مستأجر صالح للحذف');
+      }
+    }
+
+    const where: any = { id };
+    if (tenantId) where.tenantId = tenantId;
+    else if (isDev && allowGlobal) where.tenantId = this.DEV_TENANT_ID;
+
+    const product = await this.productsRepo.findOne({ where });
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
+
+    // حواجز حماية إضافية: منع مطور من حذف منتج تينانت آخر لو مر tenantId خاطئ
+    if (product.tenantId !== (where.tenantId)) {
+      throw new ForbiddenException('عدم تطابق سياق المنتج مع التينانت');
+    }
+
+    // إن كان حذف عالمي تأكد من أنه فعلاً عالمي
+    if (allowGlobal && isDev && product.tenantId !== this.DEV_TENANT_ID) {
+      throw new ForbiddenException('هذا المنتج ليس ضمن الحاوية العالمية');
+    }
+
+    console.log('[PRODUCTS][DELETE][REQ]', { id: product.id, tenantId: product.tenantId, byRole: roleLower, allowGlobal });
     await this.productsRepo.remove(product);
+    console.log('[PRODUCTS][DELETE][DONE]', { id: product.id, global: product.tenantId === this.DEV_TENANT_ID });
   }
 
   async createPriceGroup(
@@ -436,13 +702,9 @@ export class ProductsService {
   async getUsersPriceGroups(
     tenantId: string,
   ): Promise<{ id: string; name: string; usersCount: number }[]> {
-    const result = await this.priceGroupsRepo
+    const rows = await this.priceGroupsRepo
       .createQueryBuilder('pg')
-      .leftJoin(
-        'users',
-        'u',
-        'u."priceGroupId" = pg.id AND u."tenantId" = :tenantId',
-      )
+      .leftJoin('users', 'u', 'u."priceGroupId" = pg.id AND u."tenantId" = :tenantId')
       .select('pg.id', 'id')
       .addSelect('pg.name', 'name')
       .addSelect('COUNT(u.id)', 'usersCount')
@@ -450,17 +712,10 @@ export class ProductsService {
       .setParameter('tenantId', tenantId)
       .groupBy('pg.id, pg.name')
       .getRawMany();
-
-    return result.map((row) => ({
-      id: row.id,
-      name: row.name,
-      usersCount: parseInt(row.usersCount) || 0,
-    }));
+    return rows.map(r => ({ id: r.id, name: r.name, usersCount: Number.parseInt(r.usersCount, 10) || 0 }));
   }
 
-  // =====================================
   // 🔹 مجموعات الأسعار
-  // =====================================
 
   async getPriceGroups(tenantId: string): Promise<PriceGroup[]> {
     return this.priceGroupsRepo.find({ where: { tenantId } as any });
@@ -469,42 +724,38 @@ export class ProductsService {
   async addPackageToProduct(
     tenantId: string,
     productId: string,
-    data: Partial<ProductPackage> & { catalogLinkCode?: string },
+    data: Partial<ProductPackage>,
     ctx?: { userId?: string; finalRole?: string },
   ): Promise<ProductPackage> {
-    if (!data.name || !data.name.trim())
-      throw new ConflictException('اسم الباقة مطلوب');
+    // Lightweight debug log
+    try {
+      console.log('[PKG][CREATE][START]', {
+        tenantId: tenantId?.slice(0, 8),
+        productId: productId?.slice(0, 8),
+        name: data?.name,
+        publicCode: (data as any)?.publicCode,
+        by: ctx?.finalRole || 'unknown',
+      });
+    } catch {}
+    if (!data.name || !data.name.trim()) throw new ConflictException('اسم الباقة مطلوب');
 
-    const product = await this.productsRepo.findOne({
+    let product = await this.productsRepo.findOne({
       where: { id: productId, tenantId } as any,
       relations: ['packages'],
     });
-    if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
-
-    if (isFeatureEnabled('catalogLinking')) {
-      if (!product.catalogProductId) {
-        throw new BadRequestException(
-          'catalogProductId مفقود للمنتج؛ لا يمكن إنشاء باقة (ربط الكتالوج مفعل)',
-        );
-      }
-      const link = (data as any).catalogLinkCode?.trim();
-      if (!link) throw new BadRequestException('catalogLinkCode مطلوب');
-      // تحقق وجود linkCode في catalog_package لنفس catalogProductId
-      const row = await this.productsRepo.manager.query(
-        'SELECT 1 FROM catalog_package WHERE "catalogProductId" = $1 AND "linkCode" = $2 LIMIT 1',
-        [product.catalogProductId, link],
-      );
-      if (!row || row.length === 0) {
-        throw new BadRequestException(
-          'catalogLinkCode غير صالح لهذا المنتج الكتالوجي',
-        );
-      }
-      (data as any).catalogLinkCode = link;
-      // إن كان الدور موزّع سجل من أنشأ الباقة
-      if (ctx?.finalRole === 'distributor' && ctx?.userId) {
-        (data as any).createdByDistributorId = ctx.userId;
-      }
+    if (!product) {
+      // محاولة بديلة: إن كان المستخدم مطوّرًا، اسمح له بالوصول لمنتج "مصدر" حتى لو لم يطابق tenantId
+      const alt = await this.productsRepo.findOne({ where: { id: productId } as any, relations: ['packages'] });
+      // المنتج يجب أن يكون ضمن نفس المستأجر الآن بعد إزالة منطق المصدر/الاستنساخ
+      console.warn('[PKG][CREATE][NF] product not found for tenant', {
+        productId: productId?.slice(0,8), tenantId: tenantId?.slice(0,8), role: ctx?.finalRole,
+      });
+      throw new NotFoundException('المنتج غير موجود في هذا المستأجر');
     }
+
+  // Catalog linking removed: no catalogLinkCode validation required.
+
+  // catalogLinking feature removed: no validation
 
     const initialCapital = Number(data.capital ?? data.basePrice ?? 0);
 
@@ -517,9 +768,32 @@ export class ProductsService {
       isActive: data.isActive ?? true,
       imageUrl: data.imageUrl,
       product,
-      catalogLinkCode: (data as any).catalogLinkCode || null,
       createdByDistributorId: (data as any).createdByDistributorId || null,
+      providerName: (data as any).providerName || null,
     } as Partial<ProductPackage>);
+
+    // اختيارياً: ضبط publicCode أثناء الإنشاء إن وُفّر
+    if (data.publicCode != null) {
+      const pc = Number(data.publicCode);
+      if (Number.isInteger(pc) && pc > 0) {
+        // تحقق أنه غير مستخدم داخل نفس المنتج فقط
+        const existing = await this.packagesRepo.findOne({ where: { product: { id: product.id }, publicCode: pc } as any, relations: ['product'] });
+        if (existing) {
+          console.warn('[PKG][CREATE][ERR] publicCode already used in product', { publicCode: pc, productId: product.id });
+          const err: any = new ConflictException('الكود مستخدم داخل نفس المنتج');
+          (err as any).code = 'PKG_PUBLIC_CODE_CONFLICT';
+          throw err;
+        }
+  // لم يعد هناك كتالوج: نسمح بالكود إذا غير مكرر فقط
+  if (product) console.log('[PKG][CREATE][INFO] assigning publicCode', { pc, productId: product.id });
+        (newPackage as any).publicCode = pc;
+      } else if (data.publicCode !== null) {
+        console.warn('[PKG][CREATE][ERR] invalid publicCode value', { value: data.publicCode });
+  const err: any = new BadRequestException('publicCode غير صالح (يجب أن يكون رقمًا موجبًا)');
+  err.code = 'PKG_PUBLIC_CODE_INVALID';
+  throw err;
+      }
+    }
 
     // ✅ ثبّت النوع هنا
     const saved: ProductPackage = await this.packagesRepo.save(newPackage);
@@ -539,21 +813,17 @@ export class ProductsService {
     await this.packagePriceRepo.save(prices);
 
     (saved as any).prices = prices;
-    return saved;
+    try {
+      console.log('[PKG][CREATE][OK]', {
+        id: saved.id?.slice(0, 8),
+        publicCode: (saved as any).publicCode,
+        capital: saved.capital,
+      });
+    } catch {}
+    return saved as ProductPackage;
   }
 
-  /** ✅ حذف باقة (مع أسعارها) */
-  async deletePackage(tenantId: string, id: string): Promise<void> {
-    const pkg = await this.packagesRepo.findOne({
-      where: { id, tenantId } as any,
-      relations: ['prices'],
-    });
-    if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
-
-    if (Array.isArray(pkg.prices) && pkg.prices.length)
-      await this.packagePriceRepo.remove(pkg.prices);
-    await this.packagesRepo.remove(pkg);
-  }
+  // deletePackage + updatePackageProvider already defined later (deduplicated above)
 
   /** ✅ تحديث رأس المال وأسعار الباقة لكل مجموعة */
   async updatePackagePrices(
@@ -630,10 +900,7 @@ export class ProductsService {
   }
 
   // ================== التسعير الأساس (بالدولار) ==================
-  private async getEffectivePriceUSD(
-    packageId: string,
-    userId: string,
-  ): Promise<number> {
+  private async getEffectivePriceUSD(packageId: string, userId: string): Promise<number> {
     const [pkg, user] = await Promise.all([
       this.packagesRepo.findOne({
         where: { id: packageId } as any,
@@ -1195,7 +1462,7 @@ export class ProductsService {
     return created.view;
   }
 
-  // داخل class ProductsService
+  // === Orders & Listing ===
   async getAllOrders(status?: OrderStatus, tenantId?: string) {
     // ✅ اجلب أسعار العملات ضمن نفس التينانت (لو مُمرَّر)، وإلا fallback للكل
     const currencies = await (tenantId
@@ -1495,7 +1762,6 @@ export class ProductsService {
     });
   }
 
-  // =============== ✅ تجميد FX عند الاعتماد (Idempotent) ===============
   private async freezeFxOnApprovalIfNeeded(orderId: string): Promise<void> {
     const order = await this.ordersRepo.findOne({
       where: { id: orderId } as any,
@@ -1731,7 +1997,6 @@ export class ProductsService {
     return saved;
   }
 
-  // ================== أدوات مساعدة للعرض ==================
   private async getUserDisplayContext(userId: string, tenantId?: string) {
     const user = await this.usersRepo.findOne({
       where: { id: userId } as any,
@@ -1765,16 +2030,14 @@ export class ProductsService {
       id: product.id,
       name: product.name,
       description: (product as any)['description'] ?? null,
-      imageUrl: img.imageUrl, // effective
-      imageSource: img.imageSource,
-      useCatalogImage: img.useCatalogImage,
-      hasCustomImage: img.hasCustomImage,
-      customImageUrl: img.customImageUrl,
-      catalogAltText: (product as any).catalogAltText ?? null,
-      customAltText: (product as any).customAltText ?? null,
-      thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
-      thumbMediumUrl: (product as any).thumbMediumUrl ?? null,
-      thumbLargeUrl: (product as any).thumbLargeUrl ?? null,
+  imageUrl: img.imageUrl,
+  imageSource: img.imageSource,
+  hasCustomImage: img.hasCustomImage,
+  customImageUrl: img.customImageUrl,
+  customAltText: (product as any).customAltText ?? null,
+  thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
+  thumbMediumUrl: (product as any).thumbMediumUrl ?? null,
+  thumbLargeUrl: (product as any).thumbLargeUrl ?? null,
     };
 
     return {
@@ -1845,46 +2108,14 @@ export class ProductsService {
     };
   }
 
-  // ================== Image Fallback Helper ==================
   /**
-   * Compute effective image for product.
-   * Priority: if customImageUrl present & useCatalogImage=false => effective = customImageUrl (imageSource='custom')
-   * else if imageUrl present (legacy / catalog) => effective = imageUrl (imageSource='catalog')
-   * else null.
+   * Compute effective image for product (catalog removed): just returns customImageUrl if present.
    */
   private mapEffectiveImage(product: any) {
     const customImageUrl = product.customImageUrl ?? null;
-    const useCatalogImage =
-      product.useCatalogImage !== undefined ? !!product.useCatalogImage : true;
-    const catalogImage = product.catalogImageUrl ?? null;
-
-    let effective = null;
-    let source: 'custom' | 'catalog' | null = null;
-
-    if (customImageUrl && useCatalogImage === false) {
-      effective = customImageUrl;
-      source = 'custom';
-    } else if (catalogImage) {
-      effective = catalogImage;
-      source = 'catalog';
-    }
-
-    if (!isFeatureEnabled('productImageFallback')) {
-      return {
-        imageUrl: catalogImage,
-        imageSource: null,
-        hasCustomImage: false,
-        customImageUrl: null,
-        useCatalogImage: true,
-      };
-    }
-    return {
-      imageUrl: effective,
-      imageSource: source,
-      hasCustomImage: !!customImageUrl,
-      customImageUrl,
-      useCatalogImage,
-    };
+  const effective = customImageUrl || null;
+  const source: 'custom' | null = customImageUrl ? 'custom' : null;
+  return { imageUrl: effective, imageSource: source, hasCustomImage: !!customImageUrl, customImageUrl };
   }
 
   async listOrdersWithPagination(dto: ListOrdersDto, tenantId?: string) {
@@ -2051,323 +2282,13 @@ export class ProductsService {
     }
 
     const items = pageItems.map((o) => {
-      const priceUSD = Number((o as any).price || 0);
-      const unitPriceUSD = o.quantity
-        ? priceUSD / Number(o.quantity)
-        : priceUSD;
-
-      const isExternal = !!(o.providerId && o.externalOrderId);
-      const providerType = o.providerId
-        ? providerKind.get(o.providerId)
-        : undefined;
-
-      const frozen = frozenMap.get(o.id);
-      const isFrozen = !!(frozen && frozen.fxLocked && o.status === 'approved');
-
-      let sellTRY: number;
-      let costTRY: number;
-      let profitTRY: number;
-
-      if (isFrozen) {
-        sellTRY = Number((frozen.sellTryAtApproval ?? 0).toFixed(2));
-        costTRY = Number((frozen.costTryAtApproval ?? 0).toFixed(2));
-        const pf =
-          frozen.profitTryAtApproval != null
-            ? Number(frozen.profitTryAtApproval)
-            : sellTRY - costTRY;
-        profitTRY = Number(pf.toFixed(2));
-      } else {
-        if (isExternal) {
-          const amt = Math.abs(Number((o as any).costAmount ?? 0));
-          let cur = String((o as any).costCurrency || '')
-            .toUpperCase()
-            .trim();
-          if (providerType === 'znet') cur = 'TRY';
-          if (!cur) cur = 'USD';
-          costTRY = toTRY(amt, cur);
-        } else {
-          const baseUSD = Number(
-            (o as any).package?.basePrice ?? (o as any).package?.capital ?? 0,
-          );
-          const qty = Number(o.quantity ?? 1);
-          costTRY = baseUSD * qty * TRY_RATE;
-        }
-
-        sellTRY = priceUSD * TRY_RATE;
-        profitTRY = sellTRY - costTRY;
-
-        sellTRY = Number(sellTRY.toFixed(2));
-        costTRY = Number(costTRY.toFixed(2));
-        profitTRY = Number(profitTRY.toFixed(2));
-      }
-
-      const userRate = (o as any).user?.currency
-        ? Number((o as any).user.currency.rate)
-        : 1;
-      const userCode = (o as any).user?.currency
-        ? (o as any).user.currency.code
-        : 'USD';
-      const totalUser = priceUSD * userRate;
-      const unitUser = unitPriceUSD * userRate;
-
-      const username = (o as any).user?.username ?? null;
-      const userEmail = (o as any).user?.email ?? null;
-
-      return {
-        id: o.id,
-        orderNo: (o as any).orderNo ?? null,
-        status: o.status,
-        createdAt:
-          o.createdAt?.toISOString?.() ??
-          new Date(o.createdAt as any).toISOString(),
-        username,
-        userEmail,
-
-        providerId: o.providerId ?? null,
-        externalOrderId: o.externalOrderId ?? null,
-        userIdentifier: o.userIdentifier ?? null,
-        extraField: (o as any).extraField ?? null,
-        quantity: o.quantity,
-
-        priceUSD,
-        unitPriceUSD,
-        display: {
-          currencyCode: userCode,
-          unitPrice: unitUser,
-          totalPrice: totalUser,
-        },
-
-        currencyTRY: 'TRY',
-        sellTRY,
-        costTRY,
-        profitTRY,
-
-        product: o.product
-          ? {
-              id: o.product.id,
-              name: o.product.name,
-              imageUrl: pickImage(o.product),
-            }
-          : null,
-        package: o.package
-          ? {
-              id: o.package.id,
-              name: o.package.name,
-              imageUrl: pickImage(o.package),
-            }
-          : null,
-
-        sentAt: (o as any).sentAt
-          ? ((o as any).sentAt.toISOString?.() ?? null)
-          : null,
-        completedAt: (o as any).completedAt
-          ? ((o as any).completedAt.toISOString?.() ?? null)
-          : null,
-
-        fxLocked: isFrozen,
-        approvedLocalDate: frozen?.approvedLocalDate ?? null,
-
-        providerMessage:
-          (o as any).providerMessage ?? (o as any).lastMessage ?? null,
-        pinCode: (o as any).pinCode ?? null,
-        notesCount: Array.isArray((o as any).notes)
-          ? (o as any).notes.length
-          : 0,
-        manualNote: (o as any).manualNote ?? null,
-        lastMessage: (o as any).lastMessage ?? null,
-      };
-    });
-
-    const last = items[items.length - 1] || null;
-    const nextCursor = last
-      ? encodeCursor(toEpochMs(new Date(last.createdAt)), String(last.id))
-      : null;
-
-    return {
-      items,
-      pageInfo: { nextCursor, hasMore },
-      meta: {
-        limit,
-        appliedFilters: {
-          q: dto.q || '',
-          status: dto.status || '',
-          method: dto.method || '',
-          from: dto.from || '',
-          to: dto.to || '',
-        },
-      },
-    };
-  }
-
-  async listOrdersForAdmin(dto: ListOrdersDto, tenantId?: string) {
-    const limit = Math.max(1, Math.min(100, dto.limit ?? 25));
-    const cursor = decodeCursor(dto.cursor);
-
-    // ✅ أسعار العملات حسب التينانت
-    const currencies = await (tenantId
-      ? this.currenciesRepo.find({ where: { tenantId } as any })
-      : this.currenciesRepo.find());
-    const getRate = (code: string) => {
-      const row = currencies.find(
-        (c) => c.code.toUpperCase() === code.toUpperCase(),
-      );
-      return row ? Number(row.rate) : undefined;
-    };
-    const TRY_RATE = getRate('TRY') ?? 1;
-    const toTRY = (amount: number, code?: string) => {
-      const c = (code || 'TRY').toUpperCase();
-      if (c === 'TRY') return amount;
-      const r = getRate(c);
-      if (!r || !Number.isFinite(r) || r <= 0) return amount;
-      return amount * (TRY_RATE / r);
-    };
-
-    const pickImage = (obj: any): string | null =>
-      obj
-        ? (obj.imageUrl ??
-          obj.image ??
-          obj.logoUrl ??
-          obj.iconUrl ??
-          obj.icon ??
-          null)
-        : null;
-
-    const providersMap = new Map<string, string>();
-    if (tenantId) {
-      const integrations = await this.integrations.list(tenantId);
-      for (const it of integrations as any[])
-        providersMap.set(it.id, it.provider);
-    }
-
-    const qb = this.ordersRepo
-      .createQueryBuilder('o')
-      .leftJoinAndSelect('o.user', 'u')
-      .leftJoinAndSelect('u.currency', 'uc')
-      .leftJoinAndSelect('o.product', 'prod')
-      .leftJoinAndSelect('o.package', 'pkg');
-
-    if (dto.status) qb.andWhere('o.status = :status', { status: dto.status });
-
-    if (dto.method === 'manual') {
-      qb.andWhere('(o.providerId IS NULL OR o.externalOrderId IS NULL)');
-    } else if (dto.method) {
-      qb.andWhere('o.providerId = :pid AND o.externalOrderId IS NOT NULL', {
-        pid: dto.method,
-      });
-    }
-
-    if (dto.from)
-      qb.andWhere('o.createdAt >= :from', {
-        from: new Date(dto.from + 'T00:00:00Z'),
-      });
-    if (dto.to)
-      qb.andWhere('o.createdAt <= :to', {
-        to: new Date(dto.to + 'T23:59:59Z'),
-      });
-
-    const _q = (dto.q ?? '').trim();
-    if (_q && /^\d+$/.test(_q)) {
-      const qd = _q;
-      qb.andWhere(
-        new Brackets((b) => {
-          b.where('CAST(o.orderNo AS TEXT) = :qd', { qd })
-            .orWhere('o.userIdentifier = :qd', { qd })
-            .orWhere('o.externalOrderId = :qd', { qd });
-        }),
-      );
-    } else if (_q) {
-      const q = `%${_q.toLowerCase()}%`;
-      qb.andWhere(
-        new Brackets((b) => {
-          b.where('LOWER(prod.name) LIKE :q', { q })
-            .orWhere('LOWER(pkg.name) LIKE :q', { q })
-            .orWhere('LOWER(u.username) LIKE :q', { q })
-            .orWhere('LOWER(u.email) LIKE :q', { q })
-            .orWhere('LOWER(o.userIdentifier) LIKE :q', { q })
-            .orWhere('LOWER(o.externalOrderId) LIKE :q', { q });
-        }),
-      );
-    }
-
-    // 🔐 تقييد المستأجر
-    this.addTenantWhere(qb, 'u', tenantId);
-
-    if (cursor) {
-      qb.andWhere(
-        new Brackets((b) => {
-          b.where('o.createdAt < :cts', { cts: new Date(cursor.ts) }).orWhere(
-            new Brackets((bb) => {
-              bb.where('o.createdAt = :cts', {
-                cts: new Date(cursor.ts),
-              }).andWhere('o.id < :cid', { cid: cursor.id });
-            }),
-          );
-        }),
-      );
-    }
-
-    qb.orderBy('o.createdAt', 'DESC')
-      .addOrderBy('o.id', 'DESC')
-      .take(limit + 1);
-
-    const rows = await qb.getMany();
-    const hasMore = rows.length > limit;
-    const pageItems = hasMore ? rows.slice(0, limit) : rows;
-
-    const approvedIds = pageItems
-      .filter((o) => o.status === 'approved')
-      .map((o) => o.id);
-    let frozenMap = new Map<
-      string,
-      {
-        fxLocked: boolean;
-        sellTryAtApproval: number | null;
-        costTryAtApproval: number | null;
-        profitTryAtApproval: number | null;
-        approvedLocalDate: string | null;
-      }
-    >();
-    if (approvedIds.length) {
-      const rowsFrozen = await this.ordersRepo.query(
-        `SELECT id,
-                COALESCE("fxLocked", false)           AS "fxLocked",
-                "sellTryAtApproval",
-                "costTryAtApproval",
-                "profitTryAtApproval",
-                "approvedLocalDate"
-          FROM "product_orders"
-          WHERE id = ANY($1::uuid[])`,
-        [approvedIds],
-      );
-      frozenMap = new Map(
-        rowsFrozen.map((r: any) => [
-          String(r.id),
-          {
-            fxLocked: !!r.fxLocked,
-            sellTryAtApproval:
-              r.sellTryAtApproval != null ? Number(r.sellTryAtApproval) : null,
-            costTryAtApproval:
-              r.costTryAtApproval != null ? Number(r.costTryAtApproval) : null,
-            profitTryAtApproval:
-              r.profitTryAtApproval != null
-                ? Number(r.profitTryAtApproval)
-                : null,
-            approvedLocalDate: r.approvedLocalDate
-              ? String(r.approvedLocalDate)
-              : null,
-          },
-        ]),
-      );
-    }
-
-    const items = pageItems.map((o) => {
       const priceUSD = Number(o.price || 0);
       const unitPriceUSD = o.quantity
         ? priceUSD / Number(o.quantity)
         : priceUSD;
 
       const providerType = o.providerId
-        ? providersMap.get(o.providerId)
+        ? providerKind.get(o.providerId)
         : undefined;
       const isExternal = !!(o.providerId && o.externalOrderId);
 
@@ -2423,12 +2344,12 @@ export class ProductsService {
         product: {
           id: o.product?.id,
           name: o.product?.name,
-          imageUrl: pickImage((o as any).product),
+          imageUrl: pickImage(o.product),
         },
         package: {
           id: o.package?.id,
           name: o.package?.name,
-          imageUrl: pickImage((o as any).package),
+          imageUrl: pickImage(o.package),
         },
 
         status: o.status,
@@ -2568,5 +2489,61 @@ export class ProductsService {
         (order as any).providerMessage ?? (order as any).lastMessage ?? null,
       notes: Array.isArray((order as any).notes) ? (order as any).notes : [],
     };
+  }
+
+  // ===== ✅ تحديث publicCode لباقـة (فريد عالميًا) =====
+  async updatePackageCode(id: string, code: number | null | undefined) {
+    const pkg = await this.packagesRepo.findOne({ where: { id } as any });
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+
+    if (code == null) {
+      await this.packagesRepo.update({ id }, { publicCode: null });
+      return { ok: true, id, publicCode: null };
+    }
+
+    const trimmed = Number(code);
+    if (!Number.isInteger(trimmed) || trimmed < 1) {
+      throw new BadRequestException('publicCode يجب أن يكون رقمًا صحيحًا موجبًا');
+    }
+
+    let finalCode = trimmed;
+    const conflict = await this.packagesRepo.findOne({ where: { publicCode: finalCode } as any });
+    if (conflict && conflict.id !== id) {
+      const alt = finalCode + 1;
+      const altConflict = await this.packagesRepo.findOne({ where: { publicCode: alt } as any });
+      if (!altConflict) {
+        finalCode = alt;
+      } else {
+        throw new ConflictException('الكود مستخدم بالفعل (Conflict)');
+      }
+    }
+
+    await this.packagesRepo.update({ id }, { publicCode: finalCode });
+    return { ok: true, id, publicCode: finalCode };
+  }
+
+  // ===== ✅ تعديل أساسي لحقول الباقة (الاسم، الوصف، basePrice، isActive) =====
+  async updatePackageBasic(
+    tenantId: string | undefined,
+    packageId: string,
+    data: { name?: string; description?: string | null; basePrice?: number; isActive?: boolean },
+  ) {
+    const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any });
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+    if (tenantId && pkg.tenantId && pkg.tenantId !== tenantId) {
+      throw new BadRequestException('لا تملك صلاحية تعديل هذه الباقة');
+    }
+    const patch: any = {};
+    if (data.name !== undefined) patch.name = String(data.name).trim() || pkg.name;
+    if (data.description !== undefined)
+      patch.description = data.description == null ? null : String(data.description).trim();
+    if (data.basePrice !== undefined && data.basePrice != null && Number.isFinite(Number(data.basePrice))) {
+      patch.basePrice = Number(data.basePrice);
+    }
+    if (data.isActive !== undefined) patch.isActive = !!data.isActive;
+    if (Object.keys(patch).length === 0) return { ok: true, id: pkg.id };
+    await this.packagesRepo.update({ id: packageId }, patch);
+    const updated = await this.packagesRepo.findOne({ where: { id: packageId } as any });
+    return { ok: true, id: packageId, package: updated };
   }
 }

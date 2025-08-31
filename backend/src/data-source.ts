@@ -4,18 +4,29 @@ import * as dotenv from 'dotenv';
 import 'dotenv/config';
 
 dotenv.config({ path: process.env.NODE_ENV === 'production' ? '.env' : '.env.local' });
-// Detect whether we are running from ts-node (dev) or compiled dist (prod/preview)
+
+// Detect runtime mode
 const runningTs = __filename.endsWith('.ts');
 const explicitProd = process.env.NODE_ENV === 'production';
-// Treat compiled runtime as production even if NODE_ENV not set to avoid trying to require .ts files
-const isProd = explicitProd || !runningTs;
-if (!explicitProd && !runningTs) {
-  // Helpful notice once in CLI usage
+// Override flag to force dev behavior even if running from compiled JS
+const forceDev = process.env.FORCE_DEV === 'true';
+const isProd = !forceDev && (explicitProd || !runningTs);
+
+// Always log flag states once (avoid noisy full env dump)
+// eslint-disable-next-line no-console
+console.log(
+  `[DataSource] flags explicitProd=${explicitProd} runningTs=${runningTs} forceDev=${forceDev} isProd=${isProd}`
+);
+
+if (forceDev) {
+  // eslint-disable-next-line no-console
+  console.log('[DataSource] FORCE_DEV active -> using non-SSL dev connection variables.');
+} else if (!explicitProd && !runningTs) {
   // eslint-disable-next-line no-console
   console.warn('[DataSource] NODE_ENV not production but running from dist -> using JS entity/migration globs.');
 }
 
-// Build connection with smart SSL (disable for localhost even if isProd inferred)
+// Connection config
 let baseConn: any;
 if (isProd) {
   const dbUrl = process.env.DATABASE_URL;
@@ -37,14 +48,42 @@ if (isProd) {
     extra: needSsl ? { ssl: { rejectUnauthorized: false } } : undefined,
   };
 } else {
-  baseConn = {
-    type: 'postgres',
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
-    password: String(process.env.DB_PASS ?? process.env.DB_PASSWORD ?? ''),
-    database: process.env.DB_NAME ?? 'watan',
-  };
+  // Prefer parsing DATABASE_URL if provided so CLI behavior matches Nest runtime config
+  const url = process.env.DATABASE_URL;
+  // eslint-disable-next-line no-console
+  console.log('[DataSource] Dev branch: DATABASE_URL present?', Boolean(url));
+  if (url) {
+    try {
+      const u = new URL(url);
+  const user = u.username;
+  const pass = u.password;
+      baseConn = {
+        type: 'postgres',
+        host: u.hostname,
+        port: Number(u.port || 5432),
+        username: decodeURIComponent(user || process.env.DB_USER || process.env.DB_USERNAME || 'postgres'),
+        password: decodeURIComponent(pass || process.env.DB_PASS || process.env.DB_PASSWORD || ''),
+        database: (u.pathname || '/watan').replace(/^\//, '') || process.env.DB_NAME || 'watan',
+      };
+      // eslint-disable-next-line no-console
+      console.log('[DataSource] Dev mode using parsed DATABASE_URL host=%s db=%s', baseConn.host, baseConn.database);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[DataSource] Failed to parse DATABASE_URL, falling back to discrete env vars:', e instanceof Error ? e.message : e);
+    }
+  }
+  if (!baseConn) {
+    baseConn = {
+      type: 'postgres',
+      host: process.env.DB_HOST ?? 'localhost',
+      port: Number(process.env.DB_PORT ?? 5432),
+      username: process.env.DB_USER ?? process.env.DB_USERNAME ?? 'postgres',
+      password: String(process.env.DB_PASS ?? process.env.DB_PASSWORD ?? ''),
+      database: process.env.DB_NAME ?? 'watan',
+    };
+    // eslint-disable-next-line no-console
+  console.log('[DataSource] Dev mode using discrete env vars host=%s db=%s (parsed DATABASE_URL not used)', baseConn.host, baseConn.database);
+  }
 }
 
 const dataSource = new DataSource({
@@ -56,9 +95,9 @@ const dataSource = new DataSource({
 
 export default dataSource;
 
-// --- CLI runner (minimal) ---
+// CLI helper
 if (require.main === module) {
-  const cmd = process.argv[2]; // "migration:run" | "migration:show" | "migration:revert"
+  const cmd = process.argv[2];
   dataSource
     .initialize()
     .then(async () => {

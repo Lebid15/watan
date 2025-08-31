@@ -50,7 +50,6 @@ export class IntegrationsService {
     private readonly codeItemRepo: Repository<CodeItem>,
   ) {}
 
-  // ============ Helpers ============
   private toConfig(i: Integration) {
     return {
       id: i.id,
@@ -83,7 +82,6 @@ export class IntegrationsService {
     return row;
   }
 
-  // ============ CRUD Integrations ============
   async create(
     tenantId: string,
     dto: {
@@ -160,7 +158,6 @@ export class IntegrationsService {
     }
   }
 
-  // ============ Provider Ops ============
   async testConnection(id: string, tenantId: string | null) {
     const cfg = await this.get(id, tenantId);
     const driver = this.driverOf(cfg);
@@ -198,7 +195,6 @@ export class IntegrationsService {
     return driver.checkOrders(this.toConfig(cfg), ids);
   }
 
-  // ============ Integration Packages (mapping UI) ============
   async getIntegrationPackages(id: string, tenantId: string, product?: string) {
     const cfg = await this.get(id, tenantId);
     const driver = this.driverOf(cfg);
@@ -249,7 +245,6 @@ export class IntegrationsService {
     return this.packageMappingsRepo.save(records);
   }
 
-  // ============ Routing (admin page) ============
   async getRoutingAll(tenantId: string, q?: string) {
     const providers = await this.integrationRepo.find({ where: { tenantId } as any, order: { name: 'ASC' } as any });
     const groups = await this.codeGroupRepo.find({ where: { tenantId } as any, order: { name: 'ASC' } as any });

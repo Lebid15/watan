@@ -136,10 +136,9 @@ export class ProductOrdersAdminController {
         ? {
             id: (o as any).product.id,
             name: (o as any).product.name,
-            imageUrl: (o as any).product.imageUrl || (o as any).product.catalogImageUrl || null, // imageUrl now computed in service layer
+            imageUrl: (o as any).product.imageUrl || null, // imageUrl now computed in service layer
             imageSource: (o as any).product.imageSource || undefined,
             hasCustomImage: (o as any).product.hasCustomImage ?? undefined,
-            useCatalogImage: (o as any).product.useCatalogImage ?? undefined,
             customImageUrl: (o as any).product.customImageUrl ?? undefined,
           }
         : undefined,

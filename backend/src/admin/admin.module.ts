@@ -7,7 +7,6 @@ import { AdminController } from './admin.controller';
 import { UploadController } from './upload.controller';
 import { ReportsAdminController } from './reports.admin.controller';
 import { SiteSettingsAdminController } from './site-settings.admin.controller';
-import { CatalogAdminController } from './catalog.admin.controller';
 import { ProvidersAdminController } from './providers.admin.controller';
 import { StatsAdminController } from './stats.admin.controller';
 import { ProductsAdminController } from './products.admin.controller';
@@ -26,14 +25,11 @@ import { Currency } from '../currencies/currency.entity';
 import { User } from '../user/user.entity';
 import { Integration } from '../integrations/integration.entity';
 import { SiteSetting } from './site-setting.entity';
-import { CatalogProduct } from '../catalog/catalog-product.entity';
-import { CatalogPackage } from '../catalog/catalog-package.entity';
 import { Product } from '../products/product.entity';
 import { ProductPackage } from '../products/product-package.entity';
 import { Asset } from '../assets/asset.entity';
 
 import { SiteSettingsService } from './site-settings.service';
-import { CatalogImportService } from '../integrations/catalog-import.service';
 import { StatsAdminService } from './stats.admin.service';
 
 @Module({
@@ -49,8 +45,6 @@ import { StatsAdminService } from './stats.admin.service';
       Currency,
       User,
       SiteSetting,
-      CatalogProduct,
-      CatalogPackage,
       Integration,
       Product,
   ProductPackage,
@@ -62,7 +56,6 @@ import { StatsAdminService } from './stats.admin.service';
     UploadController,
     ReportsAdminController,
     SiteSettingsAdminController,
-    CatalogAdminController,
     ProvidersAdminController,
   StatsAdminController, // ✅ أضفنا الكنترولر الجديد
   ProductsAdminController,
@@ -71,7 +64,6 @@ import { StatsAdminService } from './stats.admin.service';
     JwtAuthGuard,
     RolesGuard,
     SiteSettingsService,
-    CatalogImportService,
     StatsAdminService, // ✅ أضفنا السيرفس الجديد
   ],
   exports: [SiteSettingsService],

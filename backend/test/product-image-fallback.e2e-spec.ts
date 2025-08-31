@@ -37,7 +37,7 @@ describe('Product Image Fallback (e2e)', () => {
         description: 'Seeded for image fallback e2e',
         tenantId: tenant.id,
         isActive: true,
-        useCatalogImage: true,
+  // legacy useCatalogImage removed
       } as any);
     }
   });
@@ -59,10 +59,10 @@ describe('Product Image Fallback (e2e)', () => {
       // Presence checks (values may be null)
       expect(p).toHaveProperty('imageUrl');
       expect(p).toHaveProperty('imageSource');
-      expect(p).toHaveProperty('useCatalogImage');
+  // useCatalogImage removed
       expect(p).toHaveProperty('hasCustomImage');
       expect(p).toHaveProperty('customImageUrl');
-      expect(typeof p.useCatalogImage).toBe('boolean');
+  // removed field assertion
       expect(typeof p.hasCustomImage).toBe('boolean');
     }
     // If at least one product exists, test the detail endpoint for same fields
@@ -75,10 +75,10 @@ describe('Product Image Fallback (e2e)', () => {
   expect(d.id).toBe(res.body[0].id);
   expect(d).toHaveProperty('imageUrl');
   expect(d).toHaveProperty('imageSource');
-  expect(d).toHaveProperty('useCatalogImage');
+  // removed field assertion
   expect(d).toHaveProperty('hasCustomImage');
   expect(d).toHaveProperty('customImageUrl');
-  expect(typeof d.useCatalogImage).toBe('boolean');
+  // removed field assertion
   expect(typeof d.hasCustomImage).toBe('boolean');
     }
   });

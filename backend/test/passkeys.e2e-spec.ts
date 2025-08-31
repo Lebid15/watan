@@ -1,3 +1,6 @@
+// Force test mode & disable redis so challenge store uses in-memory
+process.env.NODE_ENV = 'test';
+delete process.env.REDIS_URL; // ensure no redis attempts
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -56,6 +59,8 @@ describe('Passkeys (e2e, mocked)', () => {
         }
       }
     }
+  // Force exit of remaining timers / redis mocks if any
+  await new Promise(r => setTimeout(r, 10));
   });
 
   let jwt: string;

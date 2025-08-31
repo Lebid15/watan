@@ -31,8 +31,79 @@ export default function LoginPage() {
           document.cookie = `role=${json.role}; Path=/; Max-Age=${60*60*24*7}`;
         }
       } catch {}
-      // لو المطور فضّل تحويله مباشرة لصفحة التطوير
-      router.push('/dev');
+      // تحديد مسار الوجهة:
+      // 1) احترام باراميتر next إن وُجد (ومسار داخلي آمن)
+      // 2) وإلا اختر حسب الدور
+      let nextDest: string | null = null;
+      // سنقوم دائماً بفك التوكن وفرض القيود (حتى لو وُجد query next) ثم بعد السماح نقرر الوجهة
+      let decodedRole = '';
+      try {
+        const url = new URL(window.location.href);
+        const candidate = url.searchParams.get('next');
+        if (candidate && /^\//.test(candidate) && !/^\/api\b/.test(candidate)) {
+          nextDest = candidate; // سنعيد التحقق لاحقاً
+        }
+      } catch {}
+      try {
+        const payloadPart = token.split('.')[1];
+        const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+        const json = JSON.parse(atob(b64));
+        const rr = (json?.role || '').toLowerCase();
+        const email = (json?.email || json?.user?.email || '').toLowerCase();
+        decodedRole = rr;
+        let norm = (rr === 'instance_owner' || rr === 'owner' || rr === 'admin') ? 'tenant_owner' : rr;
+        const envList = (process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || process.env.DEVELOPER_EMAILS || '')
+          .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+        const whitelist = envList.length ? envList : ['alayatl.tr@gmail.com'];
+        const host = window.location.host;
+        const hostParts = host.split('.');
+        let isSub = false; let apexHost = host;
+        if (hostParts.length >= 3) {
+          const sub = hostParts[0];
+          if (sub && !['www','app'].includes(sub)) { isSub = true; apexHost = hostParts.slice(-2).join('.'); }
+        }
+        const configuredApex = (process.env.NEXT_PUBLIC_APEX_DOMAIN || '').toLowerCase().replace(/\/$/, '');
+        const isApex = !isSub;
+        if (norm === 'developer') {
+          if (!email || !whitelist.includes(email)) {
+            document.cookie = 'access_token=; Max-Age=0; path=/';
+            document.cookie = 'role=; Max-Age=0; path=/';
+            localStorage.removeItem('token');
+            setError('غير مسموح: بريد غير مُخوَّل (قائمة المطورين)');
+            setLoading(false);
+            return;
+          }
+        } else if (isApex) {
+          document.cookie = 'access_token=; Max-Age=0; path=/';
+          document.cookie = 'role=; Max-Age=0; path=/';
+          localStorage.removeItem('token');
+          setError('الدخول عبر النطاق الرئيسي مقصور على المطوّر. استخدم نطاق المتجر (subdomain).');
+          setLoading(false);
+          return;
+        }
+        // الآن تحديد الوجهة (إذا كانت nextDest موجودة نتحقق من صلاحيتها)
+        const defaultDest = (() => {
+          if (isSub) {
+            if (norm === 'tenant_owner') return '/admin/dashboard';
+            if (norm === 'distributor') return '/admin/distributor';
+            if (norm === 'user') return '/';
+            if (norm === 'developer') {
+              const apex = configuredApex || apexHost;
+              return `${window.location.protocol}//${apex}/dev`;
+            }
+            return '/';
+          }
+          return '/dev'; // apex + developer
+        })();
+        // حماية: لو query next تشير إلى /dev لكن المستخدم ليس developer (لم يحدث return أعلاه لأنها ساب دومين) نلغيها
+        if (nextDest) {
+          if (nextDest.startsWith('/dev') && norm !== 'developer') nextDest = defaultDest;
+          if (isApex && norm !== 'developer') nextDest = defaultDest; // should not happen due للمنع
+        } else {
+          nextDest = defaultDest;
+        }
+      } catch { nextDest = '/'; }
+      router.push(nextDest);
     } catch (e:any) {
       setError(e?.message || 'فشل الدخول');
     } finally { setLoading(false); }
@@ -41,8 +112,9 @@ export default function LoginPage() {
   const doPasskeyLogin = async () => {
     if (!identifier) { setError('أدخل بريدك أو اسم المستخدم أولاً'); return; }
     try {
-      await authenticateWithPasskey(identifier);
-      router.push('/');
+  await authenticateWithPasskey(identifier);
+  // دفع إلى الجذر ثم middleware يتولى التوجيه حسب الدور
+  router.push('/');
     } catch {/* handled in hook */}
   };
 

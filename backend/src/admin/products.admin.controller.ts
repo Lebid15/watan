@@ -36,7 +36,7 @@ export class ProductsAdminController {
 	@Put(':id/image/custom')
 	async setCustomImage(
 		@Param('id') id: string,
-		@Body() body: { customImageUrl?: string; useCatalogImage?: boolean; customAltText?: string | null; catalogAltText?: string | null },
+		@Body() body: { customImageUrl?: string; customAltText?: string | null },
 		@Req() req: Request,
 	) {
 		if (!isFeatureEnabled('productImageFallback')) {
@@ -49,12 +49,7 @@ export class ProductsAdminController {
 		const prevCustom = (product as any).customImageUrl || null;
 		(product as any).customImageUrl = body?.customImageUrl ?? null;
 		if (body.customAltText !== undefined) (product as any).customAltText = body.customAltText;
-		if (body.catalogAltText !== undefined) (product as any).catalogAltText = body.catalogAltText;
-		if (body.useCatalogImage !== undefined) {
-			(product as any).useCatalogImage = !!body.useCatalogImage;
-		} else if (body.customImageUrl) {
-			(product as any).useCatalogImage = false;
-		}
+		// Catalog usage flag removed
 			// Generate thumbnails if custom image changed
 			if ((product as any).customImageUrl && prevCustom !== (product as any).customImageUrl) {
 				const vars = this.thumbs.generate((product as any).customImageUrl);
@@ -76,33 +71,12 @@ export class ProductsAdminController {
 			await this.audit.log('product.image.custom.set', {
 				actorUserId: (req as any)?.user?.id ?? null,
 				targetTenantId: tenantId,
-				meta: { productId: product.id, customImageUrl: (product as any).customImageUrl, useCatalogImage: (product as any).useCatalogImage, customAltText: (product as any).customAltText, catalogAltText: (product as any).catalogAltText },
+				meta: { productId: product.id, customImageUrl: (product as any).customImageUrl, customAltText: (product as any).customAltText },
 			});
-			return { ok: true, id: product.id, customImageUrl: (product as any).customImageUrl, useCatalogImage: (product as any).useCatalogImage };
+			return { ok: true, id: product.id, customImageUrl: (product as any).customImageUrl };
 	}
 
-	@Put(':id/image/catalog')
-	async toggleCatalogImage(
-		@Param('id') id: string,
-		@Body() body: { useCatalogImage: boolean },
-		@Req() req: Request,
-	) {
-		if (!isFeatureEnabled('productImageFallback')) {
-			throw new BadRequestException('Feature disabled');
-		}
-		const tenantId = this.getTenantId(req);
-		if (!tenantId) throw new BadRequestException('Missing tenant context');
-		const product = await this.productsRepo.findOne({ where: { id, tenantId } as any });
-		if (!product) throw new NotFoundException('Product not found');
-		(product as any).useCatalogImage = !!body.useCatalogImage;
-			await this.productsRepo.save(product);
-			await this.audit.log('product.image.catalog.toggle', {
-				actorUserId: (req as any)?.user?.id ?? null,
-				targetTenantId: tenantId,
-				meta: { productId: product.id, useCatalogImage: (product as any).useCatalogImage },
-			});
-			return { ok: true, id: product.id, useCatalogImage: (product as any).useCatalogImage };
-	}
+	// Catalog image toggle removed
 
 	@Delete(':id/image/custom')
 	async clearCustomImage(@Param('id') id: string, @Req() req: Request) {
@@ -114,7 +88,7 @@ export class ProductsAdminController {
 		const product = await this.productsRepo.findOne({ where: { id, tenantId } as any });
 		if (!product) throw new NotFoundException('Product not found');
 		(product as any).customImageUrl = null;
-		(product as any).useCatalogImage = true; // fallback to catalog
+		// Removed catalog fallback flag
 		// Clear thumbnails so they can be regenerated from catalog if needed
 		(product as any).thumbSmallUrl = null;
 		(product as any).thumbMediumUrl = null;
@@ -125,7 +99,7 @@ export class ProductsAdminController {
 				targetTenantId: tenantId,
 				meta: { productId: product.id },
 			});
-			return { ok: true, id: product.id, customImageUrl: null, useCatalogImage: true };
+			return { ok: true, id: product.id, customImageUrl: null };
 	}
 
 	// Metrics: latest product image snapshots (developer/admin). Not feature-flag gated (operational visibility).
@@ -150,28 +124,7 @@ export class ProductsAdminController {
 		return { ok: true, delta };
 	}
 
-	@Post('image/batch-toggle')
-	async batchToggleCatalog(
-		@Body() body: { ids: string[]; useCatalogImage: boolean },
-		@Req() req: Request,
-	) {
-		if (!isFeatureEnabled('productImageFallback')) {
-			throw new BadRequestException('Feature disabled');
-		}
-		if (!body?.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
-			throw new BadRequestException('ids required');
-		}
-		const tenantId = this.getTenantId(req);
-		if (!tenantId) throw new BadRequestException('Missing tenant context');
-		const ids = [...new Set(body.ids.map(String))];
-		await this.productsRepo.update({ id: ids as any, tenantId } as any, { useCatalogImage: !!body.useCatalogImage } as any);
-		await this.audit.log('product.image.catalog.batchToggle', {
-			actorUserId: (req as any)?.user?.id ?? null,
-			targetTenantId: tenantId,
-			meta: { ids, useCatalogImage: !!body.useCatalogImage },
-		});
-		return { ok: true, ids, useCatalogImage: !!body.useCatalogImage };
-	}
+	// Batch toggle catalog image feature removed
 
 	/** Regenerate thumbnails for products missing them (or force). */
 	@Post('images/regenerate-thumbnails')
@@ -188,7 +141,7 @@ export class ProductsAdminController {
 		const candidates = await this.productsRepo.find({ where, take: limit });
 		let processed = 0;
 		for (const p of candidates as any[]) {
-			const effective = p.customImageUrl && p.useCatalogImage === false ? p.customImageUrl : p.catalogImageUrl;
+			const effective = p.customImageUrl || p.imageUrl || null;
 			if (!effective) continue;
 			const needs = body?.force || !p.thumbSmallUrl || !p.thumbMediumUrl || !p.thumbLargeUrl;
 			if (!needs) continue;

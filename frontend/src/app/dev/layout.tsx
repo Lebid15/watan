@@ -22,8 +22,8 @@ function ingestClientError(payload: { name?: string; message: string; stack?: st
   try {
     if (process.env.NODE_ENV !== 'development') return; // محصور في التطوير فقط
     if (typeof window === 'undefined') return;
-    const role = localStorage.getItem('role');
-    if (role !== 'developer' && role !== 'instance_owner') return; // صلاحيات
+  const role = localStorage.getItem('role');
+  if (role !== 'developer') return; // صلاحيات بعد التطبيع
     // استخدام fetch لتجنب تداخل interceptors
     fetch(`${API_BASE_URL}/dev/errors/ingest`, {
       method: 'POST',

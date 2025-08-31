@@ -134,6 +134,11 @@
     margin: 0;
     font-family: Arial, sans-serif;
   }
+  /* عند تفعيل عرض نسخة الديسكتوب مصغرة على الموبايل */
+  body.desktop-fixed-no-scroll {
+    overflow: hidden; /* منع أي سكرول خارجي */
+    touch-action: none; /* تقليل التمرير العرضي */
+  }
 }
 
 /* ================== Dark Shims ================== */

@@ -30,14 +30,10 @@ export default function AdminDashboard() {
       .then((res) => {
         const userData = res.data;
         setUser(userData);
-
-        // ✅ التحقق من الدور
-        if (userData.role !== 'admin') {
-          router.push('/admin/dashboard'); // صفحة المستخدم العادي لاحقًا
-        }
+        // أزلنا إعادة التوجيه الذاتي لتفادي loop عند أدوار غير admin (مثل tenant_owner)
       })
       .catch(() => {
-        router.push('/login'); // لو فشل جلب البيانات يرجع لصفحة تسجيل الدخول
+        router.push('/login');
       });
   }, [router]);
 
@@ -48,7 +44,7 @@ export default function AdminDashboard() {
       <h1 className="text-lg p-5 font-bold mb-3">لوحة تحكم المشرف</h1>
       <div className="space-y-2">
         <p>مرحباً، {user?.fullName || user?.email}</p>
-        <p>هنا سنقدم جميع التعلميات الخاصة بالموضع</p>
+        <p>هنا سنقدم جميع التعلميات الخاصة بالموضع87</p>
         <p>أهلا وسهلا بكم دائماً.</p>
 
       </div>

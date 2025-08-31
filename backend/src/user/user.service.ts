@@ -267,7 +267,14 @@ export class UserService {
     if (!user && (tenantId === undefined || tenantId === null)) {
       user = await this.usersRepository.findOne({ where: { id: userId, tenantId: null } as any });
     }
-    if (!user) throw new NotFoundException('المستخدم غير موجود');
+    if (!user) {
+      // Log detailed context to diagnose 404 (user not found) after successful login
+      if (process.env.DEBUG_USER_PROFILE === '1') {
+        // eslint-disable-next-line no-console
+        console.log('[PROFILE][SIMPLIFIED][DEBUG] user not found', { userId, tenantIdTried: tenantId });
+      }
+      throw new NotFoundException('المستخدم غير موجود');
+    }
 
     let currencyCode = 'USD';
     if ((user as any).currency_id) {
@@ -277,6 +284,11 @@ export class UserService {
       } catch (e:any) {
         console.warn('[PROFILE] currency lookup failed – fallback USD:', e?.code || e?.message);
       }
+    }
+    // If forcing USD for tenant storefronts: environment flag FORCE_TENANT_USD = true
+    // Applies only when tenantId is present (storefront user) not for global developer/owner.
+    if (tenantId && process.env.FORCE_TENANT_USD === 'true') {
+      currencyCode = 'USD';
     }
     console.log('[PROFILE][SIMPLIFIED] success', { id: user.id, email: user.email, currencyCode });
     return {

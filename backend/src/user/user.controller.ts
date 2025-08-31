@@ -5,6 +5,7 @@ import {
   UseGuards, Param, ParseUUIDPipe, NotFoundException, Request, Req, Query,
 } from '@nestjs/common';
 import { UserService } from './user.service';
+import { debugEnabled, debugLog } from '../common/debug.util';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserRole } from '../auth/user-role.enum';
@@ -53,6 +54,7 @@ export class UserController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user profile' })
   async getProfile(@Request() req) {
+  if (debugEnabled('userProfile')) debugLog('userProfile', '/users/profile', { userId: req.user?.id, role: req.user?.role, tokenTenant: req.user?.tenantId, resolvedTenant: req.tenant?.id, path: req.path, originalUrl: req.originalUrl });
     // خذ tenantId من سياق الطلب أو من الـ JWT (قد يكون null للمالك)
     const tokenTenant: string | null = req.user?.tenantId ?? null;
     const tenantId: string | null = req.tenant?.id ?? tokenTenant;
@@ -145,7 +147,10 @@ export class UserController {
   @UseGuards(AuthGuard('jwt'))
   @Get('profile-with-currency')
   async getProfileWithCurrency(@Req() req) {
-    const tenantId = req.tenant?.id;
+  if (debugEnabled('userProfile')) debugLog('userProfile', '/users/profile-with-currency', { userId: req.user?.id, role: req.user?.role, tokenTenant: req.user?.tenantId, resolvedTenant: req.tenant?.id, path: req.path, originalUrl: req.originalUrl });
+    // Allow fallback to tenantId carried inside JWT if middleware could not resolve domain.
+    const tokenTenantId: string | null = req.user?.tenantId ?? null;
+    const tenantId: string | null = req.tenant?.id ?? tokenTenantId;
     const userId = req.user.id ?? req.user.sub;
     if (!userId) throw new BadRequestException('User ID is missing in token');
     try {
@@ -160,13 +165,20 @@ export class UserController {
             email: req.user.email,
             fullName: req.user.fullName ?? null,
             balance: 0,
-            currencyCode: 'USD',
+            currencyCode: 'USD', // ثابت افتراضياً
             role,
             fallback: true,
         };
       }
       throw e;
     }
+  }
+
+  // Backward/alias route to avoid 404 if frontend calls legacy path after deployment race
+  @UseGuards(AuthGuard('jwt'))
+  @Get('profile-alias')
+  async getProfileAlias(@Req() req) {
+    return this.getProfileWithCurrency(req);
   }
 
   @Get(':id')

@@ -1,4 +1,5 @@
 import { Injectable, NestMiddleware, NotFoundException } from '@nestjs/common';
+import { debugEnabled, debugLog } from '../common/debug.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TenantDomain } from './tenant-domain.entity';
@@ -22,13 +23,15 @@ export class TenantContextMiddleware implements NestMiddleware {
     const originalHost = req.headers.host;
     const tenantHost = req.headers['x-tenant-host'] || originalHost;
     const host = (tenantHost || '').split(':')[0]; // ex: kadro.localhost
+  if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'incoming', { originalHost, xTenant: req.headers['x-tenant-host'], path: req.path, url: req.originalUrl });
 
   let tenant: Tenant | null = null;
     if (host) {
       const domain = await this.domains.findOne({ where: { domain: host } });
       if (domain) {
         tenant = await this.tenants.findOne({ where: { id: domain.tenantId } });
-      }
+        if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'matched domain', host, 'tenantId', domain.tenantId);
+      } else if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'no domain match', host);
     }
 
     // Fallback: explicit X-Tenant-Id header (integrations)
@@ -42,6 +45,7 @@ export class TenantContextMiddleware implements NestMiddleware {
     if (tenant) {
       if (!(tenant as any).isActive) throw new NotFoundException('Tenant inactive');
       req.tenant = tenant;
+  if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'attached tenant', { id: tenant.id, code: (tenant as any).code });
     }
     next();
   }

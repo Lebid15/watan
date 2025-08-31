@@ -14,7 +14,6 @@ import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '../auth/user-role.enum';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
-import { CatalogImportService } from '../integrations/catalog-import.service';
 import { IntegrationsService, DEV_GLOBAL_TENANT_ID } from '../integrations/integrations.service';
 import { CreateIntegrationDto } from '../integrations/dto/create-integration.dto';
 import { UpdateIntegrationDto } from '../integrations/dto/update-integration.dto';
@@ -24,9 +23,8 @@ import { DataSource } from 'typeorm';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ProvidersAdminController {
   constructor(
-    private readonly catalogImport: CatalogImportService,
     private readonly integrations: IntegrationsService,
-  private readonly dataSource: DataSource,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** استخراج tenantId من الطلب (JWT أو الهيدر) */
@@ -38,8 +36,6 @@ export class ProvidersAdminController {
       req?.headers?.['x-tenantid'];
     return String(fromUser ?? fromHeader ?? '').trim();
   }
-
-  // ================== مزوّدو المطوّر (scope = 'dev') ==================
 
   /** إنشاء مزوّد مطوّر (scope=dev) */
   @Post('dev')
@@ -116,47 +112,6 @@ export class ProvidersAdminController {
     return { ok: true };
   }
 
-  /** الاستيراد من مزوّد مطوّر محدد */
-  @Post(':providerId/catalog-import')
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
-  async importProviderCatalog(@Req() req: any, @Param('providerId') providerId: string) {
-    const role = req.user?.role;
-    const tenantId: string | null = req.tenant?.id ?? req.user?.tenantId ?? null;
-  console.log(`[CatalogImport][Controller] START providerId=${providerId} role=${role} tenantId=${tenantId || 'null'}`);
-
-    // المطوّر / مالك المنصة: يستورد إلى نطاق dev (بدون tenantId)
-  if (role === 'developer') {
-      const integ = await this.integrations.get(providerId, null);
-      if (!integ || (integ as any).scope !== 'dev') {
-        throw new BadRequestException('Provider must be scope=dev');
-      }
-  const res = await this.catalogImport.importProvider(null, providerId);
-  console.log(`[CatalogImport][Controller] DONE providerId=${providerId} scope=dev ms=${res.ms}`);
-  return { ok: true, providerId, scope: 'dev', ...res };
-    }
-
-    // مسؤول التينانت: يستورد نسخة من مزوّد المطوّر إلى تينانته
-  if (role === 'admin') {
-      if (!tenantId) throw new BadRequestException('Tenant context missing');
-      // نحاول أولاً جلبه كمزوّد مطوّر
-      let integ: any;
-      try { integ = await this.integrations.get(providerId, null); } catch { /* ignore */ }
-      if (!integ || integ.scope !== 'dev') {
-        // لو لم يكن dev ربما هو مزود Tenant بالفعل فنستورد مباشرةً في نطاق التينانت
-        const res = await this.catalogImport.importProvider(tenantId, providerId);
-        console.log(`[CatalogImport][Controller] DONE providerId=${providerId} scope=tenant-direct ms=${res.ms}`);
-        return { ok: true, providerId, scope: 'tenant', ...res };
-      }
-      const res = await this.catalogImport.importDevProviderIntoTenant(providerId, tenantId);
-      console.log(`[CatalogImport][Controller] DONE providerId=${providerId} scope=tenant-cloned ms=${res.ms}`);
-      return { ok: true, providerId, scope: 'tenant', ...res };
-    }
-
-    throw new BadRequestException('Unsupported role for import');
-  }
-
-  // ================== مزوّدو التينانت (scope = 'tenant') ==================
-
   /** قائمة مزوّدي المستأجر للفحص */
   @Get('tenant')
   @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
@@ -166,32 +121,5 @@ export class ProvidersAdminController {
     return { ok: true, items };
   }
 
-  /** تشغيل الاستيراد بالخلفية وإرجاع jobId فوري (مبدئي بسيط داخل الذاكرة) */
-  private static pendingJobs: Record<string, any> = {};
-  @Post(':providerId/catalog-import/async')
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
-  async importProviderCatalogAsync(@Req() req: any, @Param('providerId') providerId: string) {
-    const role = req.user?.role;
-    const tenantId: string | null = req.tenant?.id ?? req.user?.tenantId ?? null;
-    const jobId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    ProvidersAdminController.pendingJobs[jobId] = { status: 'running', startedAt: Date.now() };
-    setImmediate(async () => {
-      try {
-        const res = await this.importProviderCatalog(req, providerId);
-        ProvidersAdminController.pendingJobs[jobId] = { status: 'done', finishedAt: Date.now(), result: res };
-      } catch (e:any) {
-        ProvidersAdminController.pendingJobs[jobId] = { status: 'error', finishedAt: Date.now(), error: e?.message || String(e) };
-      }
-    });
-    return { ok: true, jobId };
-  }
-
-  /** فحص حالة job async */
-  @Get('import-jobs/:jobId')
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
-  async getImportJob(@Param('jobId') jobId: string) {
-    const j = ProvidersAdminController.pendingJobs[jobId];
-    if (!j) return { ok: false, error: 'job not found' };
-    return { ok: true, job: j };
-  }
+  // Removed legacy catalog-import endpoints.
 }

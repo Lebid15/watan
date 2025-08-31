@@ -15,9 +15,8 @@ export class ProductImageMetricsService {
   /** Collect counts of image usage and persist snapshot. */
   async collectOnce(): Promise<{ custom_active: number; catalog_active: number; missing: number }> {
     const rows = await this.products.query(`SELECT 
-      COUNT(*) FILTER (WHERE "customImageUrl" IS NOT NULL AND COALESCE("useCatalogImage", true)=false) AS custom_active,
-      COUNT(*) FILTER (WHERE ("customImageUrl" IS NULL OR COALESCE("useCatalogImage", true)=true) AND "catalogImageUrl" IS NOT NULL) AS catalog_active,
-      COUNT(*) FILTER (WHERE ("customImageUrl" IS NULL OR COALESCE("useCatalogImage", true)=true) AND "catalogImageUrl" IS NULL) AS missing
+  COUNT(*) FILTER (WHERE "customImageUrl" IS NOT NULL) AS custom_active,
+  COUNT(*) FILTER (WHERE "customImageUrl" IS NULL) AS missing
       FROM product`);
     const r = rows?.[0] || {};
     const data = {

@@ -40,9 +40,6 @@ export class CodesAdminController {
     return tenantId;
   }
 
-  // ======================
-  // المجموعات
-  // ======================
 
   @Get('groups')
   async listGroups(@Req() req: Request) {
@@ -112,9 +109,6 @@ export class CodesAdminController {
     return this.groupRepo.save(g);
   }
 
-  // ======================
-  // الأكواد داخل المجموعة
-  // ======================
 
   @Get('groups/:id/items')
   async listItems(@Req() req: Request, @Param('id') id: string) {

@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
+import { Api } from '@/utils/api';
 import { FiList, FiUsers, FiDollarSign, FiShare2 } from 'react-icons/fi';
 
 interface NavItem {
@@ -57,12 +58,8 @@ export default function AdminNavbar() {
 
   async function refreshOrdersBadge(signal?: AbortSignal) {
     try {
-      const res = await fetch('/api/admin/pending-orders-count', {
-        cache: 'no-store',
-        signal,
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const { count } = (await res.json()) as { count: number };
+  const res = await Api.admin.pendingOrders();
+  const { count } = res.data as { count: number };
       setPendingCount(Number(count) || 0);
     } catch (e: any) {
       if (e?.name === 'AbortError') return;
@@ -95,12 +92,8 @@ export default function AdminNavbar() {
 
   async function refreshDepositsBadge(signal?: AbortSignal) {
     try {
-      const res = await fetch('/api/admin/pending-deposits-count', {
-        cache: 'no-store',
-        signal,
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const { count } = (await res.json()) as { count: number };
+  const res = await Api.admin.pendingDeposits();
+  const { count } = res.data as { count: number };
       setPendingDepositsCount(Number(count) || 0);
     } catch (e: any) {
       if (e?.name === 'AbortError') return;

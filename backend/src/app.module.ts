@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { PasskeysModule } from './auth/passkeys/passkeys.module';
 import { AdminModule } from './admin/admin.module';
 import { ProductsModule } from './products/products.module';
+import { AdminCountsController } from './admin/admin-counts.controller';
 import { CurrenciesModule } from './currencies/currencies.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -24,6 +25,8 @@ import { BillingModule } from './billing/billing.module';
 import { Tenant } from './tenants/tenant.entity';
 import { TenantDomain } from './tenants/tenant-domain.entity';
 import { ProductImageMetricsSnapshot } from './products/product-image-metrics-snapshot.entity';
+import { ProductOrder } from './products/product-order.entity';
+import { Deposit } from './payments/deposit.entity';
 import { TenantContextMiddleware } from './tenants/tenant-context.middleware';
 import { HealthController } from './health/health.controller';
 import { MetricsController } from './health/metrics.controller';
@@ -33,6 +36,7 @@ import { FinalRolesGuard } from './common/authz/roles';
 import { TenantMoneyDisplayInterceptor } from './common/interceptors/tenant-money-display.interceptor';
 import { RateLimiterRegistry, RateLimitGuard } from './common/rate-limit.guard';
 import { ErrorsModule } from './dev/errors.module';
+import { DevToolsModule } from './dev/dev-tools.module';
 import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './dev/all-exceptions.filter';
 import { SchemaGuardService } from './infrastructure/schema/schema-guard.service';
@@ -82,19 +86,24 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
         // Detect runtime form: if current file ends with .ts we are in ts-node/dev; otherwise in compiled dist.
         const runningTs = __filename.endsWith('.ts');
         const explicitProd = (config.get<string>('NODE_ENV') || '').toLowerCase() === 'production';
-        const isProd = explicitProd || !runningTs; // treat compiled runtime as production even if NODE_ENV missing
-
-        if (!explicitProd && !runningTs) {
-          // Helpful hint once.
-          console.warn('[TypeORM] NODE_ENV not set to production; inferring production because running from dist.');
+        const forceDev = process.env.FORCE_DEV === 'true';
+        const isProd = !forceDev && (explicitProd || !runningTs);
+        console.log('[TypeORM] flags explicitProd=%s runningTs=%s forceDev=%s isProd=%s', explicitProd, runningTs, forceDev, isProd);
+        if (forceDev) {
+          console.log('[TypeORM] FORCE_DEV active -> disabling SSL and using dev-style entities/migrations.');
         }
 
-        // Auto SSL only when not localhost
+        // Decide SSL need (disable for localhost, sslmode=disable, or forceDev)
         let needSsl = isProd;
         try {
           const u = new URL(databaseUrl);
-            if (['localhost', '127.0.0.1'].includes(u.hostname)) needSsl = false;
-        } catch (_) {}
+          if (['localhost', '127.0.0.1', 'db'].includes(u.hostname)) needSsl = false;
+          const params = new URLSearchParams(u.search);
+          const sslMode = params.get('sslmode');
+          if (['disable', 'off', 'false', '0'].includes((sslMode || '').toLowerCase())) needSsl = false;
+          if (process.env.DB_DISABLE_SSL === 'true') needSsl = false;
+          if (forceDev) needSsl = false;
+        } catch (_) { if (forceDev) needSsl = false; }
 
         const autoEnv = process.env.AUTO_MIGRATIONS;
         const migrationsRun = autoEnv === 'false' ? false : (autoEnv === 'true' ? true : isProd);
@@ -128,9 +137,13 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
   ExternalApiModule,
   BillingModule,
   ErrorsModule,
-  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot]),
+  DevToolsModule,
+  // Repositories needed directly in AppModule-level controllers (e.g., AdminCountsController)
+  // Include ProductOrder + Deposit so their repositories can be injected.
+  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot, ProductOrder, Deposit]),
   ],
-  controllers: [HealthController, MetricsController],
+  // DebugAuthController is registered inside AuthModule (avoid double registration here)
+  controllers: [HealthController, MetricsController, AdminCountsController],
   providers: [
   { provide: APP_GUARD, useClass: TenantGuard },
   { provide: APP_GUARD, useClass: FinalRolesGuard },

@@ -1,3 +1,4 @@
+
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -11,7 +12,9 @@ import { Product } from './product.entity';
 import { PackagePrice } from './package-price.entity';
 
 @Entity('product_packages')
-@Index('ux_product_packages_public_code_tenant', ['tenantId', 'publicCode'], { unique: true })
+// تعديل: جعل uniqueness على (tenantId, publicCode) بدلاً من global publicCode
+// التفرد الآن داخل نفس المنتج فقط (product_id, publicCode)
+@Index('ux_product_packages_product_public_code', ['product', 'publicCode'], { unique: true })
 @Index('idx_product_packages_tenant_active', ['tenantId', 'isActive'])
 @Index('idx_product_packages_product_id', ['product']) // يُنشئ فهرسًا على product_id
 export class ProductPackage {
@@ -22,16 +25,13 @@ export class ProductPackage {
   @Index()
   tenantId: string;
 
-  @Column({ type: 'varchar', length: 40, nullable: true })
-  publicCode: string | null;
+  @Column({ type: 'integer', nullable: true })
+  publicCode: number | null; // بعد الترقية: رقم موجب فريد عالميًا (مسموح NULL)
 
   @Column({ type: 'varchar', length: 160, nullable: true })
   name: string | null;
 
-  // Phase2: catalogLinkCode يربط هذه الباقة بباقات الكتالوج (nullable مؤقتًا حتى الترحيل)
-  @Column({ type: 'varchar', length: 80, nullable: true })
-  @Index('idx_product_packages_catalogLinkCode_field')
-  catalogLinkCode?: string | null;
+  // catalogLinkCode removed
 
   // عند إنشائها من موزّع نحدد المالك
   @Column({ type: 'uuid', nullable: true })
@@ -49,6 +49,10 @@ export class ProductPackage {
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   capital: number;
+
+  // اسم المزود (barakat, apstore, znet, local, ...)
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  providerName?: string | null;
 
   @Column({ default: true })
   isActive: boolean;

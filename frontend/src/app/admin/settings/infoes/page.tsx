@@ -14,9 +14,12 @@ export default function Page() {
     (async () => {
       try {
         // 👈 هنا التصحيح: infoes بدل about
-        const r = await api.get<string>(API_ROUTES.site.admin.infoes);
+        const r = await api.get<any>(API_ROUTES.site.admin.infoes);
         if (!mounted) return;
-        setValue(r.data || '');
+        const val = typeof r.data === 'string'
+          ? r.data
+          : (r.data && typeof r.data === 'object' ? (r.data.value ?? '') : '');
+        setValue(val || '');
       } catch {
         if (!mounted) return;
         setError('تعذّر جلب المحتوى');

@@ -140,7 +140,6 @@ interface Filters {
   to: string;
 }
 
-/* ============== أيقونة الحالة ============== */
 function StatusDot({
   status,
   onClick,

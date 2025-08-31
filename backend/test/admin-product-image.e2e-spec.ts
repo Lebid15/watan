@@ -34,14 +34,12 @@ describe('Admin Product Image (e2e)', () => {
   await ds.query(`INSERT INTO tenants (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, [tenantId, 'Test Tenant', 'testcode', null, 1, new Date().toISOString(), new Date().toISOString()]);
     await ds.query(`INSERT INTO tenant_domain (id, tenantId, domain, type, isPrimary, isVerified, createdAt, updatedAt) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))`, ['dom-1', tenantId, '127.0.0.1', 'subdomain', 1, 1]);
     createdProductId = '22222222-2222-2222-2222-222222222222';
-    await ds.query(`INSERT INTO product (id, tenantId, name, description, catalogImageUrl, customImageUrl, useCatalogImage, isActive) VALUES (?,?,?,?,?,?,?,?)`, [
+  await ds.query(`INSERT INTO product (id, tenantId, name, description, customImageUrl, isActive) VALUES (?,?,?,?,?,?)`, [
       createdProductId,
       tenantId,
       'Test Product',
       '',
       null,
-      null,
-      1, // useCatalogImage true
       1, // isActive
     ]);
     // sanity: ensure row exists
@@ -68,24 +66,7 @@ describe('Admin Product Image (e2e)', () => {
       .set('X-Tenant-Host', '127.0.0.1')
   .send({ customImageUrl: 'https://cdn.example.com/custom1.png' })
       .expect(res => { if (![200,201].includes(res.status)) throw new Error('Unexpected status '+res.status); });
-    expect(res.body).toEqual(expect.objectContaining({
-      ok: true,
-      customImageUrl: 'https://cdn.example.com/custom1.png',
-      useCatalogImage: false,
-    }));
-  });
-
-  it('toggles back to catalog image', async () => {
-    const token = adminToken(tenantId);
-    if (!createdProductId) return; // safety
-    const res = await request(app.getHttpServer())
-  .put(`/api/admin/products/${createdProductId}/image/catalog`)
-  .set('Authorization', `Bearer ${token}`)
-  .set('X-Tenant-Id', tenantId)
-      .set('X-Tenant-Host', '127.0.0.1')
-  .send({ useCatalogImage: true })
-      .expect(res => { if (![200,201].includes(res.status)) throw new Error('Unexpected status '+res.status); });
-    expect(res.body).toEqual(expect.objectContaining({ ok: true, useCatalogImage: true }));
+    expect(res.body).toEqual(expect.objectContaining({ ok: true, customImageUrl: 'https://cdn.example.com/custom1.png' }));
   });
 
   it('clears custom image', async () => {
@@ -97,6 +78,6 @@ describe('Admin Product Image (e2e)', () => {
   .set('X-Tenant-Id', tenantId)
       .set('X-Tenant-Host', '127.0.0.1')
       .expect(res => { if (![200,201].includes(res.status)) throw new Error('Unexpected status '+res.status); });
-    expect(res.body).toEqual(expect.objectContaining({ ok: true, customImageUrl: null, useCatalogImage: true }));
+    expect(res.body).toEqual(expect.objectContaining({ ok: true, customImageUrl: null }));
   });
 });

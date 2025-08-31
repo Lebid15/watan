@@ -26,14 +26,12 @@ describe('Admin Product Thumbnails (e2e)', () => {
     // seed tenant + product (with custom image to trigger thumbs)
   await ds.query(`INSERT INTO tenants (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, [tenantId, 'Thumb Tenant', 'thumbcode', null, 1, new Date().toISOString(), new Date().toISOString()]);
     await ds.query(`INSERT INTO tenant_domain (id, tenantId, domain, type, isPrimary, isVerified, createdAt, updatedAt) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))`, ['td-1', tenantId, '127.0.0.1', 'subdomain', 1, 1]);
-    await ds.query(`INSERT INTO product (id, tenantId, name, description, catalogImageUrl, customImageUrl, useCatalogImage, isActive) VALUES (?,?,?,?,?,?,?,?)`, [
+    await ds.query(`INSERT INTO product (id, tenantId, name, description, customImageUrl, isActive) VALUES (?,?,?,?,?,?)`, [
       productId,
       tenantId,
       'Thumb Product',
       '',
       null,
-      null,
-      1,
       1,
     ]);
   });

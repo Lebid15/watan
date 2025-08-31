@@ -276,66 +276,6 @@ async function bootstrap() {
         ELSE
           RAISE NOTICE 'Skipping currencies alterations (table missing) – expected if rescue migration not yet applied';
         END IF;
-        -- ====== جداول الكتالوج (قد تكون غير منشأة) ======
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.tables WHERE table_name='catalog_product'
-        ) THEN
-          CREATE TABLE "catalog_product" (
-            "id" uuid PRIMARY KEY,
-            "tenantId" uuid NOT NULL,
-            "name" varchar(200) NOT NULL,
-            "description" text NULL,
-            "imageUrl" varchar(500) NULL,
-            "sourceType" varchar(20) NOT NULL DEFAULT 'external',
-            "sourceProviderId" uuid NULL,
-            "externalProductId" varchar(120) NULL,
-            "isActive" boolean NOT NULL DEFAULT true,
-            "createdAt" timestamptz NOT NULL DEFAULT now(),
-            "updatedAt" timestamptz NOT NULL DEFAULT now()
-          );
-          CREATE INDEX IF NOT EXISTS "idx_catalog_product_tenant" ON "catalog_product" ("tenantId");
-          CREATE INDEX IF NOT EXISTS "idx_catalog_product_name" ON "catalog_product" ("name");
-          CREATE INDEX IF NOT EXISTS "idx_catalog_product_external" ON "catalog_product" ("externalProductId");
-          RAISE NOTICE 'Created table catalog_product';
-        END IF;
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.tables WHERE table_name='catalog_package'
-        ) THEN
-          CREATE TABLE "catalog_package" (
-            "id" uuid PRIMARY KEY,
-            "tenantId" uuid NOT NULL,
-            "catalogProductId" uuid NOT NULL REFERENCES "catalog_product"("id") ON DELETE CASCADE,
-            "name" varchar(200) NOT NULL,
-            "publicCode" varchar(120) NOT NULL,
-            "sourceProviderId" uuid NULL,
-            "externalPackageId" varchar(120) NULL,
-            "costPrice" numeric(18,6) NULL,
-            "currencyCode" varchar(10) NULL,
-            "isActive" boolean NOT NULL DEFAULT true,
-            "createdAt" timestamptz NOT NULL DEFAULT now(),
-            "updatedAt" timestamptz NOT NULL DEFAULT now()
-          );
-          CREATE UNIQUE INDEX IF NOT EXISTS "ux_catalog_package_tenant_publicCode" ON "catalog_package" ("tenantId","publicCode");
-          CREATE INDEX IF NOT EXISTS "idx_catalog_package_tenant_provider_ext" ON "catalog_package" ("tenantId","sourceProviderId","externalPackageId");
-          RAISE NOTICE 'Created table catalog_package';
-        END IF;
-        -- في حال كانت الجداول قديمة بلا أعمدة tenantId (يظهر خطأ 42703)
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='catalog_product' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "catalog_product" ADD COLUMN "tenantId" uuid NULL; -- مؤقتاً NULL ثم تعبئة
-          UPDATE "catalog_product" SET "tenantId" = '00000000-0000-0000-0000-000000000000' WHERE "tenantId" IS NULL;
-          ALTER TABLE "catalog_product" ALTER COLUMN "tenantId" SET NOT NULL;
-          RAISE NOTICE 'Added catalog_product.tenantId + backfill';
-        END IF;
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='catalog_package' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "catalog_package" ADD COLUMN "tenantId" uuid NULL;
-          UPDATE "catalog_package" SET "tenantId" = '00000000-0000-0000-0000-000000000000' WHERE "tenantId" IS NULL;
-          ALTER TABLE "catalog_package" ALTER COLUMN "tenantId" SET NOT NULL;
-          RAISE NOTICE 'Added catalog_package.tenantId + backfill';
-        END IF;
       END$$;
     `);
     const [usersHas] = await dataSource.query(`SELECT count(*)::int AS c FROM information_schema.columns WHERE table_name='users' AND column_name='tenantId'`);
@@ -413,7 +353,6 @@ async function bootstrap() {
     console.log('⏭ Skipping auto migrations (AUTO_MIGRATIONS=false)');
   }
 
-  // ================= Bootstrap Root (Instance Owner) =================
   if ((process.env.BOOTSTRAP_ENABLED || 'true').toLowerCase() === 'true') {
     try {
       const userRepo = dataSource.getRepository(User);
@@ -473,7 +412,6 @@ async function bootstrap() {
     console.warn('[BOOTSTRAP][GLOBAL-STATS] Failed to read stats:', e.message || e);
   }
 
-  // ================= Bootstrap Developer (Global) =================
   // مفعّل افتراضياً مع BOOTSTRAP_ENABLED، ويستخدم INITIAL_DEV_EMAIL + INITIAL_DEV_PASSWORD
   // (أزيل من التشغيل التلقائي) تم تعطيل إنشاء المطوّر تلقائياً.
   // الآن الإنشاء يتم فقط عبر endpoint: POST /api/auth/bootstrap-developer

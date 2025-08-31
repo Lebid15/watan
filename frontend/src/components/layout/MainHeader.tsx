@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { FaUserCircle } from 'react-icons/fa';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 import { formatGroupsDots } from '@/utils/format';
@@ -103,9 +104,9 @@ export default function MainHeader() {
                   <button
                     role="menuitem"
                     className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
-                    onClick={() => { setOpen(false); router.push('/user/passkeys'); }}
+                    onClick={() => { setOpen(false); router.push('/user/passkeys?add=1'); }}
                   >
-                    مفاتيح المرور
+                    إدارة مفاتيح المرور
                   </button>
                   <button
                     role="menuitem"
@@ -140,9 +141,23 @@ export default function MainHeader() {
           </div>
         </div>
 
-        {/* اليمين: اسم المشروع */}
-        <div className="text-xl font-semibold select-none">
-          Kadro Store
+        {/* اليمين: اسم المشروع + روابط دورية */}
+        <div className="flex items-center gap-4 text-sm select-none">
+          <div className="text-xl font-semibold">Kadro Store</div>
+          {/* Role aware quick nav */}
+          {user?.role === 'tenant_owner' && <nav className="hidden md:flex gap-3">
+            <Link className="hover:underline" href="/tenant/products">Products</Link>
+            <Link className="hover:underline" href="/tenant/users">Users</Link>
+            <Link className="hover:underline" href="/tenant/price-groups">Price Groups</Link>
+            <Link className="hover:underline" href="/tenant/reports">Reports</Link>
+            <Link className="hover:underline" href="/billing/overview">Billing</Link>
+          </nav>}
+          {user?.role === 'distributor' && <nav className="hidden md:flex gap-3">
+            <Link className="hover:underline" href="/distributor/products">Products</Link>
+            <Link className="hover:underline" href="/distributor/price-groups">Price Groups</Link>
+            <Link className="hover:underline" href="/distributor/orders">Orders</Link>
+          </nav>}
+          {/* تمت إزالة instance_owner (مُطبَّع إلى tenant_owner) */}
         </div>
       </div>
     </header>

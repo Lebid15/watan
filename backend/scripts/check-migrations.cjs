@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+/*
+ * Simple guard to catch common migration mistakes before build/deploy:
+ * 1. Foreign key referencedTableName: 'tenants' (should be singular 'tenant').
+ * 2. Unquoted camelCase column in CHECK expression for billingAnchor (should be "billingAnchor").
+ * 3. Any CHECK containing billingAnchor IN ( without quotes.
+ *
+ * Exit code 1 if violations found.
+ */
 const fs = require('fs');
 const path = require('path');
 
@@ -21,6 +29,7 @@ const patterns = [
   },
   {
     id: 'BILLING_ANCHOR_UNQUOTED_CHECK',
+    // look for a backtick template or string containing billingAnchor IN ('EOM' capturing unquoted start
     regex: /billingAnchor\s+IN\s*\('EOM','DOM'\)/g,
     message: 'Quote camelCase column in CHECK: use "billingAnchor" IN (...)'
   }
