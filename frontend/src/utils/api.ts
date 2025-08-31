@@ -336,13 +336,14 @@ function getCookie(name: string): string | null {
 }
 
 // Ø¯Ø§Ù„Ø© Ù…Ø´ØªØ±ÙƒØ© Ù„Ø¥Ø¶Ø§ÙØ© headers (Ù…ÙˆØ­Ù‘Ø¯Ø©)
-function addTenantHeaders(config: any) {
-  config.headers = config.headers || {};
+function addTenantHeaders(config: unknown) {
+  const axiosConfig = config as { headers?: Record<string, unknown>; [key: string]: unknown };
+  axiosConfig.headers = axiosConfig.headers || {};
 
   // 1) Ø­Ø§ÙˆÙ„ Ø£Ø®Ø° subdomain Ù…Ù† Ø§Ù„ÙƒÙˆÙƒÙŠ (ÙŠÙÙŠØ¯ Ø£Ø«Ù†Ø§Ø¡ SSR Ø£Ùˆ Ù‚Ø¨Ù„ ØªÙˆÙØ± window)
   const tenantCookie = getCookie('tenant_host');
-  if (tenantCookie && !config.headers['X-Tenant-Host']) {
-    config.headers['X-Tenant-Host'] = tenantCookie;
+  if (tenantCookie && !(axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host']) {
+    (axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host'] = tenantCookie;
   }
 
   // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§ØšØ±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
@@ -352,8 +353,8 @@ function addTenantHeaders(config: any) {
       const sub = currentHost.split('.')[0];
       if (sub && sub !== 'localhost' && sub !== 'www') {
         const tenantHost = `${sub}.localhost`;
-        if (!config.headers['X-Tenant-Host']) {
-          config.headers['X-Tenant-Host'] = tenantHost;
+        if (!(axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host']) {
+          (axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host'] = tenantHost;
         }
         // Ø®Ø²Ù‘Ù†Ù‡ ÙÙŠ ÙƒÙˆÙƒÙŠ Ù„ÙŠØ³ØªÙÙŠØ¯ Ù…Ù†Ù‡ Ø£ÙŠ Ø·Ù„Ø¨ ÙŠØªÙ… Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ± (SSR) Ø£Ùˆ fetch Ø¨Ø¯ÙˆÙ† window Ù„Ø§Ø­Ù‚Ø§Ù‹
         document.cookie = `tenant_host=${tenantHost}; path=/`;
@@ -365,8 +366,8 @@ function addTenantHeaders(config: any) {
       if (hostParts.length > 2) {
         const sub = hostParts[0].toLowerCase();
         if (!['www', 'api'].includes(sub)) {
-          if (!config.headers['X-Tenant-Host']) {
-            config.headers['X-Tenant-Host'] = currentHost;
+          if (!(axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host']) {
+            (axiosConfig.headers as Record<string, unknown>)['X-Tenant-Host'] = currentHost;
           }
           document.cookie = `tenant_host=${currentHost}; path=/`;
         }
@@ -377,23 +378,22 @@ function addTenantHeaders(config: any) {
   // 3) Ø§Ù„ØªÙˆÙƒÙ†
   if (typeof window !== 'undefined') {
     let token: string | null = localStorage.getItem('token');
-  // Support both legacy 'access_token' and current httpOnly 'auth' cookie names
-  if (!token) token = getCookie('access_token');
-  if (!token) token = getCookie('auth');
-    if (token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (!token) token = getCookie('access_token');
+    if (!token) token = getCookie('auth'); // legacy/httpOnly support
+    if (token && !(axiosConfig.headers as Record<string, unknown>).Authorization) {
+      (axiosConfig.headers as Record<string, unknown>).Authorization = `Bearer ${token}`;
     }
   }
 
-  return config;
+  return axiosConfig;
 }
 // Patch Ù„Ù„Ù€ fetch Ù„ØªØºØ·ÙŠØ© Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªÙŠ Ù„Ø§ ØªÙ…Ø± Ø¹Ø¨Ø± axios
-if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) {
-  (window as any).__TENANT_FETCH_PATCHED__ = true;
+if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: boolean }).__TENANT_FETCH_PATCHED__) {
+  (window as { __TENANT_FETCH_PATCHED__?: boolean }).__TENANT_FETCH_PATCHED__ = true;
   const originalFetch = window.fetch;
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const newInit: RequestInit = init ? { ...init } : {};
-    const headers = new Headers(newInit.headers || (typeof input === 'object' && (input as any).headers) || {});
+    const headers = new Headers(newInit.headers || (typeof input === 'object' && (input as { headers?: HeadersInit }).headers) || {});
 
     // Ø¥Ù† Ù„Ù… ÙŠÙˆØ¬Ø¯ Ø§Ù„Ø¹Ù†ÙˆØ§Ù† Ø£Ø¶ÙÙÙ‡
     if (!headers.has('X-Tenant-Host')) {
@@ -432,15 +432,15 @@ if (typeof window !== 'undefined' && !(window as any).__TENANT_FETCH_PATCHED__) 
   };
 }
 // ØªØ£ÙƒØ¯ Ù…Ù† Ø¹Ø¯Ù… ØªÙƒØ±Ø§Ø± ØªØ³Ø¬ÙŠÙ„ Ù†ÙØ³ Ø§Ù„Ù€ interceptor (Ù†ÙØ­Øµ flag Ø¹Ù„Ù‰ axios Ø§Ù„Ø¹Ø§Ù„Ù…ÙŠ)
-const ANY_AXIOS: any = axios as any;
+const ANY_AXIOS = axios as typeof axios & { __TENANT_HEADERS_ATTACHED__?: boolean };
 if (!ANY_AXIOS.__TENANT_HEADERS_ATTACHED__) {
   ANY_AXIOS.__TENANT_HEADERS_ATTACHED__ = true;
   api.interceptors.request.use((config) => {
     // console.log(`[API] -> ${config.method} ${config.url}`);
-    return addTenantHeaders(config);
+    return addTenantHeaders(config as unknown);
   });
   axios.interceptors.request.use((config) => {
-    return addTenantHeaders(config);
+    return addTenantHeaders(config as unknown);
   });
 }
 

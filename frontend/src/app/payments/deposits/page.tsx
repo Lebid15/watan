@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useAuthRequired } from '@/hooks/useAuthRequired';
+import { ErrorResponse } from '@/types/common';
 
 type PaymentMethodType = 'CASH_BOX' | 'BANK_ACCOUNT' | 'HAND_DELIVERY' | 'USDT' | 'MONEY_TRANSFER';
 
@@ -15,7 +16,7 @@ interface PaymentMethod {
   logoUrl?: string | null;
   note?: string | null;
   isActive: boolean;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
 }
 
 const FILES_BASE = API_BASE_URL.replace(/\/api$/, '');
@@ -35,8 +36,9 @@ export default function DepositMethodsPage() {
       setError('');
       const { data } = await api.get<PaymentMethod[]>(API_ROUTES.payments.methods.active);
       setMethods(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'تعذر جلب وسائل الدفع.';
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      const msg = error?.response?.data?.message || error?.message || 'تعذر جلب وسائل الدفع.';
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
       setMethods([]);
     } finally {
@@ -44,7 +46,7 @@ export default function DepositMethodsPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   return (
     <div className="min-h-screen p-4 max-w-5xl mx-auto bg-bg-base text-text-primary" dir="rtl">

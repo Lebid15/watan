@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '@/utils/api';
 import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
+import { ErrorResponse } from '@/types/common';
 
 type CatalogPackage = {
   id: string;
@@ -19,8 +20,8 @@ type ListResp = CatalogPackage[] | { items?: CatalogPackage[] } | unknown;
 
 function normalizePkgs(data: ListResp): CatalogPackage[] {
   if (Array.isArray(data)) return data as CatalogPackage[];
-  if (data && typeof data === 'object' && 'items' in (data as any)) {
-    return ((data as any).items ?? []) as CatalogPackage[];
+  if (data && typeof data === 'object' && 'items' in (data as Record<string, unknown>)) {
+    return ((data as Record<string, unknown>).items ?? []) as CatalogPackage[];
   }
   return [];
 }
@@ -28,8 +29,12 @@ function normalizePkgs(data: ListResp): CatalogPackage[] {
 // مكون عميل: لا يجب أن يكون async وإلا سيعامله Next كـ Server Component ويكسر الـ hooks
 // ملاحظة: مولد الأنواع لدى Next (حالياً) كان يتوقع params كـ Promise بالصيغة القديمة.
 // نستخدم wrapper لتجنب فشل التحقق: نستقبل props كـ any ثم نستخرج id بأمان.
-export default function CatalogProductDetails(props: any) {
-  const id: string = props?.params?.id || '';
+export default function CatalogProductDetails(props: { params: Promise<{ id: string }> }) {
+  const [id, setId] = useState<string>('');
+  
+  useEffect(() => {
+    props.params.then(params => setId(params.id || ''));
+  }, [props.params]);
   const [pkgs, setPkgs] = useState<CatalogPackage[]>([]);
   const [loading, setLoading] = useState(false);
   const [enabling, setEnabling] = useState(false);
@@ -44,13 +49,14 @@ export default function CatalogProductDetails(props: any) {
     setLoadError(null);
     try {
       const res = await api.get(`/admin/catalog/products/${id}/packages`);
-      const data: any = res.data;
-      if (data?.error) setLoadError(data.error as string);
+      const data: unknown = res.data;
+      if ((data as Record<string, unknown>)?.error) setLoadError((data as Record<string, unknown>).error as string);
       setPkgs(normalizePkgs(data));
-    } catch (e: any) {
-      setLoadError(e?.response?.data?.message || e?.message || 'فشل جلب الباقات');
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      setLoadError(error?.response?.data?.message || error?.message || 'فشل جلب الباقات');
       setPkgs([]);
-    } finally {
+    }finally {
       setLoading(false);
     }
   }
@@ -59,19 +65,40 @@ export default function CatalogProductDetails(props: any) {
     setEnabling(true);
     try {
       const { data } = await api.post(`/admin/catalog/products/${id}/enable-all`);
-      const created = Number((data as any)?.createdPackages ?? 0);
-      const skipped = Number((data as any)?.skippedPackages ?? 0);
-      const total = Number((data as any)?.totalFromCatalog ?? 0);
+      const result = data as Record<string, unknown>;
+      const created = Number(result?.createdPackages ?? 0);
+      const skipped = Number(result?.skippedPackages ?? 0);
+      const total = Number(result?.totalFromCatalog ?? 0);
       show(`✅ تم التفعيل: جديدة ${created} / متجاهلة ${skipped} / المجموع ${total}`);
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'فشل التفعيل';
+    } catch (e: unknown) {
+      const error = e as ErrorResponse;
+      const msg = error?.response?.data?.message || error?.message || 'فشل التفعيل';
       show(`⚠️ ${msg}`);
-    } finally {
+    }finally {
       setEnabling(false);
     }
   }
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { 
+    if (!id) return;
+    async function loadData() {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await api.get(`/admin/catalog/products/${id}/packages`);
+        const data: unknown = res.data;
+        if ((data as Record<string, unknown>)?.error) setLoadError((data as Record<string, unknown>).error as string);
+        setPkgs(normalizePkgs(data));
+      } catch (e: unknown) {
+        const error = e as ErrorResponse;
+        setLoadError(error?.response?.data?.message || error?.message || 'فشل جلب الباقات');
+        setPkgs([]);
+      }finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [id]);
 
   const pvLabel = useMemo(() => {
     if (pv === 'znet') return 'ZNET';
