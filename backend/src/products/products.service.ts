@@ -702,13 +702,9 @@ export class ProductsService {
   async getUsersPriceGroups(
     tenantId: string,
   ): Promise<{ id: string; name: string; usersCount: number }[]> {
-    const result = await this.priceGroupsRepo
+    const rows = await this.priceGroupsRepo
       .createQueryBuilder('pg')
-      .leftJoin(
-        'users',
-        'u',
-        'u."priceGroupId" = pg.id AND u."tenantId" = :tenantId',
-      )
+      .leftJoin('users', 'u', 'u."priceGroupId" = pg.id AND u."tenantId" = :tenantId')
       .select('pg.id', 'id')
       .addSelect('pg.name', 'name')
       .addSelect('COUNT(u.id)', 'usersCount')
@@ -716,12 +712,7 @@ export class ProductsService {
       .setParameter('tenantId', tenantId)
       .groupBy('pg.id, pg.name')
       .getRawMany();
-
-    return result.map((row) => ({
-      id: row.id,
-      name: row.name,
-      usersCount: parseInt(row.usersCount) || 0,
-    }));
+    return rows.map(r => ({ id: r.id, name: r.name, usersCount: Number.parseInt(r.usersCount, 10) || 0 }));
   }
 
   // 🔹 مجموعات الأسعار
@@ -2291,323 +2282,13 @@ export class ProductsService {
     }
 
     const items = pageItems.map((o) => {
-      const priceUSD = Number((o as any).price || 0);
-      const unitPriceUSD = o.quantity
-        ? priceUSD / Number(o.quantity)
-        : priceUSD;
-
-      const isExternal = !!(o.providerId && o.externalOrderId);
-      const providerType = o.providerId
-        ? providerKind.get(o.providerId)
-        : undefined;
-
-      const frozen = frozenMap.get(o.id);
-      const isFrozen = !!(frozen && frozen.fxLocked && o.status === 'approved');
-
-      let sellTRY: number;
-      let costTRY: number;
-      let profitTRY: number;
-
-      if (isFrozen) {
-        sellTRY = Number((frozen.sellTryAtApproval ?? 0).toFixed(2));
-        costTRY = Number((frozen.costTryAtApproval ?? 0).toFixed(2));
-        const pf =
-          frozen.profitTryAtApproval != null
-            ? Number(frozen.profitTryAtApproval)
-            : sellTRY - costTRY;
-        profitTRY = Number(pf.toFixed(2));
-      } else {
-        if (isExternal) {
-          const amt = Math.abs(Number((o as any).costAmount ?? 0));
-          let cur = String((o as any).costCurrency || '')
-            .toUpperCase()
-            .trim();
-          if (providerType === 'znet') cur = 'TRY';
-          if (!cur) cur = 'USD';
-          costTRY = toTRY(amt, cur);
-        } else {
-          const baseUSD = Number(
-            (o as any).package?.basePrice ?? (o as any).package?.capital ?? 0,
-          );
-          const qty = Number(o.quantity ?? 1);
-          costTRY = baseUSD * qty * TRY_RATE;
-        }
-
-        sellTRY = priceUSD * TRY_RATE;
-        profitTRY = sellTRY - costTRY;
-
-        sellTRY = Number(sellTRY.toFixed(2));
-        costTRY = Number(costTRY.toFixed(2));
-        profitTRY = Number(profitTRY.toFixed(2));
-      }
-
-      const userRate = (o as any).user?.currency
-        ? Number((o as any).user.currency.rate)
-        : 1;
-      const userCode = (o as any).user?.currency
-        ? (o as any).user.currency.code
-        : 'USD';
-      const totalUser = priceUSD * userRate;
-      const unitUser = unitPriceUSD * userRate;
-
-      const username = (o as any).user?.username ?? null;
-      const userEmail = (o as any).user?.email ?? null;
-
-      return {
-        id: o.id,
-        orderNo: (o as any).orderNo ?? null,
-        status: o.status,
-        createdAt:
-          o.createdAt?.toISOString?.() ??
-          new Date(o.createdAt as any).toISOString(),
-        username,
-        userEmail,
-
-        providerId: o.providerId ?? null,
-        externalOrderId: o.externalOrderId ?? null,
-        userIdentifier: o.userIdentifier ?? null,
-        extraField: (o as any).extraField ?? null,
-        quantity: o.quantity,
-
-        priceUSD,
-        unitPriceUSD,
-        display: {
-          currencyCode: userCode,
-          unitPrice: unitUser,
-          totalPrice: totalUser,
-        },
-
-        currencyTRY: 'TRY',
-        sellTRY,
-        costTRY,
-        profitTRY,
-
-        product: o.product
-          ? {
-              id: o.product.id,
-              name: o.product.name,
-              imageUrl: pickImage(o.product),
-            }
-          : null,
-        package: o.package
-          ? {
-              id: o.package.id,
-              name: o.package.name,
-              imageUrl: pickImage(o.package),
-            }
-          : null,
-
-        sentAt: (o as any).sentAt
-          ? ((o as any).sentAt.toISOString?.() ?? null)
-          : null,
-        completedAt: (o as any).completedAt
-          ? ((o as any).completedAt.toISOString?.() ?? null)
-          : null,
-
-        fxLocked: isFrozen,
-        approvedLocalDate: frozen?.approvedLocalDate ?? null,
-
-        providerMessage:
-          (o as any).providerMessage ?? (o as any).lastMessage ?? null,
-        pinCode: (o as any).pinCode ?? null,
-        notesCount: Array.isArray((o as any).notes)
-          ? (o as any).notes.length
-          : 0,
-        manualNote: (o as any).manualNote ?? null,
-        lastMessage: (o as any).lastMessage ?? null,
-      };
-    });
-
-    const last = items[items.length - 1] || null;
-    const nextCursor = last
-      ? encodeCursor(toEpochMs(new Date(last.createdAt)), String(last.id))
-      : null;
-
-    return {
-      items,
-      pageInfo: { nextCursor, hasMore },
-      meta: {
-        limit,
-        appliedFilters: {
-          q: dto.q || '',
-          status: dto.status || '',
-          method: dto.method || '',
-          from: dto.from || '',
-          to: dto.to || '',
-        },
-      },
-    };
-  }
-
-  async listOrdersForAdmin(dto: ListOrdersDto, tenantId?: string) {
-    const limit = Math.max(1, Math.min(100, dto.limit ?? 25));
-    const cursor = decodeCursor(dto.cursor);
-
-    // ✅ أسعار العملات حسب التينانت
-    const currencies = await (tenantId
-      ? this.currenciesRepo.find({ where: { tenantId } as any })
-      : this.currenciesRepo.find());
-    const getRate = (code: string) => {
-      const row = currencies.find(
-        (c) => c.code.toUpperCase() === code.toUpperCase(),
-      );
-      return row ? Number(row.rate) : undefined;
-    };
-    const TRY_RATE = getRate('TRY') ?? 1;
-    const toTRY = (amount: number, code?: string) => {
-      const c = (code || 'TRY').toUpperCase();
-      if (c === 'TRY') return amount;
-      const r = getRate(c);
-      if (!r || !Number.isFinite(r) || r <= 0) return amount;
-      return amount * (TRY_RATE / r);
-    };
-
-    const pickImage = (obj: any): string | null =>
-      obj
-        ? (obj.imageUrl ??
-          obj.image ??
-          obj.logoUrl ??
-          obj.iconUrl ??
-          obj.icon ??
-          null)
-        : null;
-
-    const providersMap = new Map<string, string>();
-    if (tenantId) {
-      const integrations = await this.integrations.list(tenantId);
-      for (const it of integrations as any[])
-        providersMap.set(it.id, it.provider);
-    }
-
-    const qb = this.ordersRepo
-      .createQueryBuilder('o')
-      .leftJoinAndSelect('o.user', 'u')
-      .leftJoinAndSelect('u.currency', 'uc')
-      .leftJoinAndSelect('o.product', 'prod')
-      .leftJoinAndSelect('o.package', 'pkg');
-
-    if (dto.status) qb.andWhere('o.status = :status', { status: dto.status });
-
-    if (dto.method === 'manual') {
-      qb.andWhere('(o.providerId IS NULL OR o.externalOrderId IS NULL)');
-    } else if (dto.method) {
-      qb.andWhere('o.providerId = :pid AND o.externalOrderId IS NOT NULL', {
-        pid: dto.method,
-      });
-    }
-
-    if (dto.from)
-      qb.andWhere('o.createdAt >= :from', {
-        from: new Date(dto.from + 'T00:00:00Z'),
-      });
-    if (dto.to)
-      qb.andWhere('o.createdAt <= :to', {
-        to: new Date(dto.to + 'T23:59:59Z'),
-      });
-
-    const _q = (dto.q ?? '').trim();
-    if (_q && /^\d+$/.test(_q)) {
-      const qd = _q;
-      qb.andWhere(
-        new Brackets((b) => {
-          b.where('CAST(o.orderNo AS TEXT) = :qd', { qd })
-            .orWhere('o.userIdentifier = :qd', { qd })
-            .orWhere('o.externalOrderId = :qd', { qd });
-        }),
-      );
-    } else if (_q) {
-      const q = `%${_q.toLowerCase()}%`;
-      qb.andWhere(
-        new Brackets((b) => {
-          b.where('LOWER(prod.name) LIKE :q', { q })
-            .orWhere('LOWER(pkg.name) LIKE :q', { q })
-            .orWhere('LOWER(u.username) LIKE :q', { q })
-            .orWhere('LOWER(u.email) LIKE :q', { q })
-            .orWhere('LOWER(o.userIdentifier) LIKE :q', { q })
-            .orWhere('LOWER(o.externalOrderId) LIKE :q', { q });
-        }),
-      );
-    }
-
-    // 🔐 تقييد المستأجر
-    this.addTenantWhere(qb, 'u', tenantId);
-
-    if (cursor) {
-      qb.andWhere(
-        new Brackets((b) => {
-          b.where('o.createdAt < :cts', { cts: new Date(cursor.ts) }).orWhere(
-            new Brackets((bb) => {
-              bb.where('o.createdAt = :cts', {
-                cts: new Date(cursor.ts),
-              }).andWhere('o.id < :cid', { cid: cursor.id });
-            }),
-          );
-        }),
-      );
-    }
-
-    qb.orderBy('o.createdAt', 'DESC')
-      .addOrderBy('o.id', 'DESC')
-      .take(limit + 1);
-
-    const rows = await qb.getMany();
-    const hasMore = rows.length > limit;
-    const pageItems = hasMore ? rows.slice(0, limit) : rows;
-
-    const approvedIds = pageItems
-      .filter((o) => o.status === 'approved')
-      .map((o) => o.id);
-    let frozenMap = new Map<
-      string,
-      {
-        fxLocked: boolean;
-        sellTryAtApproval: number | null;
-        costTryAtApproval: number | null;
-        profitTryAtApproval: number | null;
-        approvedLocalDate: string | null;
-      }
-    >();
-    if (approvedIds.length) {
-      const rowsFrozen = await this.ordersRepo.query(
-        `SELECT id,
-                COALESCE("fxLocked", false)           AS "fxLocked",
-                "sellTryAtApproval",
-                "costTryAtApproval",
-                "profitTryAtApproval",
-                "approvedLocalDate"
-          FROM "product_orders"
-          WHERE id = ANY($1::uuid[])`,
-        [approvedIds],
-      );
-      frozenMap = new Map(
-        rowsFrozen.map((r: any) => [
-          String(r.id),
-          {
-            fxLocked: !!r.fxLocked,
-            sellTryAtApproval:
-              r.sellTryAtApproval != null ? Number(r.sellTryAtApproval) : null,
-            costTryAtApproval:
-              r.costTryAtApproval != null ? Number(r.costTryAtApproval) : null,
-            profitTryAtApproval:
-              r.profitTryAtApproval != null
-                ? Number(r.profitTryAtApproval)
-                : null,
-            approvedLocalDate: r.approvedLocalDate
-              ? String(r.approvedLocalDate)
-              : null,
-          },
-        ]),
-      );
-    }
-
-    const items = pageItems.map((o) => {
       const priceUSD = Number(o.price || 0);
       const unitPriceUSD = o.quantity
         ? priceUSD / Number(o.quantity)
         : priceUSD;
 
       const providerType = o.providerId
-        ? providersMap.get(o.providerId)
+        ? providerKind.get(o.providerId)
         : undefined;
       const isExternal = !!(o.providerId && o.externalOrderId);
 
@@ -2663,12 +2344,12 @@ export class ProductsService {
         product: {
           id: o.product?.id,
           name: o.product?.name,
-          imageUrl: pickImage((o as any).product),
+          imageUrl: pickImage(o.product),
         },
         package: {
           id: o.package?.id,
           name: o.package?.name,
-          imageUrl: pickImage((o as any).package),
+          imageUrl: pickImage(o.package),
         },
 
         status: o.status,
