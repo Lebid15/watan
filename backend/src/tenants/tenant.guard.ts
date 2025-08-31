@@ -84,11 +84,7 @@ export class TenantGuard implements CanActivate {
   if (isTenantPath && !tenant) throw new UnauthorizedException('Tenant context required');
 
   if (!user && !req.externalToken) {
-<<<<<<< HEAD
       // Defer auth evaluation to JwtAuthGuard / RolesGuard if an Authorization header OR auth cookie is present.
-=======
-      // Defer auth evaluation to JwtAuthGuard / RolesGuard if an Authorization header is present.
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
       // This avoids ordering issues where this global guard runs before controller-level JwtAuthGuard.
       const hasAuthHeader = !!(req.headers && req.headers.authorization);
       const hasAuthCookie = !!(req.cookies && req.cookies.auth);
@@ -100,7 +96,6 @@ export class TenantGuard implements CanActivate {
       throw new UnauthorizedException('Auth required');
     }
 
-<<<<<<< HEAD
     // If we have both a resolved tenant (via domain/header) and a JWT user whose tenantId differs,
     // treat it as a tenant context mismatch (e.g., developer/global token reused on a storefront subdomain).
     // We allow developer / instance_owner to proceed (global scope) so they can access global pages without forced logout.
@@ -109,11 +104,11 @@ export class TenantGuard implements CanActivate {
       const roleLower = (user.role || '').toLowerCase();
       const isGlobalRole = roleLower === 'developer' || roleLower === 'instance_owner';
       if (userTenantId && tenant.id !== userTenantId && !isGlobalRole) {
-  if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH diff ids', { userTenantId, tenantId: tenant.id, roleLower, path });
+        if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH diff ids', { userTenantId, tenantId: tenant.id, roleLower, path });
         throw new UnauthorizedException('TENANT_MISMATCH');
       }
       if (!userTenantId && tenant.id && !isGlobalRole) {
-  if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH null user tenantId', { tenantId: tenant.id, roleLower, path });
+        if (debugEnabled('tenantGuard')) debugLog('tenantGuard', 'TENANT_MISMATCH null user tenantId', { tenantId: tenant.id, roleLower, path });
         throw new UnauthorizedException('TENANT_MISMATCH');
       }
     }
@@ -122,32 +117,15 @@ export class TenantGuard implements CanActivate {
     if (isTenantPath) {
       if (isExternalTenantPath && req.externalToken) {
         if (req.externalToken.tenantId !== tenant.id) throw new ForbiddenException('Cross-tenant access (external)');
-        // no role enforcement for external token usage
       } else {
         if (!user) throw new UnauthorizedException('Auth required');
         if (user.tenantId !== tenant.id) throw new ForbiddenException('Cross-tenant access blocked');
-        const finalRole = user.roleFinal || user.role; // fallback to legacy if not injected
+        const finalRole = user.roleFinal || user.role;
         if (!['tenant_owner', 'distributor'].includes(finalRole)) {
           throw new ForbiddenException('Role not permitted for tenant API');
         }
       }
     }
-=======
-    // Enforce tenant ownership/distributor constraints only on tenant paths
-    if (isTenantPath) {
-      if (isExternalTenantPath && req.externalToken) {
-        if (req.externalToken.tenantId !== tenant.id) throw new ForbiddenException('Cross-tenant access (external)');
-        // no role enforcement for external token usage
-      } else {
-        if (!user) throw new UnauthorizedException('Auth required');
-        if (user.tenantId !== tenant.id) throw new ForbiddenException('Cross-tenant access blocked');
-        const finalRole = user.roleFinal || user.role; // fallback to legacy if not injected
-        if (!['tenant_owner', 'distributor'].includes(finalRole)) {
-          throw new ForbiddenException('Role not permitted for tenant API');
-        }
-      }
-    }
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     // Admin/dev/app paths don't require tenant impersonation here; FinalRolesGuard will restrict roles.
     return true;
   }

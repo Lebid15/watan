@@ -3,128 +3,67 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  BadRequestException,
-  ForbiddenException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Brackets } from 'typeorm';
-import { Product } from './product.entity';
-import { ProductPackage } from './product-package.entity';
-import { PackagePrice } from './package-price.entity';
-import { PriceGroup } from './price-group.entity';
-import { User } from '../user/user.entity';
-import { ProductOrder } from './product-order.entity';
-import { NotificationsService } from '../notifications/notifications.service';
-import { Currency } from '../currencies/currency.entity';
-import { OrderDispatchLog } from './order-dispatch-log.entity';
-import { PackageRouting } from '../integrations/package-routing.entity';
-import { PackageMapping } from '../integrations/package-mapping.entity';
-import { IntegrationsService } from '../integrations/integrations.service';
-import { AccountingPeriodsService } from '../accounting/accounting-periods.service';
-import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
-import { ListOrdersDto } from './dto/list-orders.dto';
-import { CodeItem } from '../codes/entities/code-item.entity';
-import { isFeatureEnabled } from '../common/feature-flags';
-import {
-  DistributorPackagePrice,
-  DistributorUserPriceGroup,
-} from '../distributor/distributor-pricing.entities';
+    (saved as any).prices = prices;
+    try {
+      console.log('[PKG][CREATE][OK]', {
+        id: saved.id?.slice(0, 8),
+        publicCode: (saved as any).publicCode,
+        capital: saved.capital,
+      });
+    } catch {}
+    return saved as ProductPackage;
+  }
 
-type OrderView = {
-  id: string;
-  status: string;
-  quantity: number;
-  priceUSD: number;
-  unitPriceUSD: number;
-  display: {
-    currencyCode: string;
-    unitPrice: number;
-    totalPrice: number;
-  };
-  product: { id: string; name: string };
-  package: { id: string; name: string };
-  userIdentifier: string | null;
-  extraField: string | null;
-  createdAt: Date;
-};
+  // ✅ تحديث اسم المزود لباقات المنتج
+  async updatePackageProvider(packageId: string, providerName: string) {
+    const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any });
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+    (pkg as any).providerName = providerName;
+    await this.packagesRepo.save(pkg);
+    return { id: pkg.id, providerName };
+  }
 
-export type OrderStatus = 'pending' | 'approved' | 'rejected';
+  /** ✅ حذف باقة (مع أسعارها) مع دعم الحذف العالمي للمطور */
+  async deletePackage(context: { tenantId?: string | null; role?: string | null; userId?: string | null }, id: string): Promise<void> {
+    const { tenantId, role, userId } = context || {};
+    const pkg = await this.packagesRepo.findOne({ where: { id } as any, relations: ['prices', 'product'] });
+    if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
 
-@Injectable()
-export class ProductsService {
-  constructor(
-    @InjectRepository(Product) private productsRepo: Repository<Product>,
-    @InjectRepository(ProductPackage)
-    private packagesRepo: Repository<ProductPackage>,
-    @InjectRepository(PackagePrice)
-    private packagePriceRepo: Repository<PackagePrice>,
-    @InjectRepository(PriceGroup)
-    private priceGroupsRepo: Repository<PriceGroup>,
-    @InjectRepository(User) private usersRepo: Repository<User>,
-    @InjectRepository(ProductOrder)
-    private ordersRepo: Repository<ProductOrder>,
-    @InjectRepository(DistributorPackagePrice)
-    private distPkgPriceRepo: Repository<DistributorPackagePrice>,
-    @InjectRepository(DistributorUserPriceGroup)
-    private distUserGroupRepo: Repository<DistributorUserPriceGroup>,
-    @InjectRepository(Currency) private currenciesRepo: Repository<Currency>,
-    @InjectRepository(OrderDispatchLog)
-    private readonly logsRepo: Repository<OrderDispatchLog>,
-    @InjectRepository(PackageRouting)
-    private readonly routingRepo: Repository<PackageRouting>,
-    @InjectRepository(PackageMapping)
-    private readonly mappingRepo: Repository<PackageMapping>,
-    private readonly integrations: IntegrationsService,
-    private readonly notifications: NotificationsService,
-    private readonly accounting: AccountingPeriodsService,
+    const isGlobal = pkg.tenantId === this.DEV_TENANT_ID;
+    const roleLower = (role || '').toLowerCase();
+    const isDevRole = roleLower === 'developer' || roleLower === 'instance_owner';
+
+    console.log('[PKG][DELETE][REQ]', {
+      packageId: id,
+      pkgTenantId: pkg.tenantId,
+      reqTenantId: tenantId || null,
+      isGlobal,
+      role: roleLower || null,
+      userId: userId?.slice(0,8) || null,
+    });
+
+    if (tenantId && pkg.tenantId === tenantId) {
+      // ok
+    } else if (isGlobal && isDevRole) {
+      // allow
+    } else {
+      throw new ForbiddenException('لا تملك صلاحية حذف هذه الباقة');
+    }
+
+    if (Array.isArray(pkg.prices) && pkg.prices.length) {
+      await this.packagePriceRepo.remove(pkg.prices);
+    }
+    await this.packagesRepo.remove(pkg);
   ) {}
 
-<<<<<<< HEAD
-  // معرف التينانت الخاص بالمطور (المصدر) – يجب توحيده في كل المواضع
-  private readonly DEV_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+    // معرف التينانت الخاص بالمطور (مستودع عالمي)
+    private readonly DEV_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
-  // --- Helper: fetch single package by id (lightweight, no relations) ---
-  async findPackageById(id: string): Promise<ProductPackage | null> {
-    if (!id) return null;
-    return this.packagesRepo.findOne({ where: { id } as any });
-  }
-
-
-=======
-  // Phase2: تفعيل منتج من الكتالوج للـ tenant
-  async activateCatalogProduct(
-    tenantId: string,
-    catalogProductId: string,
-  ): Promise<Product> {
-    if (!catalogProductId)
-      throw new BadRequestException('catalogProductId مطلوب');
-    // تحقق أن الكتالوج منشور وقابل للتفعيل
-    const catalogRow = await this.productsRepo.manager.query(
-      'SELECT id, "isPublishable" FROM catalog_product WHERE id = $1 AND "isPublishable" = true LIMIT 1',
-      [catalogProductId],
-    );
-    if (!catalogRow || catalogRow.length === 0) {
-      throw new NotFoundException('المنتج غير متاح أو غير منشور في الكتالوج');
+    // Helper: fetch single package by id (lightweight)
+    async findPackageById(id: string): Promise<ProductPackage | null> {
+      if (!id) return null;
+      return this.packagesRepo.findOne({ where: { id } as any });
     }
-    // تحقق من عدم وجود منتج مفعّل سابقًا لنفس catalogProductId داخل نفس التينانت
-    const existing = await this.productsRepo.findOne({
-      where: { tenantId, catalogProductId } as any,
-    });
-    if (existing) return existing; // idempotent
-
-    const product = this.productsRepo.create({
-      tenantId,
-      name: 'Catalog Product', // يمكن لاحقًا سحب الاسم من catalog_product
-      description: '',
-      isActive: true,
-      catalogProductId,
-      useCatalogImage: true,
-    } as Partial<Product>);
-    return this.productsRepo.save(product);
-  }
-
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
   // ---------- Helpers خاصة بالـ tenant ----------
   private ensureSameTenant(
     entityTenantId?: string | null,
@@ -666,31 +605,22 @@ export class ProductsService {
     return this.productsRepo.save(product);
   }
 
-<<<<<<< HEAD
   async delete(opts: { tenantId?: string | null; role?: string | null; allowGlobal?: boolean }, id: string): Promise<void> {
     const { tenantId, role, allowGlobal } = opts || {};
     const roleLower = (role || '').toLowerCase();
     const isDev = roleLower === 'developer' || roleLower === 'instance_owner';
 
     if (!tenantId) {
-      // لا نسمح بحذف أي منتج بدون tenantId صريح إلا عند حذف عالمي صريح من مطور وبـ allowGlobal
       if (!(isDev && allowGlobal)) {
         throw new ForbiddenException('لا يوجد سياق مستأجر صالح للحذف');
       }
     }
 
-    // بناء where بشكل صارم: إن لم يكن allowGlobal فلابد من tenantId
     const where: any = { id };
     if (tenantId) where.tenantId = tenantId;
-    else if (isDev && allowGlobal) where.tenantId = this.DEV_TENANT_ID; // حاوية عالمية صريحة
+    else if (isDev && allowGlobal) where.tenantId = this.DEV_TENANT_ID;
 
     const product = await this.productsRepo.findOne({ where });
-=======
-  async delete(tenantId: string, id: string): Promise<void> {
-    const product = await this.productsRepo.findOne({
-      where: { id, tenantId } as any,
-    });
->>>>>>> 88f196d (feat: optimize getUsersPriceGroups to fix N+1 query problem)
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
 
     // حواجز حماية إضافية: منع مطور من حذف منتج تينانت آخر لو مر tenantId خاطئ
@@ -772,29 +702,20 @@ export class ProductsService {
   async addPackageToProduct(
     tenantId: string,
     productId: string,
-<<<<<<< HEAD
-  data: Partial<ProductPackage>,
-=======
-    data: Partial<ProductPackage> & { catalogLinkCode?: string },
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
+    data: Partial<ProductPackage>,
     ctx?: { userId?: string; finalRole?: string },
   ): Promise<ProductPackage> {
-<<<<<<< HEAD
-    // Lightweight debug log (avoid dumping large objects)
+    // Lightweight debug log
     try {
       console.log('[PKG][CREATE][START]', {
         tenantId: tenantId?.slice(0, 8),
         productId: productId?.slice(0, 8),
-  name: data?.name,
+        name: data?.name,
         publicCode: (data as any)?.publicCode,
         by: ctx?.finalRole || 'unknown',
       });
-    } catch (_) {}
+    } catch {}
     if (!data.name || !data.name.trim()) throw new ConflictException('اسم الباقة مطلوب');
-=======
-    if (!data.name || !data.name.trim())
-      throw new ConflictException('اسم الباقة مطلوب');
->>>>>>> 88f196d (feat: optimize getUsersPriceGroups to fix N+1 query problem)
 
     let product = await this.productsRepo.findOne({
       where: { id: productId, tenantId } as any,
@@ -812,30 +733,7 @@ export class ProductsService {
 
   // Catalog linking removed: no catalogLinkCode validation required.
 
-    if (isFeatureEnabled('catalogLinking')) {
-      if (!product.catalogProductId) {
-        throw new BadRequestException(
-          'catalogProductId مفقود للمنتج؛ لا يمكن إنشاء باقة (ربط الكتالوج مفعل)',
-        );
-      }
-      const link = (data as any).catalogLinkCode?.trim();
-      if (!link) throw new BadRequestException('catalogLinkCode مطلوب');
-      // تحقق وجود linkCode في catalog_package لنفس catalogProductId
-      const row = await this.productsRepo.manager.query(
-        'SELECT 1 FROM catalog_package WHERE "catalogProductId" = $1 AND "linkCode" = $2 LIMIT 1',
-        [product.catalogProductId, link],
-      );
-      if (!row || row.length === 0) {
-        throw new BadRequestException(
-          'catalogLinkCode غير صالح لهذا المنتج الكتالوجي',
-        );
-      }
-      (data as any).catalogLinkCode = link;
-      // إن كان الدور موزّع سجل من أنشأ الباقة
-      if (ctx?.finalRole === 'distributor' && ctx?.userId) {
-        (data as any).createdByDistributorId = ctx.userId;
-      }
-    }
+  // catalogLinking feature removed: no validation
 
     const initialCapital = Number(data.capital ?? data.basePrice ?? 0);
 
@@ -847,21 +745,10 @@ export class ProductsService {
       capital: initialCapital,
       isActive: data.isActive ?? true,
       imageUrl: data.imageUrl,
-<<<<<<< HEAD
-  product,
-      createdByDistributorId: (data as any).createdByDistributorId || null,
-  providerName: (data as any).providerName || null,
-  // إزالة منطق المصدر/الاستنساخ
-=======
       product,
-      catalogLinkCode: (data as any).catalogLinkCode || null,
       createdByDistributorId: (data as any).createdByDistributorId || null,
-<<<<<<< HEAD
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
-    } as Partial<ProductPackage>) as ProductPackage;
-=======
+      providerName: (data as any).providerName || null,
     } as Partial<ProductPackage>);
->>>>>>> 88f196d (feat: optimize getUsersPriceGroups to fix N+1 query problem)
 
     // اختيارياً: ضبط publicCode أثناء الإنشاء إن وُفّر
     if (data.publicCode != null) {
@@ -904,83 +791,17 @@ export class ProductsService {
     await this.packagePriceRepo.save(prices);
 
     (saved as any).prices = prices;
-<<<<<<< HEAD
     try {
       console.log('[PKG][CREATE][OK]', {
         id: saved.id?.slice(0, 8),
-  publicCode: (saved as any).publicCode,
+        publicCode: (saved as any).publicCode,
         capital: saved.capital,
       });
-    } catch (_) {}
+    } catch {}
     return saved as ProductPackage;
   }
 
-  // ✅ تحديث اسم المزود لباقات المنتج
-  async updatePackageProvider(packageId: string, providerName: string) {
-    const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any });
-    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
-    (pkg as any).providerName = providerName;
-    await this.packagesRepo.save(pkg);
-    return { id: pkg.id, providerName };
-  }
-
-  /** ✅ حذف باقة (مع أسعارها)
-   * السلوك:
-   * - يسمح بالحذف إن كانت الباقة ضمن نفس tenantId المستدعي.
-   * - يسمح للمطور / instance_owner بحذف الباقات العالمية (DEV_TENANT_ID) حتى بدون تمرير tenantId.
-   * - يمنع المطور من حذف باقة Tenant أخرى مختلفة (حماية إضافية).
-   * سجلات تشخيص لمتابعة أي التباس في الواجهة.
-   */
-  async deletePackage(context: { tenantId?: string | null; role?: string | null; userId?: string | null }, id: string): Promise<void> {
-    const { tenantId, role, userId } = context || {};
-    const pkg = await this.packagesRepo.findOne({ where: { id } as any, relations: ['prices', 'product'] });
-    if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
-
-    const isGlobal = pkg.tenantId === this.DEV_TENANT_ID;
-    const roleLower = (role || '').toLowerCase();
-    const isDevRole = roleLower === 'developer' || roleLower === 'instance_owner';
-
-    console.log('[PKG][DELETE][REQ]', {
-      packageId: id,
-      pkgTenantId: pkg.tenantId,
-      reqTenantId: tenantId || null,
-      isGlobal,
-      role: roleLower || null,
-      userId: userId?.slice(0,8) || null,
-    });
-
-    // السماح: نفس التينانت
-    if (tenantId && pkg.tenantId === tenantId) {
-      // ok
-    } else if (isGlobal && isDevRole) {
-      // السماح للمطور بحذف باقة عالمية
-    } else {
-      // منع أي حالة أخرى (خاصة حذف باقة تينانت آخر أو محاولة مطور حذف باقة تينانت عادي)
-      throw new ForbiddenException('لا تملك صلاحية حذف هذه الباقة');
-    }
-
-    if (Array.isArray(pkg.prices) && pkg.prices.length) {
-      await this.packagePriceRepo.remove(pkg.prices);
-    }
-=======
-    return saved;
-  }
-
-  /** ✅ حذف باقة (مع أسعارها) */
-  async deletePackage(tenantId: string, id: string): Promise<void> {
-    const pkg = await this.packagesRepo.findOne({
-      where: { id, tenantId } as any,
-      relations: ['prices'],
-    });
-    if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
-
-    if (Array.isArray(pkg.prices) && pkg.prices.length)
-      await this.packagePriceRepo.remove(pkg.prices);
->>>>>>> 88f196d (feat: optimize getUsersPriceGroups to fix N+1 query problem)
-    await this.packagesRepo.remove(pkg);
-
-    console.log('[PKG][DELETE][DONE]', { packageId: id, global: isGlobal, byDev: isGlobal && isDevRole });
-  }
+  // deletePackage + updatePackageProvider already defined later (deduplicated above)
 
   /** ✅ تحديث رأس المال وأسعار الباقة لكل مجموعة */
   async updatePackagePrices(
@@ -1056,15 +877,8 @@ export class ProductsService {
     }));
   }
 
-<<<<<<< HEAD
-  private async getEffectivePriceUSD(packageId: string, userId: string): Promise<number> {
-=======
   // ================== التسعير الأساس (بالدولار) ==================
-  private async getEffectivePriceUSD(
-    packageId: string,
-    userId: string,
-  ): Promise<number> {
->>>>>>> 88f196d (feat: optimize getUsersPriceGroups to fix N+1 query problem)
+  private async getEffectivePriceUSD(packageId: string, userId: string): Promise<number> {
     const [pkg, user] = await Promise.all([
       this.packagesRepo.findOne({
         where: { id: packageId } as any,
@@ -2194,7 +2008,6 @@ export class ProductsService {
       id: product.id,
       name: product.name,
       description: (product as any)['description'] ?? null,
-<<<<<<< HEAD
   imageUrl: img.imageUrl,
   imageSource: img.imageSource,
   hasCustomImage: img.hasCustomImage,
@@ -2203,18 +2016,6 @@ export class ProductsService {
   thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
   thumbMediumUrl: (product as any).thumbMediumUrl ?? null,
   thumbLargeUrl: (product as any).thumbLargeUrl ?? null,
-=======
-      imageUrl: img.imageUrl, // effective
-      imageSource: img.imageSource,
-      useCatalogImage: img.useCatalogImage,
-      hasCustomImage: img.hasCustomImage,
-      customImageUrl: img.customImageUrl,
-      catalogAltText: (product as any).catalogAltText ?? null,
-      customAltText: (product as any).customAltText ?? null,
-      thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
-      thumbMediumUrl: (product as any).thumbMediumUrl ?? null,
-      thumbLargeUrl: (product as any).thumbLargeUrl ?? null,
->>>>>>> 88f196d (feat: optimize getUsersPriceGroups to fix N+1 query problem)
     };
 
     return {
@@ -2290,44 +2091,9 @@ export class ProductsService {
    */
   private mapEffectiveImage(product: any) {
     const customImageUrl = product.customImageUrl ?? null;
-<<<<<<< HEAD
-  // Catalog fields removed: just return custom image if present
   const effective = customImageUrl || null;
   const source: 'custom' | null = customImageUrl ? 'custom' : null;
   return { imageUrl: effective, imageSource: source, hasCustomImage: !!customImageUrl, customImageUrl };
-=======
-    const useCatalogImage =
-      product.useCatalogImage !== undefined ? !!product.useCatalogImage : true;
-    const catalogImage = product.catalogImageUrl ?? null;
-
-    let effective = null;
-    let source: 'custom' | 'catalog' | null = null;
-
-    if (customImageUrl && useCatalogImage === false) {
-      effective = customImageUrl;
-      source = 'custom';
-    } else if (catalogImage) {
-      effective = catalogImage;
-      source = 'catalog';
-    }
-
-    if (!isFeatureEnabled('productImageFallback')) {
-      return {
-        imageUrl: catalogImage,
-        imageSource: null,
-        hasCustomImage: false,
-        customImageUrl: null,
-        useCatalogImage: true,
-      };
-    }
-    return {
-      imageUrl: effective,
-      imageSource: source,
-      hasCustomImage: !!customImageUrl,
-      customImageUrl,
-      useCatalogImage,
-    };
->>>>>>> 88f196d (feat: optimize getUsersPriceGroups to fix N+1 query problem)
   }
 
   async listOrdersWithPagination(dto: ListOrdersDto, tenantId?: string) {
@@ -3012,15 +2778,12 @@ export class ProductsService {
       notes: Array.isArray((order as any).notes) ? (order as any).notes : [],
     };
   }
-<<<<<<< HEAD
-
   // ===== ✅ تحديث publicCode لباقـة (فريد عالميًا) =====
   async updatePackageCode(id: string, code: number | null | undefined) {
     const pkg = await this.packagesRepo.findOne({ where: { id } as any });
     if (!pkg) throw new NotFoundException('الباقة غير موجودة');
 
     if (code == null) {
-      // مسح الكود
       await this.packagesRepo.update({ id }, { publicCode: null });
       return { ok: true, id, publicCode: null };
     }
@@ -3030,11 +2793,9 @@ export class ProductsService {
       throw new BadRequestException('publicCode يجب أن يكون رقمًا صحيحًا موجبًا');
     }
 
-    // تحقق من التعارض (فريد عالميًا الآن)
     let finalCode = trimmed;
     const conflict = await this.packagesRepo.findOne({ where: { publicCode: finalCode } as any });
     if (conflict && conflict.id !== id) {
-      // محاولة واحدة لتوليد كود بديل تلقائي (زيادة بسيطة) لتقليل إحباط المطور
       const alt = finalCode + 1;
       const altConflict = await this.packagesRepo.findOne({ where: { publicCode: alt } as any });
       if (!altConflict) {
@@ -3049,7 +2810,11 @@ export class ProductsService {
   }
 
   // ===== ✅ تعديل أساسي لحقول الباقة (الاسم، الوصف، basePrice، isActive) =====
-  async updatePackageBasic(tenantId: string | undefined, packageId: string, data: { name?: string; description?: string | null; basePrice?: number; isActive?: boolean }) {
+  async updatePackageBasic(
+    tenantId: string | undefined,
+    packageId: string,
+    data: { name?: string; description?: string | null; basePrice?: number; isActive?: boolean },
+  ) {
     const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any });
     if (!pkg) throw new NotFoundException('الباقة غير موجودة');
     if (tenantId && pkg.tenantId && pkg.tenantId !== tenantId) {
@@ -3057,8 +2822,15 @@ export class ProductsService {
     }
     const patch: any = {};
     if (data.name !== undefined) patch.name = String(data.name).trim() || pkg.name;
-    if (data.description !== undefined) patch.description = data.description == null ? null : String(data.description).trim();
-    if (data.basePrice !== undefined && data.basePrice != null && Number.isFinite(Number(data.basePrice))) patch.basePrice = Number(data.basePrice);
+    if (data.description !== undefined)
+      patch.description =
+        data.description == null ? null : String(data.description).trim();
+    if (
+      data.basePrice !== undefined &&
+      data.basePrice != null &&
+      Number.isFinite(Number(data.basePrice))
+    )
+      patch.basePrice = Number(data.basePrice);
     if (data.isActive !== undefined) patch.isActive = !!data.isActive;
     if (Object.keys(patch).length === 0) return { ok: true, id: pkg.id };
     await this.packagesRepo.update({ id: packageId }, patch);
@@ -3066,6 +2838,3 @@ export class ProductsService {
     return { ok: true, id: packageId, package: updated };
   }
 }
-=======
-}
->>>>>>> 88f196d (feat: optimize getUsersPriceGroups to fix N+1 query problem)

@@ -211,7 +211,6 @@ export class ProductsController {
     return { message: 'تم حذف المنتج بنجاح' };
   }
 
-<<<<<<< HEAD
   // إنشاء منتج عالمي (للكتالوج) مخصص للمطور فقط
   @Post('global')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -288,25 +287,6 @@ export class ProductsController {
   // (moved catalog-available & snapshot-available routes above @Get(':id') to avoid dynamic capture)
 
 
-=======
-  // Phase2 temporary backward compatibility: redirect old activation path to new tenant/catalog endpoint
-  @Post('activate-catalog')
-  async deprecatedActivate(@Req() req: Request, @Body('catalogProductId') catalogProductId: string) {
-    // Simply call service then respond with 302 style object (API clients can adjust)
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    const product = await this.productsService.activateCatalogProduct(tenantId, catalogProductId);
-    return { redirect: '/api/tenant/catalog/activate-product', productId: product.id };
-  }
-
-  // Phase2: تفعيل منتج من الكتالوج
-  @Post('activate-catalog')
-  async activateCatalog(@Req() req: Request, @Body('catalogProductId') catalogProductId: string) {
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
-    const product = await this.productsService.activateCatalogProduct(tenantId, catalogProductId);
-    return { id: product.id, catalogProductId: product.catalogProductId };
-  }
-
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
   // 🔹 رفع صورة المنتج إلى Cloudinary
   @Post(':id/image')
   @UseInterceptors(
@@ -368,12 +348,7 @@ export class ProductsController {
     @Req() req: Request,
     @Param('id') productId: string,
     @UploadedFile() file: Express.Multer.File,
-<<<<<<< HEAD
   @Body('name') name: string,
-=======
-    @Body('name') name: string,
-  @Body('catalogLinkCode') catalogLinkCode: string,
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
     @Body('capital') capitalStr?: string,
     @Body('basePrice') basePriceStr?: string,
     @Body('price') priceStr?: string,
@@ -385,7 +360,6 @@ export class ProductsController {
     try {
       const dbgUser: any = (req as any).user || null;
       console.log('[PKG][CTRL][ADD][START]', {
-        productId,
         userId: dbgUser?.id || null,
         role: dbgUser?.role || dbgUser?.roleFinal || null,
         tenantCtx: (req as any).tenant?.id || dbgUser?.tenantId || null,
@@ -403,33 +377,24 @@ export class ProductsController {
         const cloudinary = getCloud();
         const result: any = await new Promise((resolve, reject) => {
           const upload = cloudinary.uploader.upload_stream(
-            { folder: 'packages', resource_type: 'image' },
-            (error, uploadResult) => (error ? reject(error) : resolve(uploadResult)),
-          );
-          upload.end(file.buffer);
         });
         imageUrl = result.secure_url;
       } catch (err: any) {
         console.error('[Add Package Image] Cloudinary error:', {
           message: err?.message,
-          name: err?.name,
           http_code: err?.http_code,
         });
         throw new InternalServerErrorException('فشل رفع صورة الباقة.');
-      }
-    }
-
     const capital = parseMoney(capitalStr ?? basePriceStr ?? priceStr);
 
-<<<<<<< HEAD
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId || '00000000-0000-0000-0000-000000000000';
-    // Parse optional fields
     let publicCode: number | null = null;
     if (publicCodeRaw != null && String(publicCodeRaw).trim() !== '') {
       const pc = Number(publicCodeRaw);
-      if (Number.isInteger(pc) && pc > 0) publicCode = pc; else throw new BadRequestException('publicCode غير صالح');
+      if (Number.isInteger(pc) && pc > 0) publicCode = pc;
+      else throw new BadRequestException('publicCode غير صالح');
     }
-    const isActive = ((): boolean => {
+    const isActive = (() => {
       if (isActiveRaw === undefined || isActiveRaw === null || isActiveRaw === '') return true;
       if (typeof isActiveRaw === 'boolean') return isActiveRaw;
       const s = String(isActiveRaw).toLowerCase();
@@ -439,22 +404,14 @@ export class ProductsController {
 
     return this.productsService.addPackageToProduct(
       tenantId,
-=======
-    return this.productsService.addPackageToProduct(
-      (req as any).tenant?.id || (req as any).user?.tenantId,
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
       productId,
       {
         name,
         imageUrl,
-        capital,
-<<<<<<< HEAD
-        publicCode,
-        isActive,
-        providerName: providerNameClean,
-=======
-        catalogLinkCode,
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
+  capital,
+  publicCode,
+  isActive,
+  providerName: providerNameClean,
       },
       { userId: (req as any).user?.id, finalRole: (req as any).user?.roleFinal },
     );
