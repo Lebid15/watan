@@ -1,17 +1,48 @@
 // src/products/products.service.ts
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-    (saved as any).prices = prices;
-    try {
-      console.log('[PKG][CREATE][OK]', {
-        id: saved.id?.slice(0, 8),
-        publicCode: (saved as any).publicCode,
-        capital: saved.capital,
-      });
-    } catch {}
-    return saved as ProductPackage;
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, UnprocessableEntityException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In, Brackets } from 'typeorm';
+import { Product } from './product.entity';
+import { ProductPackage } from './product-package.entity';
+import { PackagePrice } from './package-price.entity';
+import { PriceGroup } from './price-group.entity';
+import { ProductOrder } from './product-order.entity';
+import { User } from '../user/user.entity';
+import { DistributorPackagePrice } from '../distributor/distributor-package-price.entity';
+import { DistributorUserPriceGroup } from '../distributor/distributor-user-price-group.entity';
+import { CodeItem } from '../codes/code-item.entity';
+import { OrderDispatchLog } from '../codes/order-dispatch-log.entity';
+import { Currency } from '../currencies/currency.entity';
+import { ListOrdersDto } from './dto/list-orders.dto';
+import { OrderStatus } from './types';
+import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
+import { isFeatureEnabled } from '../common/feature-flags';
+
+// NOTE: This file had merge damage; rebuilt header and class wrapper.
+
+@Injectable()
+export class ProductsService {
+  constructor(
+    @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
+    @InjectRepository(ProductPackage) private readonly packagesRepo: Repository<ProductPackage>,
+    @InjectRepository(PackagePrice) private readonly packagePriceRepo: Repository<PackagePrice>,
+    @InjectRepository(PriceGroup) private readonly priceGroupsRepo: Repository<PriceGroup>,
+    @InjectRepository(ProductOrder) private readonly ordersRepo: Repository<ProductOrder>,
+    @InjectRepository(User) private readonly usersRepo: Repository<User>,
+    @InjectRepository(DistributorPackagePrice) private readonly distPkgPriceRepo: Repository<DistributorPackagePrice>,
+    @InjectRepository(DistributorUserPriceGroup) private readonly distUserGroupRepo: Repository<DistributorUserPriceGroup>,
+    @InjectRepository(CodeItem) private readonly codeItemRepo: Repository<CodeItem>,
+    @InjectRepository(OrderDispatchLog) private readonly logsRepo: Repository<OrderDispatchLog>,
+    @InjectRepository(Currency) private readonly currenciesRepo: Repository<Currency>,
+  ) {}
+
+  // معرف التينانت الخاص بالمطور (مستودع عالمي)
+  private readonly DEV_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+  // Helper: fetch single package by id (lightweight)
+  async findPackageById(id: string): Promise<ProductPackage | null> {
+    if (!id) return null;
+    return this.packagesRepo.findOne({ where: { id } as any });
   }
 
   // ✅ تحديث اسم المزود لباقات المنتج
@@ -54,16 +85,8 @@ import {
       await this.packagePriceRepo.remove(pkg.prices);
     }
     await this.packagesRepo.remove(pkg);
-  ) {}
+  }
 
-    // معرف التينانت الخاص بالمطور (مستودع عالمي)
-    private readonly DEV_TENANT_ID = '00000000-0000-0000-0000-000000000000';
-
-    // Helper: fetch single package by id (lightweight)
-    async findPackageById(id: string): Promise<ProductPackage | null> {
-      if (!id) return null;
-      return this.packagesRepo.findOne({ where: { id } as any });
-    }
   // ---------- Helpers خاصة بالـ tenant ----------
   private ensureSameTenant(
     entityTenantId?: string | null,
@@ -2823,14 +2846,10 @@ import {
     const patch: any = {};
     if (data.name !== undefined) patch.name = String(data.name).trim() || pkg.name;
     if (data.description !== undefined)
-      patch.description =
-        data.description == null ? null : String(data.description).trim();
-    if (
-      data.basePrice !== undefined &&
-      data.basePrice != null &&
-      Number.isFinite(Number(data.basePrice))
-    )
+      patch.description = data.description == null ? null : String(data.description).trim();
+    if (data.basePrice !== undefined && data.basePrice != null && Number.isFinite(Number(data.basePrice))) {
       patch.basePrice = Number(data.basePrice);
+    }
     if (data.isActive !== undefined) patch.isActive = !!data.isActive;
     if (Object.keys(patch).length === 0) return { ok: true, id: pkg.id };
     await this.packagesRepo.update({ id: packageId }, patch);
