@@ -14,13 +14,24 @@ export function usePasskeys() {
     setError(null); setLoading(true);
     try {
       // 1) جرّب المسار المُحدّد مسبقاً (إن وُجد) أو جرّب الجديد أولاً ثم ارجع للقديم عند 404/400 المميز
-      const tryNew = endpointMode !== 'legacy';
-      const tryLegacy = endpointMode !== 'new';
+  // جرّب أولاً المسارات القديمة لأنها المتوفرة حالياً في الخادم
+  const tryLegacy = endpointMode !== 'new';
+  const tryNew = endpointMode !== 'legacy';
   let challengeRef: string | null = null; let options: any = null; let usedMode: 'new' | 'legacy' | null = null;
       let attResp: any; let verifyRes: any;
 
       let firstError: any = null;
-      if (tryNew) {
+      if (tryLegacy) {
+        try {
+          const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/options/register', {}, { validateStatus: () => true });
+          if (optRes?.options) {
+            ({ options, challengeRef } = optRes); usedMode = 'legacy';
+          } else throw new Error('Unexpected response (legacy options)');
+        } catch (e2:any) {
+          firstError = e2;
+        }
+      }
+      if (!options && tryNew) {
         try {
           const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/registration/options', {}, { validateStatus: () => true });
           if (optRes?.options) {
@@ -29,17 +40,7 @@ export function usePasskeys() {
             throw new Error('Unexpected response (new options)');
           }
         } catch (e:any) {
-          firstError = e;
-        }
-      }
-      if (!options && tryLegacy) {
-        try {
-          const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/options/register', {}, { validateStatus: () => true });
-          if (optRes?.options) {
-            ({ options, challengeRef } = optRes); usedMode = 'legacy';
-          } else throw new Error('Unexpected response (legacy options)');
-        } catch (e2:any) {
-          if (!firstError) firstError = e2;
+          if (!firstError) firstError = e;
         }
       }
   if (!options || !challengeRef || !usedMode) throw firstError || new Error('Failed to obtain registration options');
@@ -64,23 +65,23 @@ export function usePasskeys() {
   const authenticateWithPasskey = useCallback(async (emailOrUsername: string) => {
     setError(null); setLoading(true);
     try {
-      const tryNew = endpointMode !== 'legacy';
-      const tryLegacy = endpointMode !== 'new';
+  const tryLegacy = endpointMode !== 'new';
+  const tryNew = endpointMode !== 'legacy';
   let challengeRef: string | null = null; let options: any = null; let usedMode: 'new' | 'legacy' | null = null;
       let firstError: any = null;
-      if (tryNew) {
-        try {
-          const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/authentication/options', { emailOrUsername }, { validateStatus: () => true });
-          if (optRes?.options) { ({ options, challengeRef } = optRes); usedMode = 'new'; }
-          else throw new Error('Unexpected response (new auth options)');
-        } catch (e:any) { firstError = e; }
-      }
-      if (!options && tryLegacy) {
+      if (tryLegacy) {
         try {
           const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/options/login', { emailOrUsername }, { validateStatus: () => true });
           if (optRes?.options) { ({ options, challengeRef } = optRes); usedMode = 'legacy'; }
           else throw new Error('Unexpected response (legacy auth options)');
         } catch (e2:any) { if (!firstError) firstError = e2; }
+      }
+      if (!options && tryNew) {
+        try {
+          const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/authentication/options', { emailOrUsername }, { validateStatus: () => true });
+          if (optRes?.options) { ({ options, challengeRef } = optRes); usedMode = 'new'; }
+          else throw new Error('Unexpected response (new auth options)');
+        } catch (e:any) { if (!firstError) firstError = e; }
       }
   if (!options || !challengeRef || !usedMode) throw firstError || new Error('Failed to obtain authentication options');
 
