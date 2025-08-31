@@ -17,6 +17,11 @@ import { ListOrdersDto } from './dto/list-orders.dto';
 import { OrderStatus } from './types';
 import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { isFeatureEnabled } from '../common/feature-flags';
+import { IntegrationsService } from '../integrations/integrations.service';
+import { ProductRouting } from './product-routing.entity';
+import { ProductPackageMapping } from './product-package-mapping.entity';
+import { AccountingService } from '../accounting/accounting.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ProductsService {
@@ -32,6 +37,11 @@ export class ProductsService {
     @InjectRepository(CodeItem) private readonly codeItemRepo: Repository<CodeItem>,
     @InjectRepository(OrderDispatchLog) private readonly logsRepo: Repository<OrderDispatchLog>,
     @InjectRepository(Currency) private readonly currenciesRepo: Repository<Currency>,
+    @InjectRepository(ProductRouting) private readonly routingRepo: Repository<ProductRouting>,
+    @InjectRepository(ProductPackageMapping) private readonly mappingRepo: Repository<ProductPackageMapping>,
+    private readonly integrations: IntegrationsService,
+    private readonly accounting: AccountingService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // معرف التينانت الخاص بالمطور (مستودع عالمي)
@@ -1461,7 +1471,7 @@ export class ProductsService {
     return created.view;
   }
 
-  // داخل class ProductsService
+  // === Orders & Listing ===
   async getAllOrders(status?: OrderStatus, tenantId?: string) {
     // ✅ اجلب أسعار العملات ضمن نفس التينانت (لو مُمرَّر)، وإلا fallback للكل
     const currencies = await (tenantId
