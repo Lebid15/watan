@@ -108,16 +108,6 @@ export class BillingService {
     const { status, overdue, limit, offset } = params; const subs = await this.subRepo.find(); const tenantIds = subs.map(s => s.tenantId); if (!tenantIds.length) return { items: [], total: 0, limit, offset }; const tenants = await this.tenantRepo.find({ where: { id: In(tenantIds) } }); const tm = new Map(tenants.map(t=>[t.id,t])); const invoices = await this.invRepo.find({ where: { tenantId: In(tenantIds) } }); const invMap = new Map<string, BillingInvoice[]>(); for (const inv of invoices) { if (!invMap.has(inv.tenantId)) invMap.set(inv.tenantId, []); invMap.get(inv.tenantId)!.push(inv); } let rows = subs.map(s => { const invs = (invMap.get(s.tenantId) || []).sort((a,b)=> (b.issuedAt?.getTime()||0)-(a.issuedAt?.getTime()||0)); const open = invs.filter(i => i.status === BillingInvoiceStatus.OPEN); const overdueOpen = open.filter(i => i.dueAt && i.dueAt < new Date()); const last = invs[0]; const t: any = tm.get(s.tenantId); return { tenantId: s.tenantId, tenantCode: t?.code || null, tenantName: t?.name || null, status: s.status, nextDueAt: s.nextDueAt, lastPaidAt: s.lastPaidAt, openInvoices: open.length, overdueOpenInvoices: overdueOpen.length, lastInvoiceAmountUsd: last?.amountUsd || null }; }); if (status) rows = rows.filter(r => r.status === status); if (overdue) rows = rows.filter(r => r.overdueOpenInvoices > 0); const total = rows.length; const boundedLimit = Math.max(1, Math.min(200, limit)); const safeOffset = Math.max(0, offset); const slice = rows.slice(safeOffset, safeOffset + boundedLimit); return { items: slice, total, limit: boundedLimit, offset: safeOffset };
   }
 
-  private async getTenantConfigsForBilling(): Promise<Array<{ tenant: Tenant; config: TenantBillingConfig; subscription: TenantSubscription }>> {
-    const configs = await this.configRepo.find(); if (!configs.length) return []; const tenantIds = configs.map(c=>c.tenantId); const tenants = await this.tenantRepo.find({ where: { id: In(tenantIds) } }); const subs = await this.subRepo.find({ where: { tenantId: In(tenantIds) } }); const subMap = new Map(subs.map(s=>[s.tenantId,s])); return tenants.map(t => ({ tenant: t, config: configs.find(c=>c.tenantId===t.id)!, subscription: subMap.get(t.id) || this.subRepo.create({ tenantId: t.id }) }));
-  }
-
-  private async upsertSubscriptionDefaults(tenantId: string) { let sub = await this.subRepo.findOne({ where: { tenantId } }); if (!sub) { sub = this.subRepo.create({ tenantId }); await this.subRepo.save(sub); } return sub; }
-}
-
-}
->>>>>>> 324b834 (Phase 5 — Billing V1 (subscriptions, invoices, guard, APIs, tests, docs, flag) (#1))
-
   /** جلب المتاجر مع configs والاشتراك (بدون تصفية إضافية حالياً) */
   private async getTenantConfigsForBilling(): Promise<Array<{ tenant: Tenant; config: TenantBillingConfig; subscription: TenantSubscription }>> {
     const configs = await this.configRepo.find();
