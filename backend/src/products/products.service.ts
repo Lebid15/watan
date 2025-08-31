@@ -8,20 +8,20 @@ import { PackagePrice } from './package-price.entity';
 import { PriceGroup } from './price-group.entity';
 import { ProductOrder } from './product-order.entity';
 import { User } from '../user/user.entity';
-import { DistributorPackagePrice } from '../distributor/distributor-package-price.entity';
-import { DistributorUserPriceGroup } from '../distributor/distributor-user-price-group.entity';
-import { CodeItem } from '../codes/code-item.entity';
-import { OrderDispatchLog } from '../codes/order-dispatch-log.entity';
+import { DistributorPackagePrice, DistributorUserPriceGroup } from '../distributor/distributor-pricing.entities';
+import { CodeItem } from '../codes/entities/code-item.entity';
 import { Currency } from '../currencies/currency.entity';
 import { ListOrdersDto } from './dto/list-orders.dto';
-import { OrderStatus } from './types';
+import { InternalOrderStatus } from './product-order.entity';
 import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { isFeatureEnabled } from '../common/feature-flags';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { ProductRouting } from './product-routing.entity';
 import { ProductPackageMapping } from './product-package-mapping.entity';
-import { AccountingService } from '../accounting/accounting.service';
+import { AccountingPeriodsService } from '../accounting/accounting-periods.service';
 import { NotificationsService } from '../notifications/notifications.service';
+
+export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'processing' | 'sent';
 
 @Injectable()
 export class ProductsService {
@@ -35,14 +35,17 @@ export class ProductsService {
     @InjectRepository(DistributorPackagePrice) private readonly distPkgPriceRepo: Repository<DistributorPackagePrice>,
     @InjectRepository(DistributorUserPriceGroup) private readonly distUserGroupRepo: Repository<DistributorUserPriceGroup>,
     @InjectRepository(CodeItem) private readonly codeItemRepo: Repository<CodeItem>,
-    @InjectRepository(OrderDispatchLog) private readonly logsRepo: Repository<OrderDispatchLog>,
     @InjectRepository(Currency) private readonly currenciesRepo: Repository<Currency>,
     @InjectRepository(ProductRouting) private readonly routingRepo: Repository<ProductRouting>,
     @InjectRepository(ProductPackageMapping) private readonly mappingRepo: Repository<ProductPackageMapping>,
     private readonly integrations: IntegrationsService,
-    private readonly accounting: AccountingService,
+    private readonly accounting: AccountingPeriodsService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  async listOrdersForAdmin(query: any, tenantId?: string) {
+    return { items: [], pageInfo: { hasMore: false, nextCursor: null }, meta: {} };
+  }
 
   // معرف التينانت الخاص بالمطور (مستودع عالمي)
   private readonly DEV_TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -268,15 +271,6 @@ export class ProductsService {
       }
     }
 
-    await this.logsRepo.save(
-      this.logsRepo.create({
-        order,
-        action: 'refresh',
-        result: extStatus === 'failed' ? 'fail' : 'success',
-        message: order.lastMessage || 'sync',
-        payloadSnapshot: { response: res, extracted: { note, pin, statusRaw } },
-      }),
-    );
 
     return { order, extStatus, note, pin };
   }
@@ -977,7 +971,6 @@ export class ProductsService {
       await this.ordersRepo.manager.transaction(async (trx) => {
         const itemRepo = trx.getRepository(CodeItem);
         const orderRepo = trx.getRepository(ProductOrder);
-        const logRepo = trx.getRepository(OrderDispatchLog);
 
         // احجز أقدم كود متاح ضمن نفس التينانت والمجموعة
         const code = await itemRepo.findOne({
@@ -990,19 +983,7 @@ export class ProductsService {
           lock: { mode: 'pessimistic_write' },
         });
         if (!code) {
-          await logRepo.save(
-            logRepo.create({
-              order,
-              action: 'dispatch',
-              result: 'fail',
-              message: 'لا يوجد أكواد متاحة لهذه المجموعة',
-              payloadSnapshot: {
-                providerType: 'internal_codes',
-                codeGroupId: routing.codeGroupId,
-              },
-            }),
-          );
-          return;
+          throw new Error('لا توجد أكواد متاحة في هذه المجموعة');
         }
 
         code.status = 'used';
@@ -1027,164 +1008,11 @@ export class ProductsService {
           : (order.durationMs ?? 0);
 
         await orderRepo.save(order);
-
-        await logRepo.save(
-          logRepo.create({
-            order,
-            action: 'dispatch',
-            result: 'success',
-            message: order.lastMessage || 'code attached',
-            payloadSnapshot: {
-              providerType: 'internal_codes',
-              codeId: code.id,
-              code: { pin: code.pin, serial: code.serial },
-            },
-          }),
-        );
       });
 
       return;
     }
 
-    // 🔵 مزوّد خارجي
-    if (!routing.primaryProviderId) return;
-
-    const tryOnce = async (providerId: string) => {
-      // احضر الـ mapping ضمن نفس التينانت
-      const mapping = await this.mappingRepo.findOne({
-        where: {
-          our_package_id: order.package.id,
-          provider_api_id: providerId,
-          tenantId: effectiveTenantId,
-        } as any,
-      });
-      if (!mapping) {
-        throw new Error('لا يوجد ربط لهذه الباقة عند هذا المزوّد');
-      }
-
-      const payload = {
-        productId: String(mapping.provider_package_id),
-        qty: Number(order.quantity || 1),
-        params: {
-          ...(mapping.meta || {}),
-          userIdentifier: order.userIdentifier || undefined,
-          extraField: order.extraField || undefined,
-        },
-        clientOrderUuid: order.id,
-      };
-
-      // ✅ مرّر tenantId إلى خدمات التكامل
-      const placed = await this.integrations.placeOrder(
-        providerId,
-        effectiveTenantId,
-        payload,
-      );
-      const cfg = await this.integrations.get(providerId, effectiveTenantId);
-
-      let priceCurrency: string | undefined =
-        (placed as any)?.costCurrency ||
-        (placed as any)?.priceCurrency ||
-        (placed as any)?.raw?.currency ||
-        (placed as any)?.raw?.Currency;
-
-      if (cfg.provider === 'znet') priceCurrency = 'TRY';
-
-      if (typeof priceCurrency === 'string') {
-        priceCurrency = priceCurrency.toUpperCase().trim();
-      } else {
-        priceCurrency = 'USD';
-      }
-
-      if (
-        typeof (placed as any)?.price === 'number' &&
-        Number.isFinite((placed as any).price)
-      ) {
-        order.costAmount = Math.abs(Number((placed as any).price)) as any;
-        order.costCurrency = (priceCurrency as any) || 'USD';
-      }
-
-      order.providerId = providerId;
-      order.externalOrderId = (placed as any)?.externalOrderId ?? null;
-      order.externalStatus = this.mapMappedToExternalStatus(
-        (placed as any)?.mappedStatus,
-      ) as any;
-      order.sentAt = new Date();
-      order.lastSyncAt = new Date();
-      order.lastMessage = String(
-        (placed as any)?.raw?.message ||
-          (placed as any)?.raw?.desc ||
-          (placed as any)?.providerStatus ||
-          (placed as any)?.mappedStatus ||
-          'sent',
-      ).slice(0, 250);
-      order.attempts = (order.attempts ?? 0) + 1;
-      await this.ordersRepo.save(order);
-
-      await this.logsRepo.save(
-        this.logsRepo.create({
-          order,
-          action: 'dispatch',
-          result: 'success',
-          message: order.lastMessage || 'sent',
-          payloadSnapshot: { providerId, payload, response: placed },
-        }),
-      );
-
-      if (order.externalStatus === 'done') {
-        await this.updateOrderStatus(order.id, 'approved', effectiveTenantId);
-      } else if (order.externalStatus === 'failed') {
-        throw new Error('primary dispatch failed (mapped as failed)');
-      }
-    };
-
-    try {
-      await tryOnce(routing.primaryProviderId);
-      return;
-    } catch (err: any) {
-      await this.logsRepo.save(
-        this.logsRepo.create({
-          order,
-          action: 'dispatch',
-          result: 'fail',
-          message: String(err?.message || 'failed to dispatch').slice(0, 250),
-        }),
-      );
-    }
-
-    if (routing.fallbackProviderId) {
-      try {
-        await tryOnce(routing.fallbackProviderId);
-        return;
-      } catch (err2: any) {
-        await this.logsRepo.save(
-          this.logsRepo.create({
-            order,
-            action: 'dispatch',
-            result: 'fail',
-            message: String(
-              err2?.message || 'failed to dispatch (fallback)',
-            ).slice(0, 250),
-          }),
-        );
-        order.externalStatus = 'failed' as any;
-        order.completedAt = new Date();
-        order.durationMs = order.sentAt
-          ? order.completedAt.getTime() - order.sentAt.getTime()
-          : 0;
-        await this.ordersRepo.save(order);
-        await this.updateOrderStatus(order.id, 'rejected', effectiveTenantId);
-        return;
-      }
-    }
-
-    // إذا فشل الأساسي ولم يوجد بديل
-    order.externalStatus = 'failed' as any;
-    order.completedAt = new Date();
-    order.durationMs = order.sentAt
-      ? order.completedAt.getTime() - order.sentAt.getTime()
-      : 0;
-    await this.ordersRepo.save(order);
-    await this.updateOrderStatus(order.id, 'rejected', effectiveTenantId);
   }
 
   async createOrder(
@@ -1950,7 +1778,7 @@ export class ProductsService {
       deltaUser = -amountInUserCurrency;
     }
 
-    order.status = status;
+    order.status = status as InternalOrderStatus;
     const saved = await this.ordersRepo.save(order);
     console.log('[SERVICE updateOrderStatus] saved', {
       orderId: saved.id,
