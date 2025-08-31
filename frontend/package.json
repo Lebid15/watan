@@ -7,7 +7,6 @@
   },
   "scripts": {
     "prebuild": "node scripts/generate-build-meta.cjs",
-    "prebuild": "node scripts/generate-build-meta.cjs",
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start -p $PORT",
@@ -34,7 +33,7 @@
     "@testing-library/jest-dom": "^6.4.8",
     "@testing-library/react": "^16.0.0",
     "@types/axios": "^0.9.36",
-    "@types/jest": "^29.5.12",
+    "@types/jest": "^29.5.14",
     "@types/node": "^20.19.9",
     "@types/react": "^19",
     "@types/react-dom": "^19",
