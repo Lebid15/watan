@@ -53,8 +53,10 @@ function GlobalErrorHooks() {
 }
 
 export default function DevLayout({ children }: { children: React.ReactNode }) {
+  const DESIGN_WIDTH = 1280;
+  
   return (
-    <div className="min-h-screen bg-zinc-50 text-gray-950">
+    <div className="min-h-screen bg-zinc-50 text-gray-950" style={{ minWidth: DESIGN_WIDTH, overflowX: 'auto' }}>
       <DevNavbar />
       <GlobalErrorHooks />
       <main className="mx-auto max-w-6xl p-4">

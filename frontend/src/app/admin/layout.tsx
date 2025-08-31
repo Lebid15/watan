@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminNavbar from './AdminNavbar';
 import AdminTopBar from './AdminTopBar';
-import { Api } from '@/utils/api';
+import api from '@/utils/api';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   // عرض نسخة الديسكتوب كما هي بدون أي تصغير على الجوال
@@ -24,7 +24,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     let mounted = true;
     (async () => {
       try {
-  const r = await Api.me().catch((e) => e?.response);
+  const r = await api.get('/users/profile-with-currency').catch((e: any) => e?.response);
   if (!mounted) return;
   if (!r || r.status === 401) {
           // غير مسجّل → أعده للّوجين مع next
@@ -51,7 +51,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // زر الخروج — يمسح الكوكيز عبر الراوت الداخلي
   const handleLogout = async () => {
-  try { await Api.logout(); } catch {}
+  try { await api.post('/auth/logout'); } catch {}
     // (اختياري) تنظيف أي تخزين محلي قديم
     try {
       localStorage.removeItem('user');
@@ -70,7 +70,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         className="mx-auto"
         style={{
           width: DESIGN_WIDTH,
+          minWidth: DESIGN_WIDTH,
           minHeight: '100vh',
+          overflowX: 'auto',
         }}
       >
         <div className="bg-[var(--toppage)] text-gray-100">

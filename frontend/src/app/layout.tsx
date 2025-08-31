@@ -9,7 +9,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ar" dir="rtl" data-theme="dark1" suppressHydrationWarning>
       <head>
         <title>Watan Store</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){
+              const path = window.location.pathname;
+              const isBackoffice = path.startsWith('/admin') || path.startsWith('/dev');
+              
+              const viewport = document.createElement('meta');
+              viewport.name = 'viewport';
+              
+              if (isBackoffice) {
+                viewport.content = 'width=1280, initial-scale=0.4, minimum-scale=0.25, maximum-scale=5, user-scalable=yes, viewport-fit=cover';
+              } else {
+                viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+              }
+              
+              document.head.appendChild(viewport);
+            })();`,
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){
