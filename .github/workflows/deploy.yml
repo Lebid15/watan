@@ -226,7 +226,7 @@ jobs:
           sleep_secs=5
           ok=0
           for i in $(seq 1 $attempts); do
-            if ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD exec -T backend wget -q -O - http://localhost:3000/api/health | grep -q '{'"; then
+            if ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD exec -T backend wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health"; then
               echo "Backend healthy after $i attempts"; ok=1; break; fi
             echo "Attempt $i/$attempts: not healthy yet";
             sleep $sleep_secs;
@@ -284,7 +284,7 @@ jobs:
             ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD ps" || true
             echo "";
             echo "### Backend Health (inside container)";
-            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend wget -q -O - http://localhost:3000/api/health || true";
+             ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health || true";
             echo "";
             echo "### Pending Migrations?";
             ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend node dist/data-source.js migration:show || true";
