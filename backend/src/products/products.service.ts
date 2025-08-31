@@ -1,5 +1,12 @@
 // src/products/products.service.ts
-import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+  ForbiddenException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Brackets } from 'typeorm';
 import { Product } from './product.entity';
@@ -19,8 +26,10 @@ import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { CodeItem } from '../codes/entities/code-item.entity';
 import { isFeatureEnabled } from '../common/feature-flags';
-import { DistributorPackagePrice, DistributorUserPriceGroup } from '../distributor/distributor-pricing.entities';
-
+import {
+  DistributorPackagePrice,
+  DistributorUserPriceGroup,
+} from '../distributor/distributor-pricing.entities';
 
 type OrderView = {
   id: string;
@@ -45,26 +54,39 @@ export type OrderStatus = 'pending' | 'approved' | 'rejected';
 @Injectable()
 export class ProductsService {
   constructor(
-    @InjectRepository(Product)            private productsRepo: Repository<Product>,
-    @InjectRepository(ProductPackage)     private packagesRepo: Repository<ProductPackage>,
-  @InjectRepository(PackagePrice)       private packagePriceRepo: Repository<PackagePrice>,
-    @InjectRepository(PriceGroup)         private priceGroupsRepo: Repository<PriceGroup>,
-    @InjectRepository(User)               private usersRepo: Repository<User>,
-  @InjectRepository(ProductOrder)       private ordersRepo: Repository<ProductOrder>,
-  @InjectRepository(DistributorPackagePrice) private distPkgPriceRepo: Repository<DistributorPackagePrice>,
-  @InjectRepository(DistributorUserPriceGroup) private distUserGroupRepo: Repository<DistributorUserPriceGroup>,
-    @InjectRepository(Currency)           private currenciesRepo: Repository<Currency>,
-    @InjectRepository(OrderDispatchLog)   private readonly logsRepo: Repository<OrderDispatchLog>,
-    @InjectRepository(PackageRouting)     private readonly routingRepo: Repository<PackageRouting>,
-    @InjectRepository(PackageMapping)     private readonly mappingRepo: Repository<PackageMapping>,
+    @InjectRepository(Product) private productsRepo: Repository<Product>,
+    @InjectRepository(ProductPackage)
+    private packagesRepo: Repository<ProductPackage>,
+    @InjectRepository(PackagePrice)
+    private packagePriceRepo: Repository<PackagePrice>,
+    @InjectRepository(PriceGroup)
+    private priceGroupsRepo: Repository<PriceGroup>,
+    @InjectRepository(User) private usersRepo: Repository<User>,
+    @InjectRepository(ProductOrder)
+    private ordersRepo: Repository<ProductOrder>,
+    @InjectRepository(DistributorPackagePrice)
+    private distPkgPriceRepo: Repository<DistributorPackagePrice>,
+    @InjectRepository(DistributorUserPriceGroup)
+    private distUserGroupRepo: Repository<DistributorUserPriceGroup>,
+    @InjectRepository(Currency) private currenciesRepo: Repository<Currency>,
+    @InjectRepository(OrderDispatchLog)
+    private readonly logsRepo: Repository<OrderDispatchLog>,
+    @InjectRepository(PackageRouting)
+    private readonly routingRepo: Repository<PackageRouting>,
+    @InjectRepository(PackageMapping)
+    private readonly mappingRepo: Repository<PackageMapping>,
     private readonly integrations: IntegrationsService,
     private readonly notifications: NotificationsService,
     private readonly accounting: AccountingPeriodsService,
   ) {}
 
   // Phase2: تفعيل منتج من الكتالوج للـ tenant
-  async activateCatalogProduct(tenantId: string, catalogProductId: string): Promise<Product> {
-    if (!catalogProductId) throw new BadRequestException('catalogProductId مطلوب');
+  async activateCatalogProduct(
+    tenantId: string,
+    catalogProductId: string,
+  ): Promise<Product> {
+    if (!catalogProductId)
+      throw new BadRequestException('catalogProductId مطلوب');
     // تحقق أن الكتالوج منشور وقابل للتفعيل
     const catalogRow = await this.productsRepo.manager.query(
       'SELECT id, "isPublishable" FROM catalog_product WHERE id = $1 AND "isPublishable" = true LIMIT 1',
@@ -74,7 +96,9 @@ export class ProductsService {
       throw new NotFoundException('المنتج غير متاح أو غير منشور في الكتالوج');
     }
     // تحقق من عدم وجود منتج مفعّل سابقًا لنفس catalogProductId داخل نفس التينانت
-    const existing = await this.productsRepo.findOne({ where: { tenantId, catalogProductId } as any });
+    const existing = await this.productsRepo.findOne({
+      where: { tenantId, catalogProductId } as any,
+    });
     if (existing) return existing; // idempotent
 
     const product = this.productsRepo.create({
@@ -89,10 +113,15 @@ export class ProductsService {
   }
 
   // ---------- Helpers خاصة بالـ tenant ----------
-  private ensureSameTenant(entityTenantId?: string | null, expectedTenantId?: string) {
+  private ensureSameTenant(
+    entityTenantId?: string | null,
+    expectedTenantId?: string,
+  ) {
     if (!expectedTenantId) return; // لا تحقق إن لم يُطلب تقييد
-    if (!entityTenantId) throw new ForbiddenException('هذا السجل غير مرتبط بأي مستأجر');
-    if (entityTenantId !== expectedTenantId) throw new ForbiddenException('لا تملك صلاحية على هذا المستأجر');
+    if (!entityTenantId)
+      throw new ForbiddenException('هذا السجل غير مرتبط بأي مستأجر');
+    if (entityTenantId !== expectedTenantId)
+      throw new ForbiddenException('لا تملك صلاحية على هذا المستأجر');
   }
 
   private addTenantWhere(qb: any, alias: string, tenantId?: string) {
@@ -100,16 +129,33 @@ export class ProductsService {
   }
 
   // ===== Helper: تطبيع حالة المزود إلى done/failed/processing/sent مع دعم 1/2/3 =====
-  private normalizeExternalStatus(raw?: string): 'done' | 'failed' | 'processing' | 'sent' {
+  private normalizeExternalStatus(
+    raw?: string,
+  ): 'done' | 'failed' | 'processing' | 'sent' {
     const s = (raw || '').toString().toLowerCase().trim();
-    if (['2', 'success', 'ok', 'done', 'completed', 'complete'].includes(s)) return 'done';
-    if (['3', 'failed', 'fail', 'error', 'rejected', 'cancelled', 'canceled'].includes(s)) return 'failed';
+    if (['2', 'success', 'ok', 'done', 'completed', 'complete'].includes(s))
+      return 'done';
+    if (
+      [
+        '3',
+        'failed',
+        'fail',
+        'error',
+        'rejected',
+        'cancelled',
+        'canceled',
+      ].includes(s)
+    )
+      return 'failed';
     if (['accepted', 'sent', 'queued', 'queue'].includes(s)) return 'sent';
     return 'processing';
   }
 
   // ===== ✅ المزامنة اليدوية مع المزود + التقاط note/pin (مقيّدة بالـ tenant إن مرّ) =====
-  async syncExternal(orderId: string, tenantId?: string): Promise<{
+  async syncExternal(
+    orderId: string,
+    tenantId?: string,
+  ): Promise<{
     order: ProductOrder;
     extStatus: 'done' | 'failed' | 'processing' | 'sent';
     note?: string;
@@ -127,7 +173,9 @@ export class ProductsService {
     }
 
     // ✅ استنتج tenantId فعّال
-    const effectiveTenantId = String(tenantId ?? (order as any)?.user?.tenantId);
+    const effectiveTenantId = String(
+      tenantId ?? (order as any)?.user?.tenantId,
+    );
     // إن أردت التشديد:
     // if (!effectiveTenantId) throw new BadRequestException('tenantId is required');
 
@@ -179,13 +227,19 @@ export class ProductsService {
       first?.raw?.text?.toString?.().trim?.();
 
     const pin: string | undefined =
-      first?.pin != null ? String(first.pin).trim()
-        : first?.raw?.pin != null ? String(first.raw.pin).trim()
-        : undefined;
+      first?.pin != null
+        ? String(first.pin).trim()
+        : first?.raw?.pin != null
+          ? String(first.raw.pin).trim()
+          : undefined;
 
     order.externalStatus = extStatus as any;
     order.lastSyncAt = new Date();
-    order.lastMessage = String(note || first?.raw?.message || first?.raw?.desc || 'sync').slice(0, 250) || null;
+    order.lastMessage =
+      String(note || first?.raw?.message || first?.raw?.desc || 'sync').slice(
+        0,
+        250,
+      ) || null;
     if (pin) order.pinCode = pin;
 
     const nowIso = new Date().toISOString();
@@ -211,7 +265,10 @@ export class ProductsService {
       } else {
         // ✅ قيد routing بالتينانت
         const routing = await this.routingRepo.findOne({
-          where: { package: { id: order.package.id } as any, tenantId: effectiveTenantId } as any,
+          where: {
+            package: { id: order.package.id } as any,
+            tenantId: effectiveTenantId,
+          } as any,
           relations: ['package'],
         });
 
@@ -241,9 +298,14 @@ export class ProductsService {
     return { order, extStatus, note, pin };
   }
 
-
-  async updateImage(tenantId: string, id: string, imageUrl: string): Promise<Product> {
-    const product = await this.productsRepo.findOne({ where: { id, tenantId } as any });
+  async updateImage(
+    tenantId: string,
+    id: string,
+    imageUrl: string,
+  ): Promise<Product> {
+    const product = await this.productsRepo.findOne({
+      where: { id, tenantId } as any,
+    });
     if (!product) throw new NotFoundException('Product not found');
     // Store into customImageUrl and disable catalog usage
     (product as any).customImageUrl = imageUrl;
@@ -257,7 +319,9 @@ export class ProductsService {
       relations: ['packages', 'packages.prices', 'packages.prices.priceGroup'],
     });
 
-    const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
+    const allPriceGroups = await this.priceGroupsRepo.find({
+      where: { tenantId } as any,
+    });
     return products.map((product) => {
       const mapped = this.mapEffectiveImage(product as any);
       return {
@@ -265,18 +329,18 @@ export class ProductsService {
         ...mapped,
         packages: (product.packages || []).map((pkg) => ({
           ...pkg,
-            basePrice: pkg.basePrice ?? pkg.capital ?? 0,
-            prices: allPriceGroups.map((group) => {
-              const existingPrice = (pkg.prices || []).find(
-                (price) => price.priceGroup?.id === group.id,
-              );
-              return {
-                id: existingPrice?.id ?? null,
-                groupId: group.id,
-                groupName: group.name,
-                price: existingPrice?.price ?? 0,
-              };
-            }),
+          basePrice: pkg.basePrice ?? pkg.capital ?? 0,
+          prices: allPriceGroups.map((group) => {
+            const existingPrice = (pkg.prices || []).find(
+              (price) => price.priceGroup?.id === group.id,
+            );
+            return {
+              id: existingPrice?.id ?? null,
+              groupId: group.id,
+              groupName: group.name,
+              price: existingPrice?.price ?? 0,
+            };
+          }),
         })),
       };
     });
@@ -289,7 +353,9 @@ export class ProductsService {
     });
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
 
-    const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
+    const allPriceGroups = await this.priceGroupsRepo.find({
+      where: { tenantId } as any,
+    });
     const mapped = this.mapEffectiveImage(product as any);
     return {
       ...product,
@@ -316,45 +382,80 @@ export class ProductsService {
     return this.productsRepo.save(product);
   }
 
-  async update(tenantId: string, id: string, body: Partial<Product>): Promise<Product> {
-    const product = await this.productsRepo.findOne({ where: { id, tenantId } as any });
+  async update(
+    tenantId: string,
+    id: string,
+    body: Partial<Product>,
+  ): Promise<Product> {
+    const product = await this.productsRepo.findOne({
+      where: { id, tenantId } as any,
+    });
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
     Object.assign(product, body);
     return this.productsRepo.save(product);
   }
 
   async delete(tenantId: string, id: string): Promise<void> {
-    const product = await this.productsRepo.findOne({ where: { id, tenantId } as any });
+    const product = await this.productsRepo.findOne({
+      where: { id, tenantId } as any,
+    });
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
     await this.productsRepo.remove(product);
   }
 
-  async createPriceGroup(tenantId: string, data: Partial<PriceGroup>): Promise<PriceGroup> {
-    if (!data.name || !data.name.trim()) throw new ConflictException('اسم المجموعة مطلوب');
+  async createPriceGroup(
+    tenantId: string,
+    data: Partial<PriceGroup>,
+  ): Promise<PriceGroup> {
+    if (!data.name || !data.name.trim())
+      throw new ConflictException('اسم المجموعة مطلوب');
     const name = data.name.trim();
 
-    const exists = await this.priceGroupsRepo.findOne({ where: { name, tenantId } as any });
+    const exists = await this.priceGroupsRepo.findOne({
+      where: { name, tenantId } as any,
+    });
     if (exists) throw new ConflictException('هذه المجموعة موجودة مسبقًا');
 
-    const created: PriceGroup = this.priceGroupsRepo.create({ ...data, name, tenantId } as Partial<PriceGroup>) as PriceGroup;
+    const created: PriceGroup = this.priceGroupsRepo.create({
+      ...data,
+      name,
+      tenantId,
+    } as Partial<PriceGroup>);
     const saved: PriceGroup = await this.priceGroupsRepo.save(created);
     return saved;
   }
 
   async deletePriceGroup(tenantId: string, id: string): Promise<void> {
-    const row = await this.priceGroupsRepo.findOne({ where: { id, tenantId } as any });
+    const row = await this.priceGroupsRepo.findOne({
+      where: { id, tenantId } as any,
+    });
     if (!row) throw new NotFoundException('لم يتم العثور على المجموعة');
     await this.priceGroupsRepo.remove(row);
   }
 
-  async getUsersPriceGroups(tenantId: string): Promise<{ id: string; name: string; usersCount: number }[]> {
-    const groups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
-    return Promise.all(
-      groups.map(async (g) => {
-        const usersCount = await this.usersRepo.count({ where: { tenantId, priceGroup: { id: g.id } } as any });
-        return { id: g.id, name: g.name, usersCount };
-      }),
-    );
+  async getUsersPriceGroups(
+    tenantId: string,
+  ): Promise<{ id: string; name: string; usersCount: number }[]> {
+    const result = await this.priceGroupsRepo
+      .createQueryBuilder('pg')
+      .leftJoin(
+        'users',
+        'u',
+        'u."priceGroupId" = pg.id AND u."tenantId" = :tenantId',
+      )
+      .select('pg.id', 'id')
+      .addSelect('pg.name', 'name')
+      .addSelect('COUNT(u.id)', 'usersCount')
+      .where('pg."tenantId" = :tenantId')
+      .setParameter('tenantId', tenantId)
+      .groupBy('pg.id, pg.name')
+      .getRawMany();
+
+    return result.map((row) => ({
+      id: row.id,
+      name: row.name,
+      usersCount: parseInt(row.usersCount) || 0,
+    }));
   }
 
   // =====================================
@@ -371,7 +472,8 @@ export class ProductsService {
     data: Partial<ProductPackage> & { catalogLinkCode?: string },
     ctx?: { userId?: string; finalRole?: string },
   ): Promise<ProductPackage> {
-    if (!data.name || !data.name.trim()) throw new ConflictException('اسم الباقة مطلوب');
+    if (!data.name || !data.name.trim())
+      throw new ConflictException('اسم الباقة مطلوب');
 
     const product = await this.productsRepo.findOne({
       where: { id: productId, tenantId } as any,
@@ -381,7 +483,9 @@ export class ProductsService {
 
     if (isFeatureEnabled('catalogLinking')) {
       if (!product.catalogProductId) {
-        throw new BadRequestException('catalogProductId مفقود للمنتج؛ لا يمكن إنشاء باقة (ربط الكتالوج مفعل)');
+        throw new BadRequestException(
+          'catalogProductId مفقود للمنتج؛ لا يمكن إنشاء باقة (ربط الكتالوج مفعل)',
+        );
       }
       const link = (data as any).catalogLinkCode?.trim();
       if (!link) throw new BadRequestException('catalogLinkCode مطلوب');
@@ -391,7 +495,9 @@ export class ProductsService {
         [product.catalogProductId, link],
       );
       if (!row || row.length === 0) {
-        throw new BadRequestException('catalogLinkCode غير صالح لهذا المنتج الكتالوجي');
+        throw new BadRequestException(
+          'catalogLinkCode غير صالح لهذا المنتج الكتالوجي',
+        );
       }
       (data as any).catalogLinkCode = link;
       // إن كان الدور موزّع سجل من أنشأ الباقة
@@ -413,13 +519,15 @@ export class ProductsService {
       product,
       catalogLinkCode: (data as any).catalogLinkCode || null,
       createdByDistributorId: (data as any).createdByDistributorId || null,
-    } as Partial<ProductPackage>) as ProductPackage;
+    } as Partial<ProductPackage>);
 
     // ✅ ثبّت النوع هنا
-    const saved: ProductPackage = await this.packagesRepo.save(newPackage as ProductPackage);
+    const saved: ProductPackage = await this.packagesRepo.save(newPackage);
 
     // أنشئ مصفوفة الـ rows أولاً ثم create(array) مرة واحدة
-    const priceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
+    const priceGroups = await this.priceGroupsRepo.find({
+      where: { tenantId } as any,
+    });
     const rowsData = priceGroups.map((group) => ({
       tenantId,
       package: saved,
@@ -427,19 +535,23 @@ export class ProductsService {
       price: initialCapital,
     })) as Partial<PackagePrice>[];
 
-    const prices: PackagePrice[] = this.packagePriceRepo.create(rowsData) as PackagePrice[];
+    const prices: PackagePrice[] = this.packagePriceRepo.create(rowsData);
     await this.packagePriceRepo.save(prices);
 
     (saved as any).prices = prices;
-    return saved as ProductPackage;
+    return saved;
   }
 
   /** ✅ حذف باقة (مع أسعارها) */
   async deletePackage(tenantId: string, id: string): Promise<void> {
-    const pkg = await this.packagesRepo.findOne({ where: { id, tenantId } as any, relations: ['prices'] });
+    const pkg = await this.packagesRepo.findOne({
+      where: { id, tenantId } as any,
+      relations: ['prices'],
+    });
     if (!pkg) throw new NotFoundException('لم يتم العثور على الباقة');
 
-    if (Array.isArray(pkg.prices) && pkg.prices.length) await this.packagePriceRepo.remove(pkg.prices);
+    if (Array.isArray(pkg.prices) && pkg.prices.length)
+      await this.packagePriceRepo.remove(pkg.prices);
     await this.packagesRepo.remove(pkg);
   }
 
@@ -460,10 +572,14 @@ export class ProductsService {
     await this.packagesRepo.save(pkg);
 
     for (const p of data.prices || []) {
-      const group = await this.priceGroupsRepo.findOne({ where: { id: p.groupId, tenantId } as any });
+      const group = await this.priceGroupsRepo.findOne({
+        where: { id: p.groupId, tenantId } as any,
+      });
       if (!group) continue;
 
-      let priceEntity = (pkg.prices || []).find((pr) => pr.priceGroup?.id === p.groupId);
+      let priceEntity = (pkg.prices || []).find(
+        (pr) => pr.priceGroup?.id === p.groupId,
+      );
 
       if (!priceEntity) {
         const createdPrice: PackagePrice = this.packagePriceRepo.create({
@@ -471,13 +587,13 @@ export class ProductsService {
           package: pkg,
           priceGroup: group,
           price: Number(p.price || 0),
-        } as Partial<PackagePrice>) as PackagePrice;
+        } as Partial<PackagePrice>);
         priceEntity = createdPrice;
       } else {
         priceEntity.price = Number(p.price || 0);
       }
 
-      await this.packagePriceRepo.save(priceEntity as PackagePrice);
+      await this.packagePriceRepo.save(priceEntity);
     }
 
     return { message: 'تم تحديث أسعار الباقة ورأس المال بنجاح' };
@@ -495,7 +611,11 @@ export class ProductsService {
 
     const rows = await this.packagePriceRepo.find({
       where: body.groupId
-        ? ({ tenantId, package: { id: In(ids) }, priceGroup: { id: body.groupId } } as any)
+        ? ({
+            tenantId,
+            package: { id: In(ids) },
+            priceGroup: { id: body.groupId },
+          } as any)
         : ({ tenantId, package: { id: In(ids) } } as any),
       relations: ['package', 'priceGroup'],
     });
@@ -510,10 +630,19 @@ export class ProductsService {
   }
 
   // ================== التسعير الأساس (بالدولار) ==================
-  private async getEffectivePriceUSD(packageId: string, userId: string): Promise<number> {
+  private async getEffectivePriceUSD(
+    packageId: string,
+    userId: string,
+  ): Promise<number> {
     const [pkg, user] = await Promise.all([
-      this.packagesRepo.findOne({ where: { id: packageId } as any, relations: ['prices', 'prices.priceGroup'] }),
-      this.usersRepo.findOne({ where: { id: userId } as any, relations: ['priceGroup'] }),
+      this.packagesRepo.findOne({
+        where: { id: packageId } as any,
+        relations: ['prices', 'prices.priceGroup'],
+      }),
+      this.usersRepo.findOne({
+        where: { id: userId } as any,
+        relations: ['priceGroup'],
+      }),
     ]);
 
     if (!pkg) throw new NotFoundException('الباقة غير موجودة');
@@ -525,16 +654,24 @@ export class ProductsService {
     const base = Number(pkg.basePrice ?? pkg.capital ?? 0);
     if (!user?.priceGroup) return base;
 
-    const match = (pkg.prices ?? []).find(p => p.priceGroup?.id === user.priceGroup!.id);
+    const match = (pkg.prices ?? []).find(
+      (p) => p.priceGroup?.id === user.priceGroup!.id,
+    );
     return match ? Number(match.price) : base;
   }
 
   /** تحويل mappedStatus القادم من الدرايفر إلى حالة خارجية داخلية موحّدة */
   private mapMappedToExternalStatus(mapped?: string) {
     const s = String(mapped || '').toLowerCase();
-    if (['success','ok','done','completed','complete'].includes(s)) return 'done';
-    if (['failed','fail','error','rejected','cancelled','canceled'].includes(s)) return 'failed';
-    if (['sent','accepted','queued','queue'].includes(s)) return 'sent';
+    if (['success', 'ok', 'done', 'completed', 'complete'].includes(s))
+      return 'done';
+    if (
+      ['failed', 'fail', 'error', 'rejected', 'cancelled', 'canceled'].includes(
+        s,
+      )
+    )
+      return 'failed';
+    if (['sent', 'accepted', 'queued', 'queue'].includes(s)) return 'sent';
     return 'processing';
   }
 
@@ -549,15 +686,21 @@ export class ProductsService {
     this.ensureSameTenant((order as any).user?.tenantId, tenantId);
 
     // ✅ tenantId الفعّال لهذا التنفيذ
-    const effectiveTenantId = String(tenantId ?? (order as any)?.user?.tenantId);
+    const effectiveTenantId = String(
+      tenantId ?? (order as any)?.user?.tenantId,
+    );
     // إن أردت التشديد:
     // if (!effectiveTenantId) throw new BadRequestException('tenantId is required');
 
-    if (order.providerId || order.externalOrderId || order.status !== 'pending') return;
+    if (order.providerId || order.externalOrderId || order.status !== 'pending')
+      return;
 
     // قيّد الـ routing بالتينانت
     const routing = await this.routingRepo.findOne({
-      where: { package: { id: order.package.id } as any, tenantId: effectiveTenantId } as any,
+      where: {
+        package: { id: order.package.id } as any,
+        tenantId: effectiveTenantId,
+      } as any,
       relations: ['package'],
     });
     if (!routing || routing.mode !== 'auto') return;
@@ -571,7 +714,11 @@ export class ProductsService {
 
         // احجز أقدم كود متاح ضمن نفس التينانت والمجموعة
         const code = await itemRepo.findOne({
-          where: { groupId: routing.codeGroupId as any, status: 'available', tenantId: effectiveTenantId } as any,
+          where: {
+            groupId: routing.codeGroupId as any,
+            status: 'available',
+            tenantId: effectiveTenantId,
+          } as any,
           order: { createdAt: 'ASC' },
           lock: { mode: 'pessimistic_write' },
         });
@@ -582,7 +729,10 @@ export class ProductsService {
               action: 'dispatch',
               result: 'fail',
               message: 'لا يوجد أكواد متاحة لهذه المجموعة',
-              payloadSnapshot: { providerType: 'internal_codes', codeGroupId: routing.codeGroupId },
+              payloadSnapshot: {
+                providerType: 'internal_codes',
+                codeGroupId: routing.codeGroupId,
+              },
             }),
           );
           return;
@@ -593,7 +743,8 @@ export class ProductsService {
         code.usedAt = new Date();
         await itemRepo.save(code);
 
-        const codeText = `CODE: ${code.pin ?? ''}${code.serial ? (code.pin ? ' / ' : '') + code.serial : ''}`.trim();
+        const codeText =
+          `CODE: ${code.pin ?? ''}${code.serial ? (code.pin ? ' / ' : '') + code.serial : ''}`.trim();
         const nowIso = new Date().toISOString();
 
         order.status = 'approved';
@@ -604,7 +755,9 @@ export class ProductsService {
           { by: 'system', text: codeText, at: nowIso },
         ];
         order.completedAt = new Date();
-        order.durationMs = order.sentAt ? order.completedAt.getTime() - order.sentAt.getTime() : (order.durationMs ?? 0);
+        order.durationMs = order.sentAt
+          ? order.completedAt.getTime() - order.sentAt.getTime()
+          : (order.durationMs ?? 0);
 
         await orderRepo.save(order);
 
@@ -654,7 +807,11 @@ export class ProductsService {
       };
 
       // ✅ مرّر tenantId إلى خدمات التكامل
-      const placed = await this.integrations.placeOrder(providerId, effectiveTenantId, payload);
+      const placed = await this.integrations.placeOrder(
+        providerId,
+        effectiveTenantId,
+        payload,
+      );
       const cfg = await this.integrations.get(providerId, effectiveTenantId);
 
       let priceCurrency: string | undefined =
@@ -671,22 +828,27 @@ export class ProductsService {
         priceCurrency = 'USD';
       }
 
-      if (typeof (placed as any)?.price === 'number' && Number.isFinite((placed as any).price)) {
+      if (
+        typeof (placed as any)?.price === 'number' &&
+        Number.isFinite((placed as any).price)
+      ) {
         order.costAmount = Math.abs(Number((placed as any).price)) as any;
         order.costCurrency = (priceCurrency as any) || 'USD';
       }
 
       order.providerId = providerId;
       order.externalOrderId = (placed as any)?.externalOrderId ?? null;
-      order.externalStatus = this.mapMappedToExternalStatus((placed as any)?.mappedStatus) as any;
+      order.externalStatus = this.mapMappedToExternalStatus(
+        (placed as any)?.mappedStatus,
+      ) as any;
       order.sentAt = new Date();
       order.lastSyncAt = new Date();
       order.lastMessage = String(
         (placed as any)?.raw?.message ||
-        (placed as any)?.raw?.desc ||
-        (placed as any)?.providerStatus ||
-        (placed as any)?.mappedStatus ||
-        'sent'
+          (placed as any)?.raw?.desc ||
+          (placed as any)?.providerStatus ||
+          (placed as any)?.mappedStatus ||
+          'sent',
       ).slice(0, 250);
       order.attempts = (order.attempts ?? 0) + 1;
       await this.ordersRepo.save(order);
@@ -709,7 +871,7 @@ export class ProductsService {
     };
 
     try {
-      await tryOnce(routing.primaryProviderId!);
+      await tryOnce(routing.primaryProviderId);
       return;
     } catch (err: any) {
       await this.logsRepo.save(
@@ -732,12 +894,16 @@ export class ProductsService {
             order,
             action: 'dispatch',
             result: 'fail',
-            message: String(err2?.message || 'failed to dispatch (fallback)').slice(0, 250),
+            message: String(
+              err2?.message || 'failed to dispatch (fallback)',
+            ).slice(0, 250),
           }),
         );
         order.externalStatus = 'failed' as any;
         order.completedAt = new Date();
-        order.durationMs = order.sentAt ? order.completedAt.getTime() - order.sentAt.getTime() : 0;
+        order.durationMs = order.sentAt
+          ? order.completedAt.getTime() - order.sentAt.getTime()
+          : 0;
         await this.ordersRepo.save(order);
         await this.updateOrderStatus(order.id, 'rejected', effectiveTenantId);
         return;
@@ -747,7 +913,9 @@ export class ProductsService {
     // إذا فشل الأساسي ولم يوجد بديل
     order.externalStatus = 'failed' as any;
     order.completedAt = new Date();
-    order.durationMs = order.sentAt ? order.completedAt.getTime() - order.sentAt.getTime() : 0;
+    order.durationMs = order.sentAt
+      ? order.completedAt.getTime() - order.sentAt.getTime()
+      : 0;
     await this.ordersRepo.save(order);
     await this.updateOrderStatus(order.id, 'rejected', effectiveTenantId);
   }
@@ -763,23 +931,33 @@ export class ProductsService {
     },
     tenantId?: string,
   ) {
-    const { productId, packageId, quantity, userId, userIdentifier, extraField } = data;
+    const {
+      productId,
+      packageId,
+      quantity,
+      userId,
+      userIdentifier,
+      extraField,
+    } = data;
 
     if (!quantity || quantity <= 0 || !Number.isFinite(Number(quantity))) {
       throw new BadRequestException('Quantity must be a positive number');
     }
 
     const created = await this.ordersRepo.manager.transaction(async (trx) => {
-  const productsRepo = trx.getRepository(Product);
-  const packagesRepo = trx.getRepository(ProductPackage);
-  const usersRepo    = trx.getRepository(User);
-  const ordersRepo   = trx.getRepository(ProductOrder);
-  const packagePriceRepo = trx.getRepository(PackagePrice);
-  const distPkgPriceRepo = trx.getRepository(DistributorPackagePrice);
-  const distUserGroupRepo = trx.getRepository(DistributorUserPriceGroup);
+      const productsRepo = trx.getRepository(Product);
+      const packagesRepo = trx.getRepository(ProductPackage);
+      const usersRepo = trx.getRepository(User);
+      const ordersRepo = trx.getRepository(ProductOrder);
+      const packagePriceRepo = trx.getRepository(PackagePrice);
+      const distPkgPriceRepo = trx.getRepository(DistributorPackagePrice);
+      const distUserGroupRepo = trx.getRepository(DistributorUserPriceGroup);
 
       // جلب المستخدم + العملة
-  const user = await usersRepo.findOne({ where: { id: userId } as any, relations: ['currency','priceGroup'] });
+      const user = await usersRepo.findOne({
+        where: { id: userId } as any,
+        relations: ['currency', 'priceGroup'],
+      });
       if (!user) throw new NotFoundException('المستخدم غير موجود');
 
       // 🔐 تأكيد أن الطلب ينتمي لنفس المستأجر المتوقع (إن تم تمريره)
@@ -795,25 +973,27 @@ export class ProductsService {
         packagesRepo.findOne({ where: { id: packageId } as any }),
       ]);
       if (!product) throw new NotFoundException('المنتج غير موجود');
-      if (!pkg)     throw new NotFoundException('الباقة غير موجودة');
+      if (!pkg) throw new NotFoundException('الباقة غير موجودة');
 
       // ✅ تأكد أن المنتج والباقة بنفس مستأجر المستخدم
       this.ensureSameTenant((product as any).tenantId, (user as any).tenantId);
-      this.ensureSameTenant((pkg as any).tenantId,     (user as any).tenantId);
+      this.ensureSameTenant((pkg as any).tenantId, (user as any).tenantId);
 
       // التسعير بالدولار (الدالة تتحقق من المستأجر داخليًا)
       const unitPriceUSD = await this.getEffectivePriceUSD(packageId, userId);
-      const totalUSD     = Number(unitPriceUSD) * Number(quantity);
+      const totalUSD = Number(unitPriceUSD) * Number(quantity);
 
-      const rate      = user.currency ? Number(user.currency.rate) : 1;
-      const code      = user.currency ? user.currency.code : 'USD';
+      const rate = user.currency ? Number(user.currency.rate) : 1;
+      const code = user.currency ? user.currency.code : 'USD';
       const totalUser = totalUSD * rate;
 
       // خصم الرصيد + تحقق حد السالب
-      const balance   = Number(user.balance) || 0;
+      const balance = Number(user.balance) || 0;
       const overdraft = Number(user.overdraftLimit) || 0;
       if (totalUser > balance + overdraft) {
-        throw new ConflictException('الرصيد غير كافٍ (تجاوز حد السالب المسموح)');
+        throw new ConflictException(
+          'الرصيد غير كافٍ (تجاوز حد السالب المسموح)',
+        );
       }
       user.balance = balance - totalUser;
       await usersRepo.save(user);
@@ -827,22 +1007,34 @@ export class ProductsService {
         status: 'pending',
         user,
         userIdentifier: userIdentifier ?? null,
-        extraField:     extraField ?? null,
-      }) as ProductOrder;
+        extraField: extraField ?? null,
+      });
 
       // Phase2/3: تحديد الموزّع الجذر (سواء المستخدم نفسه موزّع أو مستخدم فرعي له parentUserId)
       let rootDistributor: any = null;
       const userAny: any = user as any;
       if (isFeatureEnabled('catalogLinking')) {
-        if (userAny.roleFinal === 'distributor' || userAny.role === 'distributor') {
+        if (
+          userAny.roleFinal === 'distributor' ||
+          userAny.role === 'distributor'
+        ) {
           rootDistributor = userAny;
         } else if (userAny.parentUserId) {
           // اجلب المستخدم الأب
-            rootDistributor = await usersRepo.findOne({ where: { id: userAny.parentUserId } as any, relations: ['priceGroup'] });
-            if (!rootDistributor) throw new BadRequestException('الموزّع الأب غير موجود');
-            if (!(rootDistributor.roleFinal === 'distributor' || rootDistributor.role === 'distributor')) {
-              throw new BadRequestException('المستخدم الأب ليس موزّعًا');
-            }
+          rootDistributor = await usersRepo.findOne({
+            where: { id: userAny.parentUserId } as any,
+            relations: ['priceGroup'],
+          });
+          if (!rootDistributor)
+            throw new BadRequestException('الموزّع الأب غير موجود');
+          if (
+            !(
+              rootDistributor.roleFinal === 'distributor' ||
+              rootDistributor.role === 'distributor'
+            )
+          ) {
+            throw new BadRequestException('المستخدم الأب ليس موزّعًا');
+          }
         }
         if (rootDistributor) {
           (order as any).placedByDistributorId = rootDistributor.id;
@@ -860,11 +1052,18 @@ export class ProductsService {
           // A) capitalUSD: سعر رأس مال الموزّع حسب مجموعة أسعار المتجر الخاصة به
           let capitalPerUnitUSD = 0;
           if (rootDistributor.priceGroup?.id) {
-            const priceRow = await packagePriceRepo.findOne({ where: { package: { id: packageId } as any, priceGroup: { id: rootDistributor.priceGroup.id } as any } as any, relations: ['priceGroup','package'] });
+            const priceRow = await packagePriceRepo.findOne({
+              where: {
+                package: { id: packageId } as any,
+                priceGroup: { id: rootDistributor.priceGroup.id } as any,
+              } as any,
+              relations: ['priceGroup', 'package'],
+            });
             if (priceRow) {
               capitalPerUnitUSD = Number(priceRow.price) || 0;
             } else {
-              capitalPerUnitUSD = Number(pkg.basePrice ?? pkg.capital ?? 0) || 0;
+              capitalPerUnitUSD =
+                Number(pkg.basePrice ?? pkg.capital ?? 0) || 0;
             }
           } else {
             capitalPerUnitUSD = Number(pkg.basePrice ?? pkg.capital ?? 0) || 0;
@@ -875,13 +1074,25 @@ export class ProductsService {
           const isSubUser = user.id !== rootDistributor.id; // مستخدم فرعي
           if (isSubUser) {
             // استرجاع مجموعة المستخدم الفرعي من distributor_user_price_groups
-            const userGroup = await distUserGroupRepo.findOne({ where: { userId: user.id } as any });
+            const userGroup = await distUserGroupRepo.findOne({
+              where: { userId: user.id } as any,
+            });
             if (!userGroup) {
-              throw new UnprocessableEntityException('Distributor price not configured');
+              throw new UnprocessableEntityException(
+                'Distributor price not configured',
+              );
             }
-            const pkgPrice = await distPkgPriceRepo.findOne({ where: { distributorUserId: rootDistributor.id, distributorPriceGroupId: userGroup.distributorPriceGroupId, packageId } as any });
+            const pkgPrice = await distPkgPriceRepo.findOne({
+              where: {
+                distributorUserId: rootDistributor.id,
+                distributorPriceGroupId: userGroup.distributorPriceGroupId,
+                packageId,
+              } as any,
+            });
             if (!pkgPrice) {
-              throw new UnprocessableEntityException('Distributor price not configured');
+              throw new UnprocessableEntityException(
+                'Distributor price not configured',
+              );
             }
             sellPerUnitUSD = Number(pkgPrice.priceUSD) || 0;
           } else {
@@ -890,19 +1101,28 @@ export class ProductsService {
           }
 
           // C) ضرب في الكمية
-            const qty = Number(quantity);
-            const capitalTotalUSD = capitalPerUnitUSD * qty;
-            const sellTotalUSD = sellPerUnitUSD * qty;
+          const qty = Number(quantity);
+          const capitalTotalUSD = capitalPerUnitUSD * qty;
+          const sellTotalUSD = sellPerUnitUSD * qty;
 
           // D) snapshots
           const profitUSD = sellTotalUSD - capitalTotalUSD;
           // FX snapshot لعملة الموزع
-          let distCurr: string | undefined = rootDistributor.preferredCurrencyCode || userAny.preferredCurrencyCode || 'USD';
+          let distCurr: string | undefined =
+            rootDistributor.preferredCurrencyCode ||
+            userAny.preferredCurrencyCode ||
+            'USD';
           if (!distCurr) distCurr = 'USD';
           let fxUsdToDist = 1;
           if (distCurr !== 'USD') {
-            const curRow = await this.currenciesRepo.findOne({ where: { tenantId: (user as any).tenantId, code: distCurr } as any });
-            if (curRow?.rate && Number(curRow.rate) > 0) fxUsdToDist = Number(curRow.rate);
+            const curRow = await this.currenciesRepo.findOne({
+              where: {
+                tenantId: (user as any).tenantId,
+                code: distCurr,
+              } as any,
+            });
+            if (curRow?.rate && Number(curRow.rate) > 0)
+              fxUsdToDist = Number(curRow.rate);
           }
           await ordersRepo.update(saved.id, {
             distributorCapitalUsdAtOrder: capitalTotalUSD.toFixed(6),
@@ -911,7 +1131,8 @@ export class ProductsService {
             fxUsdToDistAtOrder: fxUsdToDist.toFixed(6),
             distCurrencyCodeAtOrder: distCurr,
           } as any);
-          (saved as any).distributorCapitalUsdAtOrder = capitalTotalUSD.toFixed(6);
+          (saved as any).distributorCapitalUsdAtOrder =
+            capitalTotalUSD.toFixed(6);
           (saved as any).distributorSellUsdAtOrder = sellTotalUSD.toFixed(6);
           (saved as any).distributorProfitUsdAtOrder = profitUSD.toFixed(6);
           (saved as any).fxUsdToDistAtOrder = fxUsdToDist.toFixed(6);
@@ -932,7 +1153,11 @@ export class ProductsService {
         quantity: number;
         priceUSD: number;
         unitPriceUSD: number;
-        display: { currencyCode: string; unitPrice: number; totalPrice: number };
+        display: {
+          currencyCode: string;
+          unitPrice: number;
+          totalPrice: number;
+        };
         product: { id: string; name: string | null };
         package: { id: string; name: string | null };
         userIdentifier: string | null;
@@ -956,7 +1181,7 @@ export class ProductsService {
           product: { id: product.id, name: product.name ?? null },
           package: { id: pkg.id, name: pkg.name ?? null },
           userIdentifier: saved.userIdentifier ?? null,
-          extraField:     saved.extraField ?? null,
+          extraField: saved.extraField ?? null,
           createdAt: saved.createdAt,
         } satisfies OrderView,
       };
@@ -978,7 +1203,9 @@ export class ProductsService {
       : this.currenciesRepo.find());
 
     const getRate = (code: string) => {
-      const row = currencies.find((c) => c.code.toUpperCase() === code.toUpperCase());
+      const row = currencies.find(
+        (c) => c.code.toUpperCase() === code.toUpperCase(),
+      );
       return row ? Number(row.rate) : undefined;
     };
     const TRY_RATE = getRate('TRY') ?? 1;
@@ -993,13 +1220,21 @@ export class ProductsService {
 
     const pickImage = (obj: any): string | null => {
       if (!obj) return null;
-      return obj.imageUrl ?? obj.image ?? obj.logoUrl ?? obj.iconUrl ?? obj.icon ?? null;
+      return (
+        obj.imageUrl ??
+        obj.image ??
+        obj.logoUrl ??
+        obj.iconUrl ??
+        obj.icon ??
+        null
+      );
     };
 
     // (نبقيها كما هي لتجنّب كسر التواقيع؛ خدمة integrations.list قد تكون تُراعي التينانت أصلاً)
     const integrations = await this.integrations.list(String(tenantId));
     const providersMap = new Map<string, string>();
-    for (const it of integrations as any[]) providersMap.set(it.id, it.provider);
+    for (const it of integrations as any[])
+      providersMap.set(it.id, it.provider);
 
     const query = this.ordersRepo
       .createQueryBuilder('order')
@@ -1014,14 +1249,19 @@ export class ProductsService {
 
     const orders = await query.getMany();
 
-    const approvedIds = orders.filter(o => o.status === 'approved').map(o => o.id);
-    let frozenMap = new Map<string, {
-      fxLocked: boolean;
-      sellTryAtApproval: number | null;
-      costTryAtApproval: number | null;
-      profitTryAtApproval: number | null;
-      approvedLocalDate: string | null;
-    }>();
+    const approvedIds = orders
+      .filter((o) => o.status === 'approved')
+      .map((o) => o.id);
+    let frozenMap = new Map<
+      string,
+      {
+        fxLocked: boolean;
+        sellTryAtApproval: number | null;
+        costTryAtApproval: number | null;
+        profitTryAtApproval: number | null;
+        approvedLocalDate: string | null;
+      }
+    >();
 
     if (approvedIds.length) {
       const rows = await this.ordersRepo.query(
@@ -1040,10 +1280,17 @@ export class ProductsService {
           String(r.id),
           {
             fxLocked: !!r.fxLocked,
-            sellTryAtApproval: r.sellTryAtApproval != null ? Number(r.sellTryAtApproval) : null,
-            costTryAtApproval: r.costTryAtApproval != null ? Number(r.costTryAtApproval) : null,
-            profitTryAtApproval: r.profitTryAtApproval != null ? Number(r.profitTryAtApproval) : null,
-            approvedLocalDate: r.approvedLocalDate ? String(r.approvedLocalDate) : null,
+            sellTryAtApproval:
+              r.sellTryAtApproval != null ? Number(r.sellTryAtApproval) : null,
+            costTryAtApproval:
+              r.costTryAtApproval != null ? Number(r.costTryAtApproval) : null,
+            profitTryAtApproval:
+              r.profitTryAtApproval != null
+                ? Number(r.profitTryAtApproval)
+                : null,
+            approvedLocalDate: r.approvedLocalDate
+              ? String(r.approvedLocalDate)
+              : null,
           },
         ]),
       );
@@ -1051,48 +1298,64 @@ export class ProductsService {
 
     return orders.map((order) => {
       const priceUSD = Number(order.price) || 0;
-      const unitPriceUSD = order.quantity ? priceUSD / Number(order.quantity) : priceUSD;
+      const unitPriceUSD = order.quantity
+        ? priceUSD / Number(order.quantity)
+        : priceUSD;
 
-      const providerType = order.providerId ? providersMap.get(order.providerId) : undefined;
+      const providerType = order.providerId
+        ? providersMap.get(order.providerId)
+        : undefined;
       const isExternal = !!(order.providerId && order.externalOrderId);
 
       const frozen = frozenMap.get(order.id);
-      const isFrozen = !!(frozen && frozen.fxLocked && order.status === 'approved');
+      const isFrozen = !!(
+        frozen &&
+        frozen.fxLocked &&
+        order.status === 'approved'
+      );
 
       let sellTRY: number;
       let costTRY: number;
       let profitTRY: number;
 
       if (isFrozen) {
-        sellTRY = Number((frozen!.sellTryAtApproval ?? 0).toFixed(2));
-        costTRY = Number((frozen!.costTryAtApproval ?? 0).toFixed(2));
+        sellTRY = Number((frozen.sellTryAtApproval ?? 0).toFixed(2));
+        costTRY = Number((frozen.costTryAtApproval ?? 0).toFixed(2));
         const profitFrozen =
-          frozen!.profitTryAtApproval != null
-            ? Number(frozen!.profitTryAtApproval)
-            : (sellTRY - costTRY);
+          frozen.profitTryAtApproval != null
+            ? Number(frozen.profitTryAtApproval)
+            : sellTRY - costTRY;
         profitTRY = Number(profitFrozen.toFixed(2));
       } else {
         if (isExternal) {
           const amt = Math.abs(Number(order.costAmount ?? 0));
-          let cur = String(order.costCurrency || '').toUpperCase().trim();
+          let cur = String(order.costCurrency || '')
+            .toUpperCase()
+            .trim();
           if (providerType === 'znet') cur = 'TRY';
           if (!cur) cur = 'USD';
           costTRY = toTRY(amt, cur);
         } else {
-          const baseUSD = Number((order as any).package?.basePrice ?? (order as any).package?.capital ?? 0);
+          const baseUSD = Number(
+            (order as any).package?.basePrice ??
+              (order as any).package?.capital ??
+              0,
+          );
           const qty = Number(order.quantity ?? 1);
-          costTRY = (baseUSD * qty) * TRY_RATE;
+          costTRY = baseUSD * qty * TRY_RATE;
         }
 
         sellTRY = priceUSD * TRY_RATE;
         profitTRY = sellTRY - costTRY;
 
         sellTRY = Number(sellTRY.toFixed(2));
-        costTRY  = Number(costTRY.toFixed(2));
+        costTRY = Number(costTRY.toFixed(2));
         profitTRY = Number(profitTRY.toFixed(2));
       }
 
-      const userRate = order.user?.currency ? Number(order.user.currency.rate) : 1;
+      const userRate = order.user?.currency
+        ? Number(order.user.currency.rate)
+        : 1;
       const userCode = order.user?.currency ? order.user.currency.code : 'USD';
       const totalUser = priceUSD * userRate;
       const unitUser = unitPriceUSD * userRate;
@@ -1113,7 +1376,11 @@ export class ProductsService {
         unitPrice: unitUser,
         priceUSD,
         unitPriceUSD,
-        display: { currencyCode: userCode, unitPrice: unitUser, totalPrice: totalUser },
+        display: {
+          currencyCode: userCode,
+          unitPrice: unitUser,
+          totalPrice: totalUser,
+        },
 
         currencyTRY: 'TRY',
         sellTRY,
@@ -1127,21 +1394,34 @@ export class ProductsService {
         approvedLocalDate: frozen?.approvedLocalDate ?? null,
 
         sentAt: order.sentAt ? order.sentAt.toISOString() : null,
-        lastSyncAt: (order as any).lastSyncAt ? (order as any).lastSyncAt.toISOString() : null,
+        lastSyncAt: (order as any).lastSyncAt
+          ? (order as any).lastSyncAt.toISOString()
+          : null,
         completedAt: order.completedAt ? order.completedAt.toISOString() : null,
 
         createdAt: order.createdAt.toISOString(),
         userEmail: order.user?.email || 'غير معروف',
         extraField: (order as any).extraField ?? null,
 
-        product: { id: order.product?.id, name: order.product?.name, imageUrl: pickImage((order as any).product) },
-        package: { id: order.package?.id, name: order.package?.name, imageUrl: pickImage((order as any).package) },
+        product: {
+          id: order.product?.id,
+          name: order.product?.name,
+          imageUrl: pickImage((order as any).product),
+        },
+        package: {
+          id: order.package?.id,
+          name: order.package?.name,
+          imageUrl: pickImage((order as any).package),
+        },
 
-        providerMessage: (order as any).providerMessage ?? (order as any).lastMessage ?? null,
-        pinCode:        (order as any).pinCode ?? null,
-        notesCount:     Array.isArray((order as any).notes) ? (order as any).notes.length : 0,
-        manualNote:     (order as any).manualNote ?? null,
-        lastMessage:    (order as any).lastMessage ?? null,
+        providerMessage:
+          (order as any).providerMessage ?? (order as any).lastMessage ?? null,
+        pinCode: (order as any).pinCode ?? null,
+        notesCount: Array.isArray((order as any).notes)
+          ? (order as any).notes.length
+          : 0,
+        manualNote: (order as any).manualNote ?? null,
+        lastMessage: (order as any).lastMessage ?? null,
       };
     });
   }
@@ -1165,11 +1445,20 @@ export class ProductsService {
     });
 
     const pickImage = (obj: any): string | null =>
-      obj ? (obj.imageUrl ?? obj.image ?? obj.logoUrl ?? obj.iconUrl ?? obj.icon ?? null) : null;
+      obj
+        ? (obj.imageUrl ??
+          obj.image ??
+          obj.logoUrl ??
+          obj.iconUrl ??
+          obj.icon ??
+          null)
+        : null;
 
     return orders.map((order) => {
       const priceUSD = Number(order.price) || 0;
-      const unitPriceUSD = order.quantity ? priceUSD / Number(order.quantity) : priceUSD;
+      const unitPriceUSD = order.quantity
+        ? priceUSD / Number(order.quantity)
+        : priceUSD;
 
       return {
         id: order.id,
@@ -1186,12 +1475,22 @@ export class ProductsService {
         userIdentifier: order.userIdentifier ?? null,
         extraField: (order as any).extraField ?? null,
 
-        providerMessage: (order as any).providerMessage ?? (order as any).lastMessage ?? null,
+        providerMessage:
+          (order as any).providerMessage ?? (order as any).lastMessage ?? null,
         pinCode: (order as any).pinCode ?? null,
         lastMessage: (order as any).lastMessage ?? null,
 
-        product: { id: order.product.id, name: order.product.name, imageUrl: pickImage(order.product) },
-        package: { id: order.package.id, name: order.package.name, imageUrl: pickImage(order.package), productId: order.product.id },
+        product: {
+          id: order.product.id,
+          name: order.product.name,
+          imageUrl: pickImage(order.product),
+        },
+        package: {
+          id: order.package.id,
+          name: order.package.name,
+          imageUrl: pickImage(order.package),
+          productId: order.product.id,
+        },
       };
     });
   }
@@ -1220,8 +1519,11 @@ export class ProductsService {
     const sellTryAtApproval = Number((priceUSD * fxUsdTry).toFixed(2));
 
     let costTryAtApproval = 0;
-    const costAmount = order.costAmount != null ? Math.abs(Number(order.costAmount)) : null;
-    let costCur = (order.costCurrency as any) ? String(order.costCurrency).toUpperCase().trim() : '';
+    const costAmount =
+      order.costAmount != null ? Math.abs(Number(order.costAmount)) : null;
+    let costCur = (order.costCurrency as any)
+      ? String(order.costCurrency).toUpperCase().trim()
+      : '';
     if (costAmount && costAmount > 0) {
       if (!costCur) costCur = 'USD';
 
@@ -1232,49 +1534,72 @@ export class ProductsService {
       } else {
         // ✅ لو عملة أخرى، نجيب سعرها من نفس التينانت إن أمكن
         const curRow = await this.currenciesRepo.findOne({
-          where: tenantId ? ({ code: costCur, tenantId } as any) : ({ code: costCur } as any),
+          where: tenantId
+            ? ({ code: costCur, tenantId } as any)
+            : ({ code: costCur } as any),
         });
         const r = curRow?.rate ? Number(curRow.rate) : undefined;
-        costTryAtApproval = r && r > 0 ? Number((costAmount * (fxUsdTry / r)).toFixed(2)) : Number(costAmount.toFixed(2));
+        costTryAtApproval =
+          r && r > 0
+            ? Number((costAmount * (fxUsdTry / r)).toFixed(2))
+            : Number(costAmount.toFixed(2));
       }
     } else {
-      const baseUSD = Number((order as any)?.package?.basePrice ?? (order as any)?.package?.capital ?? 0);
+      const baseUSD = Number(
+        (order as any)?.package?.basePrice ??
+          (order as any)?.package?.capital ??
+          0,
+      );
       const qty = Number(order.quantity ?? 1);
-      costTryAtApproval = Number(((baseUSD * qty) * fxUsdTry).toFixed(2));
+      costTryAtApproval = Number((baseUSD * qty * fxUsdTry).toFixed(2));
     }
 
-    const profitTryAtApproval = Number((sellTryAtApproval - costTryAtApproval).toFixed(2));
-    const profitUsdAtApproval  = fxUsdTry > 0 ? Number((profitTryAtApproval / fxUsdTry).toFixed(2)) : 0;
+    const profitTryAtApproval = Number(
+      (sellTryAtApproval - costTryAtApproval).toFixed(2),
+    );
+    const profitUsdAtApproval =
+      fxUsdTry > 0 ? Number((profitTryAtApproval / fxUsdTry).toFixed(2)) : 0;
 
-    const approvedAt = (order as any).approvedAt ? new Date((order as any).approvedAt) : new Date();
+    const approvedAt = (order as any).approvedAt
+      ? new Date((order as any).approvedAt)
+      : new Date();
 
-    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
     const parts = fmt.formatToParts(approvedAt);
-    const y = parts.find(p => p.type === 'year')?.value ?? '1970';
-    const m = parts.find(p => p.type === 'month')?.value ?? '01';
-    const d = parts.find(p => p.type === 'day')?.value ?? '01';
+    const y = parts.find((p) => p.type === 'year')?.value ?? '1970';
+    const m = parts.find((p) => p.type === 'month')?.value ?? '01';
+    const d = parts.find((p) => p.type === 'day')?.value ?? '01';
     const approvedLocalDate = `${y}-${m}-${d}`;
     const approvedLocalMonth = `${y}-${m}`;
 
     await this.ordersRepo.update(
       { id: order.id },
       {
-        ...( { fxUsdTryAtApproval: fxUsdTry } as any ),
-        ...( { sellTryAtApproval } as any ),
-        ...( { costTryAtApproval } as any ),
-        ...( { profitTryAtApproval } as any ),
-        ...( { profitUsdAtApproval } as any ),
-        ...( { fxCapturedAt: new Date() } as any ),
-        ...( { approvedAt } as any ),
-        ...( { approvedLocalDate } as any ),
-        ...( { approvedLocalMonth } as any ),
-        ...( { fxLocked: true } as any ),
-      } as any
+        ...({ fxUsdTryAtApproval: fxUsdTry } as any),
+        ...({ sellTryAtApproval } as any),
+        ...({ costTryAtApproval } as any),
+        ...({ profitTryAtApproval } as any),
+        ...({ profitUsdAtApproval } as any),
+        ...({ fxCapturedAt: new Date() } as any),
+        ...({ approvedAt } as any),
+        ...({ approvedLocalDate } as any),
+        ...({ approvedLocalMonth } as any),
+        ...({ fxLocked: true } as any),
+      },
     );
   }
 
   // ------------------------
-  async updateOrderStatus(orderId: string, status: OrderStatus, tenantId?: string) {
+  async updateOrderStatus(
+    orderId: string,
+    status: OrderStatus,
+    tenantId?: string,
+  ) {
     const order = await this.ordersRepo.findOne({
       where: { id: orderId } as any,
       relations: ['user', 'user.currency', 'package'],
@@ -1282,27 +1607,40 @@ export class ProductsService {
     if (!order) return null;
 
     // حماية: لا نعيد حساب لقطات الموزع أو FX إن كان الطلب في حالة نهائية
-  // NOTE: We include a superset of possible terminal labels (approved/completed/failed/cancelled/refunded)
-  // even if current InternalOrderStatus enum only uses (pending|approved|rejected) to future-proof
-  // and avoid recomputation should additional terminal statuses be introduced.
-  const terminalStatuses = new Set(['approved','completed','failed','cancelled','refunded']);
-    if (terminalStatuses.has(String(order.status)) && (order as any).distributorSellUsdAtOrder) {
+    // NOTE: We include a superset of possible terminal labels (approved/completed/failed/cancelled/refunded)
+    // even if current InternalOrderStatus enum only uses (pending|approved|rejected) to future-proof
+    // and avoid recomputation should additional terminal statuses be introduced.
+    const terminalStatuses = new Set([
+      'approved',
+      'completed',
+      'failed',
+      'cancelled',
+      'refunded',
+    ]);
+    if (
+      terminalStatuses.has(String(order.status)) &&
+      (order as any).distributorSellUsdAtOrder
+    ) {
       // فقط السماح بتغيير حالات معينة (مثلاً approved->rejected سابقاً) حسب المنطق الأصلي، بدون أي لمس لحقول distributor*
     }
-    
+
     // ✅ تعريف مرّة وحدة
-    const effectiveTenantId = String(tenantId ?? (order as any)?.user?.tenantId);
+    const effectiveTenantId = String(
+      tenantId ?? (order as any)?.user?.tenantId,
+    );
 
     const row = await this.ordersRepo.query(
       `SELECT "approvedLocalDate" FROM "product_orders" WHERE id = $1 LIMIT 1`,
       [orderId],
     );
-    const approvedLocalDate: Date | null =
-      row?.[0]?.approvedLocalDate ? new Date(row[0].approvedLocalDate) : null;
+    const approvedLocalDate: Date | null = row?.[0]?.approvedLocalDate
+      ? new Date(row[0].approvedLocalDate)
+      : null;
 
     if (order.status === 'approved' && status !== 'approved') {
-      const approvedLocalDateStr =
-        approvedLocalDate ? approvedLocalDate.toISOString().slice(0, 10) : undefined;
+      const approvedLocalDateStr = approvedLocalDate
+        ? approvedLocalDate.toISOString().slice(0, 10)
+        : undefined;
 
       if (approvedLocalDateStr) {
         await this.accounting.assertApprovedMonthOpen(approvedLocalDateStr);
@@ -1336,7 +1674,9 @@ export class ProductsService {
       const overdraft = Number(user.overdraftLimit) || 0;
 
       if (balance - amountInUserCurrency < -overdraft) {
-        throw new ConflictException('الرصيد غير كافٍ لإعادة خصم الطلب (تجاوز حد السالب المسموح)');
+        throw new ConflictException(
+          'الرصيد غير كافٍ لإعادة خصم الطلب (تجاوز حد السالب المسموح)',
+        );
       }
 
       user.balance = balance - amountInUserCurrency;
@@ -1346,26 +1686,31 @@ export class ProductsService {
 
     order.status = status;
     const saved = await this.ordersRepo.save(order);
-    console.log('[SERVICE updateOrderStatus] saved', { orderId: saved.id, status: saved.status });
+    console.log('[SERVICE updateOrderStatus] saved', {
+      orderId: saved.id,
+      status: saved.status,
+    });
 
     if (status === 'approved') {
-      try { await this.freezeFxOnApprovalIfNeeded(saved.id); } catch {}
+      try {
+        await this.freezeFxOnApprovalIfNeeded(saved.id);
+      } catch {}
     }
     if (prevStatus === 'approved' && status !== 'approved') {
       await this.ordersRepo.update(
         { id: order.id },
         {
-          ...( { fxLocked: false } as any ),
-          ...( { fxUsdTryAtApproval: null } as any ),
-          ...( { sellTryAtApproval: null } as any ),
-          ...( { costTryAtApproval: null } as any ),
-          ...( { profitTryAtApproval: null } as any ),
-          ...( { profitUsdAtApproval: null } as any ),
-          ...( { fxCapturedAt: null } as any ),
-          ...( { approvedAt: null } as any ),
-          ...( { approvedLocalDate: null } as any ),
-          ...( { approvedLocalMonth: null } as any ),
-        } as any
+          ...({ fxLocked: false } as any),
+          ...({ fxUsdTryAtApproval: null } as any),
+          ...({ sellTryAtApproval: null } as any),
+          ...({ costTryAtApproval: null } as any),
+          ...({ profitTryAtApproval: null } as any),
+          ...({ profitUsdAtApproval: null } as any),
+          ...({ fxCapturedAt: null } as any),
+          ...({ approvedAt: null } as any),
+          ...({ approvedLocalDate: null } as any),
+          ...({ approvedLocalMonth: null } as any),
+        },
       );
     }
 
@@ -1375,7 +1720,7 @@ export class ProductsService {
       effectiveTenantId,
       saved.id,
       prevStatus as 'approved' | 'rejected' | 'pending',
-      status as   'approved' | 'rejected' | 'pending',
+      status as 'approved' | 'rejected' | 'pending',
       {
         deltaAmountUserCurrency: Number(deltaUser || 0),
         packageName: order.package?.name ?? undefined,
@@ -1410,7 +1755,11 @@ export class ProductsService {
     return { rate, code, priceGroupId };
   }
 
-  private mapProductForUser(product: Product, rate: number, priceGroupId: string | null) {
+  private mapProductForUser(
+    product: Product,
+    rate: number,
+    priceGroupId: string | null,
+  ) {
     const img = this.mapEffectiveImage(product as any);
     const base = {
       id: product.id,
@@ -1421,18 +1770,21 @@ export class ProductsService {
       useCatalogImage: img.useCatalogImage,
       hasCustomImage: img.hasCustomImage,
       customImageUrl: img.customImageUrl,
-  catalogAltText: (product as any).catalogAltText ?? null,
-  customAltText: (product as any).customAltText ?? null,
-  thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
-  thumbMediumUrl: (product as any).thumbMediumUrl ?? null,
-  thumbLargeUrl: (product as any).thumbLargeUrl ?? null,
+      catalogAltText: (product as any).catalogAltText ?? null,
+      customAltText: (product as any).customAltText ?? null,
+      thumbSmallUrl: (product as any).thumbSmallUrl ?? null,
+      thumbMediumUrl: (product as any).thumbMediumUrl ?? null,
+      thumbLargeUrl: (product as any).thumbLargeUrl ?? null,
     };
 
     return {
       ...base,
       packages: product.packages.map((pkg) => {
         const groupMatch = (pkg.prices ?? []).find(
-          (p) => p.priceGroup?.id && priceGroupId && p.priceGroup.id === priceGroupId
+          (p) =>
+            p.priceGroup?.id &&
+            priceGroupId &&
+            p.priceGroup.id === priceGroupId,
         );
 
         const effectiveUSD = groupMatch
@@ -1458,7 +1810,10 @@ export class ProductsService {
   }
 
   async findAllForUser(tenantId: string, userId: string) {
-    const { rate, code, priceGroupId } = await this.getUserDisplayContext(userId, tenantId);
+    const { rate, code, priceGroupId } = await this.getUserDisplayContext(
+      userId,
+      tenantId,
+    );
 
     const products = await this.productsRepo.find({
       where: { tenantId } as any,
@@ -1468,12 +1823,15 @@ export class ProductsService {
 
     return {
       currencyCode: code,
-  items: products.map((p) => this.mapProductForUser(p, rate, priceGroupId)),
+      items: products.map((p) => this.mapProductForUser(p, rate, priceGroupId)),
     };
   }
 
   async findOneForUser(tenantId: string, productId: string, userId: string) {
-    const { rate, code, priceGroupId } = await this.getUserDisplayContext(userId, tenantId);
+    const { rate, code, priceGroupId } = await this.getUserDisplayContext(
+      userId,
+      tenantId,
+    );
 
     const product = await this.productsRepo.findOne({
       where: { id: productId, tenantId } as any,
@@ -1496,8 +1854,9 @@ export class ProductsService {
    */
   private mapEffectiveImage(product: any) {
     const customImageUrl = product.customImageUrl ?? null;
-    const useCatalogImage = product.useCatalogImage !== undefined ? !!product.useCatalogImage : true;
-  const catalogImage = product.catalogImageUrl ?? null;
+    const useCatalogImage =
+      product.useCatalogImage !== undefined ? !!product.useCatalogImage : true;
+    const catalogImage = product.catalogImageUrl ?? null;
 
     let effective = null;
     let source: 'custom' | 'catalog' | null = null;
@@ -1511,9 +1870,21 @@ export class ProductsService {
     }
 
     if (!isFeatureEnabled('productImageFallback')) {
-  return { imageUrl: catalogImage, imageSource: null, hasCustomImage: false, customImageUrl: null, useCatalogImage: true };
+      return {
+        imageUrl: catalogImage,
+        imageSource: null,
+        hasCustomImage: false,
+        customImageUrl: null,
+        useCatalogImage: true,
+      };
     }
-    return { imageUrl: effective, imageSource: source, hasCustomImage: !!customImageUrl, customImageUrl, useCatalogImage };
+    return {
+      imageUrl: effective,
+      imageSource: source,
+      hasCustomImage: !!customImageUrl,
+      customImageUrl,
+      useCatalogImage,
+    };
   }
 
   async listOrdersWithPagination(dto: ListOrdersDto, tenantId?: string) {
@@ -1536,30 +1907,42 @@ export class ProductsService {
     if (dto.method === 'manual') {
       qb.andWhere('(o.providerId IS NULL OR o.externalOrderId IS NULL)');
     } else if (dto.method) {
-      qb.andWhere('o.providerId = :pid AND o.externalOrderId IS NOT NULL', { pid: dto.method });
+      qb.andWhere('o.providerId = :pid AND o.externalOrderId IS NOT NULL', {
+        pid: dto.method,
+      });
     }
-    if (dto.from) qb.andWhere('o.createdAt >= :from', { from: new Date(dto.from + 'T00:00:00Z') });
-    if (dto.to)   qb.andWhere('o.createdAt <= :to',   { to:   new Date(dto.to   + 'T23:59:59Z') });
+    if (dto.from)
+      qb.andWhere('o.createdAt >= :from', {
+        from: new Date(dto.from + 'T00:00:00Z'),
+      });
+    if (dto.to)
+      qb.andWhere('o.createdAt <= :to', {
+        to: new Date(dto.to + 'T23:59:59Z'),
+      });
 
     const _q = (dto.q ?? '').trim();
     if (_q) {
       if (/^\d+$/.test(_q)) {
         const qd = _q;
-        qb.andWhere(new Brackets((b) => {
-          b.where('CAST(o.orderNo AS TEXT) = :qd', { qd })
-            .orWhere('o.userIdentifier = :qd', { qd })
-            .orWhere('o.externalOrderId = :qd', { qd });
-        }));
+        qb.andWhere(
+          new Brackets((b) => {
+            b.where('CAST(o.orderNo AS TEXT) = :qd', { qd })
+              .orWhere('o.userIdentifier = :qd', { qd })
+              .orWhere('o.externalOrderId = :qd', { qd });
+          }),
+        );
       } else {
         const q = `%${_q.toLowerCase()}%`;
-        qb.andWhere(new Brackets((b) => {
-          b.where('LOWER(prod.name) LIKE :q', { q })
-            .orWhere('LOWER(pkg.name) LIKE :q', { q })
-            .orWhere('LOWER(u.username) LIKE :q', { q })
-            .orWhere('LOWER(u.email) LIKE :q', { q })
-            .orWhere('LOWER(o.userIdentifier) LIKE :q', { q })
-            .orWhere('LOWER(o.externalOrderId) LIKE :q', { q });
-        }));
+        qb.andWhere(
+          new Brackets((b) => {
+            b.where('LOWER(prod.name) LIKE :q', { q })
+              .orWhere('LOWER(pkg.name) LIKE :q', { q })
+              .orWhere('LOWER(u.username) LIKE :q', { q })
+              .orWhere('LOWER(u.email) LIKE :q', { q })
+              .orWhere('LOWER(o.userIdentifier) LIKE :q', { q })
+              .orWhere('LOWER(o.externalOrderId) LIKE :q', { q });
+          }),
+        );
       }
     }
 
@@ -1567,16 +1950,22 @@ export class ProductsService {
     this.addTenantWhere(qb, 'u', tenantId);
 
     if (cursor) {
-      qb.andWhere(new Brackets((b) => {
-        b.where('o.createdAt < :cts', { cts: new Date(cursor.ts) })
-          .orWhere(new Brackets((bb) => {
-            bb.where('o.createdAt = :cts', { cts: new Date(cursor.ts) })
-              .andWhere('o.id < :cid', { cid: cursor.id });
-          }));
-      }));
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('o.createdAt < :cts', { cts: new Date(cursor.ts) }).orWhere(
+            new Brackets((bb) => {
+              bb.where('o.createdAt = :cts', {
+                cts: new Date(cursor.ts),
+              }).andWhere('o.id < :cid', { cid: cursor.id });
+            }),
+          );
+        }),
+      );
     }
 
-    qb.orderBy('o.createdAt', 'DESC').addOrderBy('o.id', 'DESC').take(limit + 1);
+    qb.orderBy('o.createdAt', 'DESC')
+      .addOrderBy('o.id', 'DESC')
+      .take(limit + 1);
 
     const rows = await qb.getMany();
     const hasMore = rows.length > limit;
@@ -1587,7 +1976,9 @@ export class ProductsService {
       ? this.currenciesRepo.find({ where: { tenantId } as any })
       : this.currenciesRepo.find());
     const getRate = (code: string) => {
-      const row = currencies.find((c) => c.code.toUpperCase() === code.toUpperCase());
+      const row = currencies.find(
+        (c) => c.code.toUpperCase() === code.toUpperCase(),
+      );
       return row ? Number(row.rate) : undefined;
     };
     const TRY_RATE = getRate('TRY') ?? 1;
@@ -1599,12 +1990,22 @@ export class ProductsService {
 
     const integrations = await this.integrations.list(tenantId ?? '');
     const providerKind = new Map<string, string>();
-    for (const it of integrations as any[]) providerKind.set(it.id, it.provider);
+    for (const it of integrations as any[])
+      providerKind.set(it.id, it.provider);
 
     const pickImage = (obj: any): string | null =>
-      obj ? (obj.imageUrl ?? obj.image ?? obj.logoUrl ?? obj.iconUrl ?? obj.icon ?? null) : null;
+      obj
+        ? (obj.imageUrl ??
+          obj.image ??
+          obj.logoUrl ??
+          obj.iconUrl ??
+          obj.icon ??
+          null)
+        : null;
 
-    const approvedIds = pageItems.filter((o) => o.status === 'approved').map((o) => o.id);
+    const approvedIds = pageItems
+      .filter((o) => o.status === 'approved')
+      .map((o) => o.id);
     let frozenMap = new Map<
       string,
       {
@@ -1633,10 +2034,17 @@ export class ProductsService {
           String(r.id),
           {
             fxLocked: !!r.fxLocked,
-            sellTryAtApproval: r.sellTryAtApproval != null ? Number(r.sellTryAtApproval) : null,
-            costTryAtApproval: r.costTryAtApproval != null ? Number(r.costTryAtApproval) : null,
-            profitTryAtApproval: r.profitTryAtApproval != null ? Number(r.profitTryAtApproval) : null,
-            approvedLocalDate: r.approvedLocalDate ? String(r.approvedLocalDate) : null,
+            sellTryAtApproval:
+              r.sellTryAtApproval != null ? Number(r.sellTryAtApproval) : null,
+            costTryAtApproval:
+              r.costTryAtApproval != null ? Number(r.costTryAtApproval) : null,
+            profitTryAtApproval:
+              r.profitTryAtApproval != null
+                ? Number(r.profitTryAtApproval)
+                : null,
+            approvedLocalDate: r.approvedLocalDate
+              ? String(r.approvedLocalDate)
+              : null,
           },
         ]),
       );
@@ -1644,10 +2052,14 @@ export class ProductsService {
 
     const items = pageItems.map((o) => {
       const priceUSD = Number((o as any).price || 0);
-      const unitPriceUSD = o.quantity ? priceUSD / Number(o.quantity) : priceUSD;
+      const unitPriceUSD = o.quantity
+        ? priceUSD / Number(o.quantity)
+        : priceUSD;
 
       const isExternal = !!(o.providerId && o.externalOrderId);
-      const providerType = o.providerId ? providerKind.get(o.providerId) : undefined;
+      const providerType = o.providerId
+        ? providerKind.get(o.providerId)
+        : undefined;
 
       const frozen = frozenMap.get(o.id);
       const isFrozen = !!(frozen && frozen.fxLocked && o.status === 'approved');
@@ -1657,22 +2069,26 @@ export class ProductsService {
       let profitTRY: number;
 
       if (isFrozen) {
-        sellTRY = Number((frozen!.sellTryAtApproval ?? 0).toFixed(2));
-        costTRY = Number((frozen!.costTryAtApproval ?? 0).toFixed(2));
+        sellTRY = Number((frozen.sellTryAtApproval ?? 0).toFixed(2));
+        costTRY = Number((frozen.costTryAtApproval ?? 0).toFixed(2));
         const pf =
-          frozen!.profitTryAtApproval != null
-            ? Number(frozen!.profitTryAtApproval)
+          frozen.profitTryAtApproval != null
+            ? Number(frozen.profitTryAtApproval)
             : sellTRY - costTRY;
         profitTRY = Number(pf.toFixed(2));
       } else {
         if (isExternal) {
           const amt = Math.abs(Number((o as any).costAmount ?? 0));
-          let cur = String((o as any).costCurrency || '').toUpperCase().trim();
+          let cur = String((o as any).costCurrency || '')
+            .toUpperCase()
+            .trim();
           if (providerType === 'znet') cur = 'TRY';
           if (!cur) cur = 'USD';
           costTRY = toTRY(amt, cur);
         } else {
-          const baseUSD = Number(((o as any).package?.basePrice ?? (o as any).package?.capital ?? 0));
+          const baseUSD = Number(
+            (o as any).package?.basePrice ?? (o as any).package?.capital ?? 0,
+          );
           const qty = Number(o.quantity ?? 1);
           costTRY = baseUSD * qty * TRY_RATE;
         }
@@ -1685,10 +2101,14 @@ export class ProductsService {
         profitTRY = Number(profitTRY.toFixed(2));
       }
 
-      const userRate = (o as any).user?.currency ? Number((o as any).user.currency.rate) : 1;
-      const userCode = (o as any).user?.currency ? (o as any).user.currency.code : 'USD';
+      const userRate = (o as any).user?.currency
+        ? Number((o as any).user.currency.rate)
+        : 1;
+      const userCode = (o as any).user?.currency
+        ? (o as any).user.currency.code
+        : 'USD';
       const totalUser = priceUSD * userRate;
-      const unitUser  = unitPriceUSD * userRate;
+      const unitUser = unitPriceUSD * userRate;
 
       const username = (o as any).user?.username ?? null;
       const userEmail = (o as any).user?.email ?? null;
@@ -1697,7 +2117,9 @@ export class ProductsService {
         id: o.id,
         orderNo: (o as any).orderNo ?? null,
         status: o.status,
-        createdAt: o.createdAt?.toISOString?.() ?? new Date(o.createdAt as any).toISOString(),
+        createdAt:
+          o.createdAt?.toISOString?.() ??
+          new Date(o.createdAt as any).toISOString(),
         username,
         userEmail,
 
@@ -1721,30 +2143,45 @@ export class ProductsService {
         profitTRY,
 
         product: o.product
-          ? { id: o.product.id, name: o.product.name, imageUrl: pickImage(o.product) }
+          ? {
+              id: o.product.id,
+              name: o.product.name,
+              imageUrl: pickImage(o.product),
+            }
           : null,
         package: o.package
-          ? { id: o.package.id, name: o.package.name, imageUrl: pickImage(o.package) }
+          ? {
+              id: o.package.id,
+              name: o.package.name,
+              imageUrl: pickImage(o.package),
+            }
           : null,
 
-        sentAt: (o as any).sentAt ? (o as any).sentAt.toISOString?.() ?? null : null,
+        sentAt: (o as any).sentAt
+          ? ((o as any).sentAt.toISOString?.() ?? null)
+          : null,
         completedAt: (o as any).completedAt
-          ? (o as any).completedAt.toISOString?.() ?? null
+          ? ((o as any).completedAt.toISOString?.() ?? null)
           : null,
 
         fxLocked: isFrozen,
         approvedLocalDate: frozen?.approvedLocalDate ?? null,
 
-        providerMessage: (o as any).providerMessage ?? (o as any).lastMessage ?? null,
-        pinCode:        (o as any).pinCode ?? null,
-        notesCount:     Array.isArray((o as any).notes) ? (o as any).notes.length : 0,
-        manualNote:     (o as any).manualNote ?? null,
-        lastMessage:    (o as any).lastMessage ?? null,
+        providerMessage:
+          (o as any).providerMessage ?? (o as any).lastMessage ?? null,
+        pinCode: (o as any).pinCode ?? null,
+        notesCount: Array.isArray((o as any).notes)
+          ? (o as any).notes.length
+          : 0,
+        manualNote: (o as any).manualNote ?? null,
+        lastMessage: (o as any).lastMessage ?? null,
       };
     });
 
     const last = items[items.length - 1] || null;
-    const nextCursor = last ? encodeCursor(toEpochMs(new Date(last.createdAt)), String(last.id)) : null;
+    const nextCursor = last
+      ? encodeCursor(toEpochMs(new Date(last.createdAt)), String(last.id))
+      : null;
 
     return {
       items,
@@ -1771,7 +2208,9 @@ export class ProductsService {
       ? this.currenciesRepo.find({ where: { tenantId } as any })
       : this.currenciesRepo.find());
     const getRate = (code: string) => {
-      const row = currencies.find((c) => c.code.toUpperCase() === code.toUpperCase());
+      const row = currencies.find(
+        (c) => c.code.toUpperCase() === code.toUpperCase(),
+      );
       return row ? Number(row.rate) : undefined;
     };
     const TRY_RATE = getRate('TRY') ?? 1;
@@ -1784,12 +2223,20 @@ export class ProductsService {
     };
 
     const pickImage = (obj: any): string | null =>
-      obj ? (obj.imageUrl ?? obj.image ?? obj.logoUrl ?? obj.iconUrl ?? obj.icon ?? null) : null;
+      obj
+        ? (obj.imageUrl ??
+          obj.image ??
+          obj.logoUrl ??
+          obj.iconUrl ??
+          obj.icon ??
+          null)
+        : null;
 
     const providersMap = new Map<string, string>();
     if (tenantId) {
       const integrations = await this.integrations.list(tenantId);
-      for (const it of integrations as any[]) providersMap.set(it.id, it.provider);
+      for (const it of integrations as any[])
+        providersMap.set(it.id, it.provider);
     }
 
     const qb = this.ordersRepo
@@ -1804,59 +2251,82 @@ export class ProductsService {
     if (dto.method === 'manual') {
       qb.andWhere('(o.providerId IS NULL OR o.externalOrderId IS NULL)');
     } else if (dto.method) {
-      qb.andWhere('o.providerId = :pid AND o.externalOrderId IS NOT NULL', { pid: dto.method });
+      qb.andWhere('o.providerId = :pid AND o.externalOrderId IS NOT NULL', {
+        pid: dto.method,
+      });
     }
 
-    if (dto.from) qb.andWhere('o.createdAt >= :from', { from: new Date(dto.from + 'T00:00:00Z') });
-    if (dto.to)   qb.andWhere('o.createdAt <= :to',   { to:   new Date(dto.to   + 'T23:59:59Z') });
+    if (dto.from)
+      qb.andWhere('o.createdAt >= :from', {
+        from: new Date(dto.from + 'T00:00:00Z'),
+      });
+    if (dto.to)
+      qb.andWhere('o.createdAt <= :to', {
+        to: new Date(dto.to + 'T23:59:59Z'),
+      });
 
     const _q = (dto.q ?? '').trim();
     if (_q && /^\d+$/.test(_q)) {
       const qd = _q;
-      qb.andWhere(new Brackets(b => {
-        b.where('CAST(o.orderNo AS TEXT) = :qd', { qd })
-        .orWhere('o.userIdentifier = :qd', { qd })
-        .orWhere('o.externalOrderId = :qd', { qd });
-      }));
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('CAST(o.orderNo AS TEXT) = :qd', { qd })
+            .orWhere('o.userIdentifier = :qd', { qd })
+            .orWhere('o.externalOrderId = :qd', { qd });
+        }),
+      );
     } else if (_q) {
       const q = `%${_q.toLowerCase()}%`;
-      qb.andWhere(new Brackets(b => {
-        b.where('LOWER(prod.name) LIKE :q', { q })
-        .orWhere('LOWER(pkg.name) LIKE :q', { q })
-        .orWhere('LOWER(u.username) LIKE :q', { q })
-        .orWhere('LOWER(u.email) LIKE :q', { q })
-        .orWhere('LOWER(o.userIdentifier) LIKE :q', { q })
-        .orWhere('LOWER(o.externalOrderId) LIKE :q', { q });
-      }));
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('LOWER(prod.name) LIKE :q', { q })
+            .orWhere('LOWER(pkg.name) LIKE :q', { q })
+            .orWhere('LOWER(u.username) LIKE :q', { q })
+            .orWhere('LOWER(u.email) LIKE :q', { q })
+            .orWhere('LOWER(o.userIdentifier) LIKE :q', { q })
+            .orWhere('LOWER(o.externalOrderId) LIKE :q', { q });
+        }),
+      );
     }
 
     // 🔐 تقييد المستأجر
     this.addTenantWhere(qb, 'u', tenantId);
 
     if (cursor) {
-      qb.andWhere(new Brackets(b => {
-        b.where('o.createdAt < :cts', { cts: new Date(cursor.ts) })
-        .orWhere(new Brackets(bb => {
-          bb.where('o.createdAt = :cts', { cts: new Date(cursor.ts) })
-            .andWhere('o.id < :cid', { cid: cursor.id });
-        }));
-      }));
+      qb.andWhere(
+        new Brackets((b) => {
+          b.where('o.createdAt < :cts', { cts: new Date(cursor.ts) }).orWhere(
+            new Brackets((bb) => {
+              bb.where('o.createdAt = :cts', {
+                cts: new Date(cursor.ts),
+              }).andWhere('o.id < :cid', { cid: cursor.id });
+            }),
+          );
+        }),
+      );
     }
 
-    qb.orderBy('o.createdAt', 'DESC').addOrderBy('o.id', 'DESC').take(limit + 1);
+    qb.orderBy('o.createdAt', 'DESC')
+      .addOrderBy('o.id', 'DESC')
+      .take(limit + 1);
 
     const rows = await qb.getMany();
     const hasMore = rows.length > limit;
     const pageItems = hasMore ? rows.slice(0, limit) : rows;
 
-    const approvedIds = pageItems.filter(o => o.status === 'approved').map(o => o.id);
-    let frozenMap = new Map<string, {
-      fxLocked: boolean;
-      sellTryAtApproval: number | null;
-      costTryAtApproval: number | null;
-      profitTryAtApproval: number | null;
-      approvedLocalDate: string | null;
-    }>();
+    const approvedIds = pageItems
+      .filter((o) => o.status === 'approved')
+      .map((o) => o.id);
+    let frozenMap = new Map<
+      string,
+      {
+        fxLocked: boolean;
+        sellTryAtApproval: number | null;
+        costTryAtApproval: number | null;
+        profitTryAtApproval: number | null;
+        approvedLocalDate: string | null;
+      }
+    >();
     if (approvedIds.length) {
       const rowsFrozen = await this.ordersRepo.query(
         `SELECT id,
@@ -1874,10 +2344,17 @@ export class ProductsService {
           String(r.id),
           {
             fxLocked: !!r.fxLocked,
-            sellTryAtApproval: r.sellTryAtApproval != null ? Number(r.sellTryAtApproval) : null,
-            costTryAtApproval: r.costTryAtApproval != null ? Number(r.costTryAtApproval) : null,
-            profitTryAtApproval: r.profitTryAtApproval != null ? Number(r.profitTryAtApproval) : null,
-            approvedLocalDate: r.approvedLocalDate ? String(r.approvedLocalDate) : null,
+            sellTryAtApproval:
+              r.sellTryAtApproval != null ? Number(r.sellTryAtApproval) : null,
+            costTryAtApproval:
+              r.costTryAtApproval != null ? Number(r.costTryAtApproval) : null,
+            profitTryAtApproval:
+              r.profitTryAtApproval != null
+                ? Number(r.profitTryAtApproval)
+                : null,
+            approvedLocalDate: r.approvedLocalDate
+              ? String(r.approvedLocalDate)
+              : null,
           },
         ]),
       );
@@ -1885,9 +2362,13 @@ export class ProductsService {
 
     const items = pageItems.map((o) => {
       const priceUSD = Number(o.price || 0);
-      const unitPriceUSD = o.quantity ? priceUSD / Number(o.quantity) : priceUSD;
+      const unitPriceUSD = o.quantity
+        ? priceUSD / Number(o.quantity)
+        : priceUSD;
 
-      const providerType = o.providerId ? providersMap.get(o.providerId) : undefined;
+      const providerType = o.providerId
+        ? providersMap.get(o.providerId)
+        : undefined;
       const isExternal = !!(o.providerId && o.externalOrderId);
 
       const frozen = frozenMap.get(o.id);
@@ -1898,30 +2379,35 @@ export class ProductsService {
       let profitTRY: number;
 
       if (isFrozen) {
-        sellTRY = Number((frozen!.sellTryAtApproval ?? 0).toFixed(2));
-        costTRY = Number((frozen!.costTryAtApproval ?? 0).toFixed(2));
-        const p = frozen!.profitTryAtApproval != null
-          ? Number(frozen!.profitTryAtApproval)
-          : (sellTRY - costTRY);
+        sellTRY = Number((frozen.sellTryAtApproval ?? 0).toFixed(2));
+        costTRY = Number((frozen.costTryAtApproval ?? 0).toFixed(2));
+        const p =
+          frozen.profitTryAtApproval != null
+            ? Number(frozen.profitTryAtApproval)
+            : sellTRY - costTRY;
         profitTRY = Number(p.toFixed(2));
       } else {
         if (isExternal) {
           const amt = Math.abs(Number(o.costAmount ?? 0));
-          let cur = String(o.costCurrency || '').toUpperCase().trim();
+          let cur = String(o.costCurrency || '')
+            .toUpperCase()
+            .trim();
           if (providerType === 'znet') cur = 'TRY';
           if (!cur) cur = 'USD';
           costTRY = toTRY(amt, cur);
         } else {
-          const baseUSD = Number((o as any).package?.basePrice ?? (o as any).package?.capital ?? 0);
+          const baseUSD = Number(
+            (o as any).package?.basePrice ?? (o as any).package?.capital ?? 0,
+          );
           const qty = Number(o.quantity ?? 1);
-          costTRY = (baseUSD * qty) * TRY_RATE;
+          costTRY = baseUSD * qty * TRY_RATE;
         }
 
-        sellTRY   = priceUSD * TRY_RATE;
+        sellTRY = priceUSD * TRY_RATE;
         profitTRY = sellTRY - costTRY;
 
-        sellTRY   = Number(sellTRY.toFixed(2));
-        costTRY   = Number(costTRY.toFixed(2));
+        sellTRY = Number(sellTRY.toFixed(2));
+        costTRY = Number(costTRY.toFixed(2));
         profitTRY = Number(profitTRY.toFixed(2));
       }
 
@@ -1934,8 +2420,16 @@ export class ProductsService {
         username: (o.user as any)?.username ?? null,
         userEmail: (o.user as any)?.email ?? null,
 
-        product: { id: o.product?.id, name: o.product?.name, imageUrl: pickImage((o as any).product) },
-        package: { id: o.package?.id, name: o.package?.name, imageUrl: pickImage((o as any).package) },
+        product: {
+          id: o.product?.id,
+          name: o.product?.name,
+          imageUrl: pickImage((o as any).product),
+        },
+        package: {
+          id: o.package?.id,
+          name: o.package?.name,
+          imageUrl: pickImage((o as any).package),
+        },
 
         status: o.status,
         providerId: o.providerId ?? null,
@@ -1961,16 +2455,21 @@ export class ProductsService {
         durationMs: (o as any).durationMs ?? null,
         createdAt: o.createdAt.toISOString(),
 
-        providerMessage: (o as any).providerMessage ?? (o as any).lastMessage ?? null,
-        pinCode:        (o as any).pinCode ?? null,
-        notesCount:     Array.isArray((o as any).notes) ? (o as any).notes.length : 0,
-        manualNote:     (o as any).manualNote ?? null,
-        lastMessage:    (o as any).lastMessage ?? null,
+        providerMessage:
+          (o as any).providerMessage ?? (o as any).lastMessage ?? null,
+        pinCode: (o as any).pinCode ?? null,
+        notesCount: Array.isArray((o as any).notes)
+          ? (o as any).notes.length
+          : 0,
+        manualNote: (o as any).manualNote ?? null,
+        lastMessage: (o as any).lastMessage ?? null,
       };
     });
 
     const last = items[items.length - 1] || null;
-    const nextCursor = last ? encodeCursor(toEpochMs(new Date(last.createdAt)), String(last.id)) : null;
+    const nextCursor = last
+      ? encodeCursor(toEpochMs(new Date(last.createdAt)), String(last.id))
+      : null;
 
     return {
       items,
@@ -1989,7 +2488,12 @@ export class ProductsService {
   }
 
   // ✅ إضافة/قراءة ملاحظات الطلب
-  async addOrderNote(orderId: string, by: 'admin' | 'system' | 'user', text: string, tenantId?: string) {
+  async addOrderNote(
+    orderId: string,
+    by: 'admin' | 'system' | 'user',
+    text: string,
+    tenantId?: string,
+  ) {
     const order = await this.ordersRepo.findOne({
       where: { id: orderId } as any,
       relations: ['user'],
@@ -2000,7 +2504,9 @@ export class ProductsService {
     const now = new Date().toISOString();
     const note = { by, text: String(text || '').slice(0, 500), at: now };
 
-    const current: any[] = Array.isArray((order as any).notes) ? (order as any).notes : [];
+    const current: any[] = Array.isArray((order as any).notes)
+      ? (order as any).notes
+      : [];
     (order as any).notes = [...current, note];
     (order as any).notesCount = (order as any).notes.length;
 
@@ -2008,7 +2514,11 @@ export class ProductsService {
     return (order as any).notes;
   }
 
-  async getOrderDetailsForUser(orderId: string, userId: string, tenantId?: string) {
+  async getOrderDetailsForUser(
+    orderId: string,
+    userId: string,
+    tenantId?: string,
+  ) {
     const order = await this.ordersRepo.findOne({
       where: { id: orderId, user: { id: userId } as any } as any,
       relations: ['product', 'package', 'user', 'user.currency'],
@@ -2031,18 +2541,31 @@ export class ProductsService {
       extraField: (order as any).extraField ?? null,
 
       priceUSD,
-      unitPriceUSD: order.quantity ? priceUSD / Number(order.quantity) : priceUSD,
+      unitPriceUSD: order.quantity
+        ? priceUSD / Number(order.quantity)
+        : priceUSD,
       display: {
         currencyCode: code,
-        unitPrice: (order.quantity ? priceUSD / Number(order.quantity) : priceUSD) * rate,
+        unitPrice:
+          (order.quantity ? priceUSD / Number(order.quantity) : priceUSD) *
+          rate,
         totalPrice: priceUSD * rate,
       },
 
-      product: { id: order.product?.id, name: order.product?.name, imageUrl: (order as any).product?.imageUrl ?? null },
-      package: { id: order.package?.id, name: order.package?.name, imageUrl: (order as any).package?.imageUrl ?? null },
+      product: {
+        id: order.product?.id,
+        name: order.product?.name,
+        imageUrl: (order as any).product?.imageUrl ?? null,
+      },
+      package: {
+        id: order.package?.id,
+        name: order.package?.name,
+        imageUrl: (order as any).package?.imageUrl ?? null,
+      },
 
       manualNote: (order as any).manualNote ?? null,
-      providerMessage: (order as any).providerMessage ?? (order as any).lastMessage ?? null,
+      providerMessage:
+        (order as any).providerMessage ?? (order as any).lastMessage ?? null,
       notes: Array.isArray((order as any).notes) ? (order as any).notes : [],
     };
   }
