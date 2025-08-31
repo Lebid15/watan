@@ -100,7 +100,7 @@ export class NotificationsController {
 
   // 📣 إعلان عام (مشرف فقط)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @Post('announce')
   async announce(
     @Req() req: any,

@@ -103,14 +103,14 @@ export class UserController {
 
 
   @Get('with-price-group')
-  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
+  @Roles(UserRole.INSTANCE_OWNER, UserRole.DEVELOPER)
   async findAllWithPriceGroup(@Req() req) {
     const tenantId = req.tenant?.id;
     return this.userService.findAllWithPriceGroup(tenantId);
   }
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
+  @Roles(UserRole.INSTANCE_OWNER, UserRole.DEVELOPER)
   @ApiBearerAuth()
   async findAll(
     @Req() req,
@@ -124,7 +124,7 @@ export class UserController {
     // Old behavior forcibly filtered admin users by their own adminId causing empty lists
     // unless users.adminId was set. We now return all tenant users by default and allow
     // optional filtering with ?assignedToMe=true
-    const where = (req.user?.role === 'admin' && assignedToMe === 'true')
+    const where = (req.user?.role === 'instance_owner' && assignedToMe === 'true')
       ? { adminId: req.user.id }
       : {};
 
@@ -182,7 +182,7 @@ export class UserController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @ApiBearerAuth()
   @ApiParam({ name: 'id', description: 'UUID of the user to retrieve' })
   async findById(@Param('id', ParseUUIDPipe) id: string, @Req() req) {
@@ -206,7 +206,7 @@ export class UserController {
   }
 
   @Put(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update user data (Admin only)' })
   async updateUser(
@@ -222,7 +222,7 @@ export class UserController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @ApiBearerAuth()
   async deleteUser(@Param('id', ParseUUIDPipe) id: string, @Req() req): Promise<void> {
     const tenantId = req.tenant?.id;
@@ -230,7 +230,7 @@ export class UserController {
   }
 
   @Patch(':id/price-group')
-  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
+  @Roles(UserRole.INSTANCE_OWNER, UserRole.DEVELOPER)
   @ApiBearerAuth()
   async updatePriceGroup(
     @Param('id', ParseUUIDPipe) userId: string,
@@ -244,7 +244,7 @@ export class UserController {
   // ====== المسارات الجديدة للوحة المشرف ======
 
   @Patch(':id/active')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @ApiBearerAuth()
   async setActive(
     @Param('id', ParseUUIDPipe) id: string,
@@ -256,7 +256,7 @@ export class UserController {
   }
 
   @Patch(':id/balance/add')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @ApiBearerAuth()
   async addFunds(
     @Param('id', ParseUUIDPipe) id: string,
@@ -268,7 +268,7 @@ export class UserController {
   }
 
   @Patch(':id/overdraft')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @ApiBearerAuth()
   async setOverdraft(
     @Param('id', ParseUUIDPipe) id: string,

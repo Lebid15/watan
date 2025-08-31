@@ -46,7 +46,7 @@ export class ProductOrdersController {
 
   /** (اختياري) طلبات مستخدم محدد — للأدمن فقط — مع pagination */
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @Get('user/:userId')
   async getUserOrdersAdmin(
     @Param('userId') userId: string,
@@ -65,7 +65,7 @@ export class ProductOrdersController {
 
   /** كل الطلبات — للأدمن فقط — مع pagination */
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @Get()
   async getAllOrders(@Query() query: ListOrdersDto, @Req() req: Request) {
     const user = req.user as any;
@@ -127,7 +127,7 @@ export class ProductOrdersController {
 
   /** تعديل حالة الطلب — للأدمن */
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @Patch(':id/status')
   async setStatus(
     @Param('id', new ParseUUIDPipe()) id: string,

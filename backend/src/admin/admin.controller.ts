@@ -23,13 +23,13 @@ export class AdminController {
     private readonly integrationsService: IntegrationsService,
   ) {}
 
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @Get('dashboard')
   getAdminDashboard(@Request() req) {
     return { message: 'Welcome Admin', user: req.user };
   }
 
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.INSTANCE_OWNER)
   @Get('users')
   async getAllUsers(@Request() req) {
     const tokenTenant: string | null = req.user?.tenantId ?? null;

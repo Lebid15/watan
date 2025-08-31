@@ -52,7 +52,7 @@ describe('Distributor snapshot unit', () => {
   });
 
   it('fills distributor snapshots with quantity & FX and stores snapshot columns', async () => {
-  const distributor = { id: 'dist1', roleFinal: 'distributor', role: 'distributor', tenantId: 't1', balance: 9999, overdraftLimit: 0, preferredCurrencyCode: 'SAR', priceGroup: { id: 'pg-dist' } } as any;
+  const distributor = { id: 'dist1', roleFinal: 'instance_owner', role: 'instance_owner', tenantId: 't1', balance: 9999, overdraftLimit: 0, preferredCurrencyCode: 'SAR', priceGroup: { id: 'pg-dist' } } as any;
   const subUser = { id: 'u2', parentUserId: 'dist1', roleFinal: 'user', role: 'user', tenantId: 't1', balance: 9999, overdraftLimit: 0, currency: { rate: 1, code: 'USD' }, preferredCurrencyCode: 'SAR' } as any;
     // Prime top-level userRepo.findOne used before transaction (line ~781) to return subUser
     userRepo.findOne.mockImplementation(async (q:any)=> {
@@ -111,7 +111,7 @@ describe('Distributor snapshot unit', () => {
   const subUser = { id: 'u3', parentUserId: 'distX', roleFinal: 'user', role: 'user', tenantId: 't1', balance: 100, overdraftLimit: 0, currency: { rate: 1, code: 'USD' } } as any;
     userRepo.findOne.mockImplementation(async (q:any)=> {
       if (q?.where?.id === 'u3') return subUser;
-      if (q?.where?.id === 'distX') return { id: 'distX', roleFinal: 'distributor', role: 'distributor', tenantId: 't1', balance: 100, overdraftLimit: 0, priceGroup: { id: 'pg-miss' }, preferredCurrencyCode: 'USD' } as any;
+      if (q?.where?.id === 'distX') return { id: 'distX', roleFinal: 'instance_owner', role: 'instance_owner', tenantId: 't1', balance: 100, overdraftLimit: 0, priceGroup: { id: 'pg-miss' }, preferredCurrencyCode: 'USD' } as any;
       return null;
     });
   // Root lookups for getEffectivePriceUSD
@@ -127,7 +127,7 @@ describe('Distributor snapshot unit', () => {
           if (token === ProductPackage) return { findOne: async () => pkg };
           if (token === User) return { findOne: async (q:any)=> {
               if (q.where.id === 'u3') return subUser;
-              if (q.where.id === 'distX') return { id: 'distX', roleFinal: 'distributor', role: 'distributor', priceGroup: { id: 'pg-miss' }, preferredCurrencyCode: 'USD' } as any;
+              if (q.where.id === 'distX') return { id: 'distX', roleFinal: 'instance_owner', role: 'instance_owner', priceGroup: { id: 'pg-miss' }, preferredCurrencyCode: 'USD' } as any;
               return null;
             }, save: async(x:any)=>x };
           if (token === ProductOrder) return { create:(x:any)=>x, save: async(o:any)=> { o.id='ord2'; return o; }, update: jest.fn() } as any;

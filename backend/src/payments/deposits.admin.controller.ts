@@ -8,7 +8,7 @@ import { UpdateDepositStatusDto } from './dto/update-deposit-status.dto';
 import { ListDepositsDto } from './dto/list-deposits.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.INSTANCE_OWNER)
 @Controller('admin/deposits')
 export class DepositsAdminController {
   constructor(private readonly depositsService: DepositsService) {}

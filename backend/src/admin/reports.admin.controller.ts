@@ -59,7 +59,7 @@ function addMonths(date: Date, delta: number) {
 
 @Controller('admin/reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.INSTANCE_OWNER)
 export class ReportsAdminController {
   constructor(
     @InjectRepository(ProductOrder) private readonly ordersRepo: Repository<ProductOrder>,

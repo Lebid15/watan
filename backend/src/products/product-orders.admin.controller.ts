@@ -43,7 +43,7 @@ type ExternalStatus =
   | 'failed';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.INSTANCE_OWNER)
 @Controller('admin/orders')
 export class ProductOrdersAdminController {
   private readonly logger = new Logger(ProductOrdersAdminController.name);

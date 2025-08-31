@@ -1175,13 +1175,13 @@ export class ProductsService {
       let rootDistributor: any = null;
       const userAny: any = user as any;
       if (isFeatureEnabled('catalogLinking')) {
-        if (userAny.roleFinal === 'distributor' || userAny.role === 'distributor') {
+        if (userAny.roleFinal === 'instance_owner' || userAny.role === 'instance_owner') {
           rootDistributor = userAny;
         } else if (userAny.parentUserId) {
           // اجلب المستخدم الأب
             rootDistributor = await usersRepo.findOne({ where: { id: userAny.parentUserId } as any, relations: ['priceGroup'] });
             if (!rootDistributor) throw new BadRequestException('الموزّع الأب غير موجود');
-            if (!(rootDistributor.roleFinal === 'distributor' || rootDistributor.role === 'distributor')) {
+            if (!(rootDistributor.roleFinal === 'instance_owner' || rootDistributor.role === 'instance_owner')) {
               throw new BadRequestException('المستخدم الأب ليس موزّعًا');
             }
         }

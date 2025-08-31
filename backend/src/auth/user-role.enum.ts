@@ -1,12 +1,7 @@
 export enum UserRole {
   DEVELOPER = 'developer',
-  /**
-   * @deprecated سيُزال لاحقاً. استخدم ADMIN كمالك التينانت.
-   */
   INSTANCE_OWNER = 'instance_owner',
-  DISTRIBUTOR = 'distributor',
   USER = 'user',
-  ADMIN = 'admin', // لو تحتاج دور إداري عام
 }
 
 /**
@@ -26,7 +21,7 @@ export enum UserRole {
  *   - Uses the tenant-facing UI to browse/buy, view wallet, request payout.
  *
  * Notes:
- * - Removed roles: ADMIN, DISTRIBUTOR (no longer used).
+ * - Removed roles: ADMIN, DISTRIBUTOR (mapped to INSTANCE_OWNER).
  * - إذا احتجت صلاحيات مدير عام للمنصة استخدم DEVELOPER.
  * - الرجاء الرجوع لهذا التعليق عند التعامل مع الأدوار ومساراتها.
  */

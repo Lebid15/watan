@@ -100,9 +100,9 @@ export function middleware(req: NextRequest) {
       email = (json.email || json.user?.email || json.sub || '').toLowerCase();
     } catch {}
   }
-  // Normalize legacy role names: instance_owner → tenant_owner (hierarchy merge), owner → tenant_owner
+  // Normalize legacy role names: admin → instance_owner, distributor → instance_owner
   let role = rawRole;
-  if (role === 'instance_owner' || role === 'owner' || role === 'admin') role = 'tenant_owner';
+  if (role === 'admin' || role === 'distributor' || role === 'owner') role = 'instance_owner';
 
   // Enforce developer email whitelist: only listed emails keep developer privileges.
   // إذا لم تُحدد قائمة في env نستخدم القائمة الافتراضية (الحساب الوحيد للمطور).
@@ -154,8 +154,7 @@ export function middleware(req: NextRequest) {
   // Root path routing according to clarified matrix
   if (path === '/') {
     if (hostInfo.isSub) {
-      if (role === 'tenant_owner') return redirect('/admin/dashboard', req);
-      if (role === 'distributor') return redirect('/admin/distributor', req);
+      if (role === 'instance_owner') return redirect('/admin/dashboard', req);
   if (role === 'user') return NextResponse.next();
       if (role === 'developer') {
         const apex = CONFIGURED_APEX || hostInfo.apex; // fallback
@@ -176,15 +175,10 @@ export function middleware(req: NextRequest) {
     // Admin area valid only on subdomains
     if (!hostInfo.isSub) return redirect('/', req);
     const isDistributorSection = path.startsWith('/admin/distributor');
-    if (role === 'tenant_owner') {
+    if (role === 'instance_owner') {
       // تأكيد أن /admin نفسها تعيد التوجيه إلى /admin/dashboard لتوقع UX
       if (path === '/admin') return redirect('/admin/dashboard', req);
       return response ?? NextResponse.next();
-    }
-    if (role === 'distributor') {
-      if (isDistributorSection) return response ?? NextResponse.next();
-      // distributor trying to access owner-only area
-      return redirect('/admin/distributor', req);
     }
     if (role === 'developer') {
       const apex = CONFIGURED_APEX || hostInfo.apex;

@@ -8,7 +8,7 @@ import { format3 } from '../common/money/money.util';
 import { Currency } from '../currencies/currency.entity';
 
 @Controller('tenant/distributor/orders')
-@FinalRoles('tenant_owner','distributor')
+@FinalRoles('instance_owner')
 export class DistributorOrdersController {
   constructor(
     @InjectRepository(ProductOrder) private readonly ordersRepo: Repository<ProductOrder>,
@@ -20,14 +20,14 @@ export class DistributorOrdersController {
     if (!isFeatureEnabled('catalogLinking')) return { items: [] };
     const tenantId = req?.tenant?.id || req?.user?.tenantId;
     const role = req?.user?.roleFinal || req?.user?.role;
-    const distributorIdFilter = role === 'distributor' ? req.user.id : (req.query.distributorId as string|undefined);
+    const distributorIdFilter = role === 'instance_owner' ? req.user.id : (req.query.distributorId as string|undefined);
     const qb = this.ordersRepo.createQueryBuilder('o').where('o.tenantId = :t',{t:tenantId}).andWhere('o.placedByDistributorId IS NOT NULL');
     if (distributorIdFilter) qb.andWhere('o.placedByDistributorId = :d',{d:distributorIdFilter});
     if (from) qb.andWhere('o.createdAt >= :from',{from});
     if (to) qb.andWhere('o.createdAt <= :to',{to});
     qb.orderBy('o.createdAt','DESC').limit(500);
     const rows = await qb.getMany();
-    const preferredCode: string | undefined = (role === 'distributor') ? (req.user?.preferredCurrencyCode || 'USD') : 'USD';
+    const preferredCode: string | undefined = (role === 'instance_owner') ? (req.user?.preferredCurrencyCode || 'USD') : 'USD';
     return { items: rows.map(r=>{
       const capitalUSD = r.distributorCapitalUsdAtOrder ? Number(r.distributorCapitalUsdAtOrder) : null;
       const sellUSD = r.distributorSellUsdAtOrder ? Number(r.distributorSellUsdAtOrder) : null;
@@ -69,7 +69,7 @@ export class DistributorOrdersController {
     if (!isFeatureEnabled('catalogLinking')) return { totalProfitUSD: 0 };
     const tenantId = req?.tenant?.id || req?.user?.tenantId;
     const role = req?.user?.roleFinal || req?.user?.role;
-    const distributorIdFilter = role === 'distributor' ? req.user.id : (req.query.distributorId as string|undefined);
+    const distributorIdFilter = role === 'instance_owner' ? req.user.id : (req.query.distributorId as string|undefined);
     const qb = this.ordersRepo.createQueryBuilder('o').select('SUM(COALESCE(o.distributorProfitUsdAtOrder,0))','sum').where('o.tenantId = :t',{t:tenantId}).andWhere('o.placedByDistributorId IS NOT NULL');
     if (distributorIdFilter) qb.andWhere('o.placedByDistributorId = :d',{d:distributorIdFilter});
     if (from) qb.andWhere('o.createdAt >= :from',{from});

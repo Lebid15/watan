@@ -4,7 +4,7 @@ import { FinalRoles } from '../common/authz/roles';
 import { isFeatureEnabled } from '../common/feature-flags';
 
 @Controller('tenant/distributor/pricing')
-@FinalRoles('tenant_owner','distributor')
+@FinalRoles('instance_owner')
 export class DistributorPricingController {
   constructor(private readonly svc: DistributorPricingService) {}
 

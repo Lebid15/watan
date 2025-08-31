@@ -1,15 +1,15 @@
 // Phase 1: تعريف الأدوار النهائية + مواءمة مؤقتة
-export type FinalRole = 'instance_owner' | 'tenant_owner' | 'distributor' | 'end_user';
+export type FinalRole = 'instance_owner' | 'tenant_owner' | 'end_user';
 
 // مواءمة الأدوار القديمة إلى النهائية
 export function mapLegacyRole(r?: string): FinalRole {
   const v = (r || '').toLowerCase();
   // Preserve already-final roles explicitly
   if (v === 'tenant_owner') return 'tenant_owner';
-  if (v === 'admin') return 'tenant_owner';
+  if (v === 'admin') return 'instance_owner';
   if (v === 'user') return 'end_user';
-  if (v === 'developer') return 'instance_owner'; // وصول منصّة مؤقت
-  if (v === 'distributor') return 'distributor';
+  if (v === 'developer') return 'instance_owner';
+  if (v === 'distributor') return 'instance_owner';
   if (v === 'instance_owner') return 'instance_owner';
   // أدوار غير معروفة تعامل كمستخدم نهائي
   return 'end_user';

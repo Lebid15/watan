@@ -61,7 +61,7 @@ describe('Distributor Snapshot & FX Freeze (E2E)', () => {
 
     // Users
     await insert('users', { id: USER_OWNER, tenantId: TID, role: 'tenant_owner', username: 'owner', email: 'o@x', password: 'x', isActive: 1 });
-    await insert('users', { id: USER_DIST, tenantId: TID, role: 'distributor', username: 'dist', email: 'd@x', password: 'x', isActive: 1, preferredCurrencyCode: 'SAR', price_group_id: PG_STORE_DIST });
+    await insert('users', { id: USER_DIST, tenantId: TID, role: 'instance_owner', username: 'dist', email: 'd@x', password: 'x', isActive: 1, preferredCurrencyCode: 'SAR', price_group_id: PG_STORE_DIST });
   await insert('users', { id: USER_CHILD, tenantId: TID, role: 'end_user', username: 'child', email: 'c@x', password: 'x', isActive: 1, parentUserId: USER_DIST, balance: 100 });
 
     // Product + package (store)

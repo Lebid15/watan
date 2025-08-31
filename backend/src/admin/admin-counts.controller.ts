@@ -9,7 +9,7 @@ import { ProductOrder } from '../products/product-order.entity';
 import { Deposit } from '../payments/deposit.entity';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.INSTANCE_OWNER)
 @Controller('admin')
 export class AdminCountsController {
   constructor(

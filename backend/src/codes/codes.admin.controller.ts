@@ -25,7 +25,7 @@ import { UserRole } from '../auth/user-role.enum';
 
 @Controller('admin/codes')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.INSTANCE_OWNER)
 export class CodesAdminController {
   constructor(
     @InjectRepository(CodeGroup)

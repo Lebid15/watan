@@ -16,7 +16,7 @@ import { UserRole } from '../auth/user-role.enum';
 
 @Controller('admin/settings')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.INSTANCE_OWNER)
 export class SiteSettingsAdminController {
   constructor(private readonly service: SiteSettingsService) {}
 

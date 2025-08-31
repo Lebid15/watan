@@ -21,7 +21,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { UserRole } from '../auth/user-role.enum';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.INSTANCE_OWNER)
 @Controller('admin/integrations')
 export class IntegrationsController {
   constructor(private readonly svc: IntegrationsService) {}

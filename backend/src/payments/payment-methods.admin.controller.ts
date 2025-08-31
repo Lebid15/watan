@@ -8,7 +8,7 @@ import { CreatePaymentMethodDto } from './dto/create-payment-method.dto';
 import { UpdatePaymentMethodDto } from './dto/update-payment-method.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
+@Roles(UserRole.INSTANCE_OWNER)
 @Controller('admin/payment-methods')
 export class PaymentMethodsAdminController {
   constructor(private readonly service: PaymentMethodsService) {}
