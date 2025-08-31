@@ -16,8 +16,6 @@ export class TenantCatalogController {
     if (!isFeatureEnabled('catalogLinking')) throw new ForbiddenException('Feature disabled');
     const tenantId = req?.tenant?.id || req?.user?.tenantId;
     if (!tenantId) throw new ForbiddenException('Tenant context missing');
-    const product = await this.products.activateCatalogProduct(tenantId, catalogProductId);
-    if (!product) throw new NotFoundException('Activation failed');
-    return { ok: true, productId: product.id, catalogProductId: product.catalogProductId };
+    throw new NotFoundException('Catalog functionality disabled');
   }
 }

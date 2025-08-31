@@ -109,7 +109,7 @@ export class ProductsController {
   // ✅ إرجاع قائمة المنتجات العالمية (للاستنساخ) – محمية Roles
   @Get('global')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
+  @Roles(UserRole.INSTANCE_OWNER, UserRole.DEVELOPER)
   async listGlobal(@Req() _req: Request) {
     const data = await this.productsService.listGlobalProducts();
     return { items: data, count: data.length };
@@ -257,7 +257,7 @@ export class ProductsController {
   // ✅ استنساخ منتج عالمي إلى تينانت المستأجر الحالي
   @Post(':id/clone-to-tenant')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.DEVELOPER)
+  @Roles(UserRole.INSTANCE_OWNER, UserRole.DEVELOPER)
   async cloneToTenant(@Req() req: Request, @Param('id') globalProductId: string) {
     const targetTenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
     if (!targetTenantId) {
@@ -332,7 +332,7 @@ export class ProductsController {
   @Post(':id/packages')
   // ✅ إضافة الحماية المفقودة: بدون الحارس كان req.user undefined وبالتالي tenantId يسقط إلى الحاوية العامة
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
   @UseInterceptors(
     FileInterceptor('image', {
       storage: memoryStorage(),
@@ -377,6 +377,13 @@ export class ProductsController {
         const cloudinary = getCloud();
         const result: any = await new Promise((resolve, reject) => {
           const upload = cloudinary.uploader.upload_stream(
+            { resource_type: 'image' },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          upload.end(file.buffer);
         });
         imageUrl = result.secure_url;
       } catch (err: any) {
@@ -385,6 +392,8 @@ export class ProductsController {
           http_code: err?.http_code,
         });
         throw new InternalServerErrorException('فشل رفع صورة الباقة.');
+      }
+    }
     const capital = parseMoney(capitalStr ?? basePriceStr ?? priceStr);
 
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId || '00000000-0000-0000-0000-000000000000';
@@ -418,6 +427,8 @@ export class ProductsController {
   }
 
   @Delete('packages/:id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
   async deletePackage(@Req() req: Request, @Param('id') id: string): Promise<{ message: string }> {
     // ✅ تمرير السياق الكامل لدعم حذف المطور للباقات العالمية والسجلات
     await this.productsService.deletePackage({
@@ -453,7 +464,7 @@ export class ProductsController {
   // ✅ تحديث publicCode لباقـة (Dev/Admin context يفترض الحماية بطبقة أعلى)
   @Patch('packages/:id/code')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
   async updatePackageCode(
     @Req() req: Request,
     @Param('id') packageId: string,
@@ -466,7 +477,7 @@ export class ProductsController {
   // ✅ تعديل أساسي لحقول الباقة (اسم، وصف، basePrice، isActive)
   @Patch('packages/:id/basic')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
   async updatePackageBasic(
     @Req() req: Request,
     @Param('id') packageId: string,
@@ -479,7 +490,7 @@ export class ProductsController {
   // دعم قديم: PUT /products/packages/:id لتحديث حقول بسيطة (الاسم / الحالة)
   @Put('packages/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
   async legacyUpdatePackage(
     @Req() req: Request,
     @Param('id') packageId: string,
@@ -492,7 +503,7 @@ export class ProductsController {
   // ✅ تحديث اسم المزود
   @Patch('packages/:id/provider')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
   async updatePackageProvider(
     @Param('id') packageId: string,
     @Body('providerName') providerName: string,
@@ -504,7 +515,7 @@ export class ProductsController {
   // ✅ إتاحة جلب الكود الحالي لباقة واحدة (مفيد للـ UI للتحديث اللحظي)
   @Get('packages/:id/code')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
   async getPackageCode(@Param('id') packageId: string) {
     const pkg = await this.productsService.findPackageById(packageId);
     if (!pkg) throw new NotFoundException('الباقة غير موجودة');
