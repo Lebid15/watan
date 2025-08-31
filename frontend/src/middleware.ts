@@ -213,6 +213,10 @@ export function middleware(req: NextRequest) {
     return redirect('/', req);
   }
 
+  if (path === '/menu') {
+    return redirect('/user/menu', req);
+  }
+
   return response ?? NextResponse.next();
 }
 
