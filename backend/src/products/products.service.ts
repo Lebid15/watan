@@ -15,8 +15,6 @@ import { InternalOrderStatus } from './product-order.entity';
 import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { isFeatureEnabled } from '../common/feature-flags';
 import { IntegrationsService } from '../integrations/integrations.service';
-import { ProductRouting } from './product-routing.entity';
-import { ProductPackageMapping } from './product-package-mapping.entity';
 import { AccountingPeriodsService } from '../accounting/accounting-periods.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -34,8 +32,6 @@ export class ProductsService {
     @InjectRepository(DistributorPackagePrice) private readonly distPkgPriceRepo: Repository<DistributorPackagePrice>,
     @InjectRepository(DistributorUserPriceGroup) private readonly distUserGroupRepo: Repository<DistributorUserPriceGroup>,
     @InjectRepository(Currency) private readonly currenciesRepo: Repository<Currency>,
-    @InjectRepository(ProductRouting) private readonly routingRepo: Repository<ProductRouting>,
-    @InjectRepository(ProductPackageMapping) private readonly mappingRepo: Repository<ProductPackageMapping>,
     private readonly integrations: IntegrationsService,
     private readonly accounting: AccountingPeriodsService,
     private readonly notifications: NotificationsService,
@@ -247,25 +243,7 @@ export class ProductsService {
       if (extStatus === 'done') {
         await this.updateOrderStatus(order.id, 'approved', effectiveTenantId);
       } else {
-        // ✅ قيد routing بالتينانت
-        const routing = await this.routingRepo.findOne({
-          where: {
-            package: { id: order.package.id } as any,
-            tenantId: effectiveTenantId,
-          } as any,
-          relations: ['package'],
-        });
-
-        const isOnFallback =
-          routing?.fallbackProviderId &&
-          order.providerId === routing.fallbackProviderId;
-        const hasFallback = !!routing?.fallbackProviderId;
-
-        if (isOnFallback || !hasFallback) {
-          await this.updateOrderStatus(order.id, 'rejected', effectiveTenantId);
-        } else {
-          // اتركه للمونيتور/إعادة المحاولة لاحقًا
-        }
+        await this.updateOrderStatus(order.id, 'rejected', effectiveTenantId);
       }
     }
 
@@ -954,19 +932,7 @@ export class ProductsService {
     if (order.providerId || order.externalOrderId || order.status !== 'pending')
       return;
 
-    // قيّد الـ routing بالتينانت
-    const routing = await this.routingRepo.findOne({
-      where: {
-        package: { id: order.package.id } as any,
-        tenantId: effectiveTenantId,
-      } as any,
-      relations: ['package'],
-    });
-    if (!routing || routing.mode !== 'auto') return;
-
-    if (routing.providerType === 'internal_codes' && routing.codeGroupId) {
-      throw new Error('Internal codes dispatch is temporarily disabled');
-    }
+    return;
 
   }
 
