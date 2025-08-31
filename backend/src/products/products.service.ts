@@ -9,7 +9,6 @@ import { PriceGroup } from './price-group.entity';
 import { ProductOrder } from './product-order.entity';
 import { User } from '../user/user.entity';
 import { DistributorPackagePrice, DistributorUserPriceGroup } from '../distributor/distributor-pricing.entities';
-import { CodeItem } from '../codes/entities/code-item.entity';
 import { Currency } from '../currencies/currency.entity';
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { InternalOrderStatus } from './product-order.entity';
@@ -34,7 +33,6 @@ export class ProductsService {
     @InjectRepository(User) private readonly usersRepo: Repository<User>,
     @InjectRepository(DistributorPackagePrice) private readonly distPkgPriceRepo: Repository<DistributorPackagePrice>,
     @InjectRepository(DistributorUserPriceGroup) private readonly distUserGroupRepo: Repository<DistributorUserPriceGroup>,
-    @InjectRepository(CodeItem) private readonly codeItemRepo: Repository<CodeItem>,
     @InjectRepository(Currency) private readonly currenciesRepo: Repository<Currency>,
     @InjectRepository(ProductRouting) private readonly routingRepo: Repository<ProductRouting>,
     @InjectRepository(ProductPackageMapping) private readonly mappingRepo: Repository<ProductPackageMapping>,
@@ -966,51 +964,8 @@ export class ProductsService {
     });
     if (!routing || routing.mode !== 'auto') return;
 
-    // 🟢 توجيه داخلي: قسم الأكواد
     if (routing.providerType === 'internal_codes' && routing.codeGroupId) {
-      await this.ordersRepo.manager.transaction(async (trx) => {
-        const itemRepo = trx.getRepository(CodeItem);
-        const orderRepo = trx.getRepository(ProductOrder);
-
-        // احجز أقدم كود متاح ضمن نفس التينانت والمجموعة
-        const code = await itemRepo.findOne({
-          where: {
-            groupId: routing.codeGroupId as any,
-            status: 'available',
-            tenantId: effectiveTenantId,
-          } as any,
-          order: { createdAt: 'ASC' },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!code) {
-          throw new Error('لا توجد أكواد متاحة في هذه المجموعة');
-        }
-
-        code.status = 'used';
-        code.orderId = order.id;
-        code.usedAt = new Date();
-        await itemRepo.save(code);
-
-        const codeText =
-          `CODE: ${code.pin ?? ''}${code.serial ? (code.pin ? ' / ' : '') + code.serial : ''}`.trim();
-        const nowIso = new Date().toISOString();
-
-        order.status = 'approved';
-        order.externalStatus = 'done' as any;
-        order.lastMessage = codeText.slice(0, 250);
-        order.notes = [
-          ...(Array.isArray(order.notes) ? order.notes : []),
-          { by: 'system', text: codeText, at: nowIso },
-        ];
-        order.completedAt = new Date();
-        order.durationMs = order.sentAt
-          ? order.completedAt.getTime() - order.sentAt.getTime()
-          : (order.durationMs ?? 0);
-
-        await orderRepo.save(order);
-      });
-
-      return;
+      throw new Error('Internal codes dispatch is temporarily disabled');
     }
 
   }
