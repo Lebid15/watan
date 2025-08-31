@@ -175,7 +175,7 @@ jobs:
           fi
           # Clean previous stack to avoid legacy volume merge bug (KeyError: 'ContainerConfig')
           ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD down --remove-orphans || true"
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD build --pull"
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD build --pull --no-cache"
           ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD up -d"
 
       - name: Check database connectivity (pre-migrations)
