@@ -1,6 +1,6 @@
 export class CreateDepositDto {
-  /** وسيلة الدفع المختارة */
-  methodId: string;
+  /** وسيلة الدفع المختارة (قد تكون مطلوبة لاحقًا، حالياً اختيارية لبعض السيناريوهات). */
+  methodId?: string;
 
   /** المبلغ الذي أرسله فعليًا */
   originalAmount: number;
@@ -13,4 +13,6 @@ export class CreateDepositDto {
 
   /** ملاحظة اختيارية */
   note?: string;
+
+  // لا نسمح بتمرير source من العميل؛ يحدد داخليًا (user_request أو admin_topup)
 }

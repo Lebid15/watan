@@ -2,3 +2,4 @@
 backup_prod_*.dump*
 nginx.conf.bak
 certs/
+.gitignore:

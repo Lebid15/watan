@@ -19,6 +19,8 @@ interface MyDeposit {
   note?: string | null;
   status: DepositStatus;
   createdAt: string;
+  source?: 'user_request' | 'admin_topup';
+  approvedAt?: string | null;
 }
 
 interface PageInfo {
@@ -53,6 +55,7 @@ export default function WalletPage() {
   useAuthRequired();
 
   const [rows, setRows] = useState<MyDeposit[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'user_request' | 'admin_topup'>('all');
   const [loadingFirst, setLoadingFirst] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [err, setErr] = useState('');
@@ -72,7 +75,7 @@ export default function WalletPage() {
         setErr('');
         const { data } = await api.get<WalletPageResponse>(
           API_ROUTES.payments.deposits.mine,
-          { params: { limit: PAGE_LIMIT } }
+          { params: { limit: PAGE_LIMIT, source: sourceFilter === 'all' ? undefined : sourceFilter } }
         );
 
         if (Array.isArray(data)) {
@@ -107,7 +110,7 @@ export default function WalletPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sourceFilter]);
 
   // ===== تحميل المزيد =====
   const loadMore = async () => {
@@ -115,15 +118,39 @@ export default function WalletPage() {
     try {
       setLoadingMore(true);
       setErr('');
-      const { data } = await api.get<WalletPageResponse>(
+  const { data } = await api.get<WalletPageResponse>(
         API_ROUTES.payments.deposits.mine,
         {
           params: {
             limit: PAGE_LIMIT,
             cursor: nextCursor ?? undefined,
+    source: sourceFilter === 'all' ? undefined : sourceFilter,
           },
         }
       );
+      <div className="flex items-center gap-2 mb-4">
+        {[
+          { key: 'all', label: 'الكل' },
+          { key: 'user_request', label: 'طلبات المستخدم' },
+          { key: 'admin_topup', label: 'شحن إداري' },
+        ].map(tab => {
+          const active = sourceFilter === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setSourceFilter(tab.key as any)}
+              className={[
+                'px-3 py-1 rounded-full text-xs font-medium border transition',
+                active
+                  ? 'bg-primary text-[rgb(var(--color-primary-contrast))] border-primary'
+                  : 'bg-bg-surface-alt border-border text-text-secondary hover:text-text-primary'
+              ].join(' ')}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
 
       if (Array.isArray(data)) {
         // الباك يرجّع مصفوفة فقط → لا مزيد من الصفحات
@@ -210,8 +237,20 @@ export default function WalletPage() {
                             —
                           </div>
                         )}
-                        <span className="text-text-primary">
+                        <span className="text-text-primary flex items-center gap-2">
                           {r.method?.name || 'وسيلة دفع'}
+                          {r.source && (
+                            <span
+                              className={[
+                                'text-[10px] px-2 py-0.5 rounded-full border',
+                                r.source === 'admin_topup'
+                                  ? 'bg-success/10 border-success/40 text-success'
+                                  : 'bg-primary/10 border-primary/30 text-primary'
+                              ].join(' ')}
+                            >
+                              {r.source === 'admin_topup' ? 'شحن إداري' : 'طلب مستخدم'}
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div className="text-sm text-text-primary font-medium">

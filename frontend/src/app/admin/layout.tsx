@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminNavbar from './AdminNavbar';
 import AdminTopBar from './AdminTopBar';
+import MobileZoomFrame from '@/components/MobileZoomFrame';
+import { useSearchParams } from 'next/navigation';
 import api from '@/utils/api';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -64,25 +66,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // لا نعرض شيئًا حتى يجهز التخطيط والتحقق من الجلسة، لتفادي الوميض والحلقات
   if (!authReady) return null;
 
+  const search = useSearchParams();
+  const isMobileFrame = search.get('mobile') === '1';
+
+  const inner = (
+    <div
+      className="mx-auto"
+      style={{
+        width: DESIGN_WIDTH,
+        minWidth: DESIGN_WIDTH,
+        minHeight: '100vh',
+        overflowX: 'auto',
+      }}
+    >
+      <div className="bg-[var(--toppage)] text-gray-100">
+        <AdminTopBar alertMessage={alertMessage} onLogout={handleLogout} />
+      </div>
+      <AdminNavbar />
+      <div className="p-">{children}</div>
+    </div>
+  );
+
   return (
     <div className="w-full min-h-screen overflow-auto">
-      <div
-        className="mx-auto"
-        style={{
-          width: DESIGN_WIDTH,
-          minWidth: DESIGN_WIDTH,
-          minHeight: '100vh',
-          overflowX: 'auto',
-        }}
-      >
-        <div className="bg-[var(--toppage)] text-gray-100">
-          <AdminTopBar alertMessage={alertMessage} onLogout={handleLogout} />
+      {isMobileFrame ? (
+        <div className="p-4">
+          <MobileZoomFrame width={390}>{inner}</MobileZoomFrame>
         </div>
-
-        <AdminNavbar />
-
-        <div className="p-">{children}</div>
-      </div>
+      ) : (
+        inner
+      )}
     </div>
   );
 }

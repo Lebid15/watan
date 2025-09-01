@@ -14,11 +14,13 @@ export class DepositsController {
     @Req() req: any,
     @Query('limit') limitQ?: string,
     @Query('cursor') cursor?: string,
+  @Query('source') source?: string,
   ) {
     const userId   = req.user?.userId ?? req.user?.sub ?? req.user?.id;
     const tenantId = req.user?.tenantId as string;
     const limit = Math.max(1, Math.min(100, Number(limitQ ?? 20)));
-    return this.service.listMineWithPagination(userId, tenantId, { limit, cursor: cursor ?? null });
+  const src = source === 'user_request' || source === 'admin_topup' ? source : null;
+  return this.service.listMineWithPagination(userId, tenantId, { limit, cursor: cursor ?? null, source: src });
   }
 
   /** 🔁 alias: يعيد نفس نتيجة /deposits/mine */
@@ -27,11 +29,13 @@ export class DepositsController {
     @Req() req: any,
     @Query('limit') limitQ?: string,
     @Query('cursor') cursor?: string,
+  @Query('source') source?: string,
   ) {
     const userId   = req.user?.userId ?? req.user?.sub ?? req.user?.id;
     const tenantId = req.user?.tenantId as string;
     const limit = Math.max(1, Math.min(100, Number(limitQ ?? 20)));
-    return this.service.listMineWithPagination(userId, tenantId, { limit, cursor: cursor ?? null });
+  const src = source === 'user_request' || source === 'admin_topup' ? source : null;
+  return this.service.listMineWithPagination(userId, tenantId, { limit, cursor: cursor ?? null, source: src });
   }
 
   /** إنشاء طلب إيداع */

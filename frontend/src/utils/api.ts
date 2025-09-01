@@ -186,6 +186,7 @@ export const API_ROUTES = {
         ).toString();
         return qs ? `${base}?${qs}` : base;
       },
+  topup: `${EFFECTIVE_API_BASE_URL}/admin/deposits/topup`,
     },
 
     integrations: {

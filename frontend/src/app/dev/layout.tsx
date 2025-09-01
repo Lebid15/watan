@@ -1,5 +1,7 @@
 "use client";
 import DevNavbar from './DevNavbar';
+import MobileZoomFrame from '@/components/MobileZoomFrame';
+import { useSearchParams } from 'next/navigation';
 import { useEffect } from 'react';
 import api, { API_BASE_URL } from '@/utils/api';
 import React from 'react';
@@ -54,8 +56,10 @@ function GlobalErrorHooks() {
 
 export default function DevLayout({ children }: { children: React.ReactNode }) {
   const DESIGN_WIDTH = 1280;
-  
-  return (
+  const search = useSearchParams();
+  const isMobileFrame = search.get('mobile') === '1';
+
+  const inner = (
     <div className="min-h-screen bg-zinc-50 text-gray-950" style={{ minWidth: DESIGN_WIDTH, overflowX: 'auto' }}>
       <DevNavbar />
       <GlobalErrorHooks />
@@ -64,4 +68,13 @@ export default function DevLayout({ children }: { children: React.ReactNode }) {
       </main>
     </div>
   );
+
+  if (isMobileFrame) {
+    return (
+      <div className="p-4">
+        <MobileZoomFrame width={390}>{inner}</MobileZoomFrame>
+      </div>
+    );
+  }
+  return inner;
 }

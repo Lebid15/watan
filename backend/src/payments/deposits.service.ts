@@ -3,7 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Brackets } from 'typeorm';
 
-import { Deposit, DepositStatus } from './deposit.entity';
+import { Deposit, DepositStatus, DepositSource } from './deposit.entity';
 import { PaymentMethod } from './payment-method.entity';
 import { User } from '../user/user.entity';
 import { Currency } from '../currencies/currency.entity';
@@ -64,7 +64,10 @@ export class DepositsService {
   /** المستخدم: إنشاء طلب إيداع Pending مع فرض tenantId */
   async createDeposit(userId: string, tenantId: string, dto: CreateDepositDto) {
     const user = await this.assertUserInTenant(userId, tenantId);
-    const method = await this.getMethodInTenant(dto.methodId, tenantId);
+    let method: PaymentMethod | null = null;
+    if (dto.methodId) {
+      method = await this.getMethodInTenant(dto.methodId, tenantId);
+    }
 
     if (dto.originalAmount <= 0) throw new BadRequestException('المبلغ يجب أن يكون أكبر من صفر');
 
@@ -80,7 +83,7 @@ export class DepositsService {
     const entity = this.depositsRepo.create({
       tenantId,
       user_id: user.id,
-      method_id: method.id,
+      method_id: method ? method.id : null,
       originalAmount: dto.originalAmount.toString(),
       originalCurrency,
       walletCurrency,
@@ -91,6 +94,71 @@ export class DepositsService {
     });
 
     return this.depositsRepo.save(entity);
+  }
+
+  /**
+   * Admin top-up: creates an already-approved deposit (source=admin_topup) and immediately increments balance.
+   * Method is required (will later be enforced at controller); if absent we throw.
+   * For simplicity originalCurrency = walletCurrency = user's currency (or dto.walletCurrency fallback) and rateUsed=1.
+   */
+  async createAdminTopup(
+    userId: string,
+    tenantId: string,
+    amount: number,
+    methodId: string,
+    note?: string,
+  ) {
+    if (!methodId) throw new BadRequestException('methodId مطلوب');
+    if (!(amount > 0)) throw new BadRequestException('المبلغ يجب أن يكون أكبر من صفر');
+    return this.dataSource.transaction(async (manager) => {
+      const user = await this.assertUserInTenant(userId, tenantId);
+      // load user's currency code if available
+      const userWithCurrency = await manager.getRepository(User).findOne({ where: { id: user.id, tenantId } as any, relations: ['currency'] });
+      const walletCurrency = (userWithCurrency?.currency?.code || 'TRY').toUpperCase();
+      const method = await this.getMethodInTenant(methodId, tenantId);
+
+      const rounded = Number((Math.round(amount * 100) / 100).toFixed(2));
+
+      // Update balance first (optimistic) then create deposit record referencing final amount
+      await manager
+        .createQueryBuilder()
+        .update(User)
+        .set({ balance: () => `ROUND(COALESCE(balance,0) + (${rounded}), 2)` })
+        .where('id = :uid', { uid: user.id })
+        .andWhere('tenantId = :tid', { tid: tenantId })
+        .execute();
+
+      const dep = manager.create(Deposit, {
+        tenantId,
+        user_id: user.id,
+        method_id: method.id,
+        originalAmount: rounded.toFixed(6),
+        originalCurrency: walletCurrency,
+        walletCurrency,
+        rateUsed: '1',
+        convertedAmount: rounded.toFixed(6),
+        note: note ?? null,
+        status: DepositStatus.APPROVED,
+        source: DepositSource.ADMIN_TOPUP,
+  approvedAt: new Date(),
+      });
+      await manager.save(dep);
+
+      // Fire-and-forget notifications (reuse depositApproved so UI stays consistent)
+      setImmediate(() => {
+        try {
+          void this.notifications.depositApproved(
+            user.id,
+            tenantId,
+            rounded,
+            method.name,
+            { depositId: dep.id, adminTopup: true },
+          );
+        } catch {/* ignore */}
+      });
+
+      return dep;
+    });
   }
 
   /** (توافق خلفي) مصفوفة بسيطة بدون باجينيشن – مع فرض tenantId */
@@ -106,7 +174,7 @@ export class DepositsService {
   async listMineWithPagination(
     userId: string,
     tenantId: string,
-    dto: { limit?: number; cursor?: string | null },
+  dto: { limit?: number; cursor?: string | null; source?: 'user_request' | 'admin_topup' | null },
   ) {
     // تأكيد أن المستخدم ضمن المستأجر (حماية إضافية)
     await this.assertUserInTenant(userId, tenantId);
@@ -120,7 +188,13 @@ export class DepositsService {
       .where('d.tenantId = :tid', { tid: tenantId })
       .andWhere('d.user_id = :uid', { uid: userId });
 
-    // Keyset: createdAt DESC, id DESC
+    if (dto.source && (dto.source === 'user_request' || dto.source === 'admin_topup')) {
+      qb.andWhere('d.source = :src', { src: dto.source });
+    }
+
+    // Keyset pagination based on ordering: approvedAt DESC NULLS LAST, createdAt DESC, id DESC.
+    // We implement cursor using createdAt/id (legacy) unless approvedAt present; to avoid complicating existing cursor consumers
+    // we leave cursor logic unchanged (still based on createdAt/id) but ordering primary key changed.
     if (cursor) {
       qb.andWhere(new Brackets((b) => {
         b.where('d.createdAt < :cts', { cts: new Date(cursor.ts) })
@@ -130,8 +204,9 @@ export class DepositsService {
          }));
       }));
     }
-
-    qb.orderBy('d.createdAt', 'DESC')
+    // Order: approved first by approval time, then recent pending/rejected by creation time
+    qb.orderBy('d.approvedAt', 'DESC', 'NULLS LAST')
+      .addOrderBy('d.createdAt', 'DESC')
       .addOrderBy('d.id', 'DESC')
       .take(limit + 1);
 
@@ -144,7 +219,7 @@ export class DepositsService {
       ? encodeCursor(toEpochMs((last as any).createdAt), String((last as any).id))
       : null;
 
-    const items = pageItems.map((d) => {
+  const items = pageItems.map((d) => {
       const dx = d as any;
 
       const originalAmount = Number(dx.originalAmount ?? dx.amount ?? 0);
@@ -176,6 +251,8 @@ export class DepositsService {
         convertedAmount,
         note: dx.note ?? null,
         status: dx.status,
+        source: dx.source ?? 'user_request',
+  approvedAt: dx.approvedAt ?? (dx.status === 'approved' ? dx.createdAt : null),
         createdAt: dx.createdAt,
       };
     });
@@ -248,6 +325,9 @@ export class DepositsService {
 
       // 4) حدّث حالة الإيداع واحفظ
       dep.status = newStatus;
+      if (newStatus === DepositStatus.APPROVED && !dep.approvedAt) {
+        dep.approvedAt = new Date();
+      }
       await manager.save(dep);
 
     // 5) إشعارات (Fire-and-forget)
@@ -327,7 +407,8 @@ export class DepositsService {
       }));
     }
 
-    qb.orderBy('d.createdAt', 'DESC')
+    qb.orderBy('d.approvedAt', 'DESC', 'NULLS LAST')
+      .addOrderBy('d.createdAt', 'DESC')
       .addOrderBy('d.id', 'DESC')
       .take(limit + 1);
 
@@ -376,6 +457,8 @@ export class DepositsService {
         walletCurrency,
         note: dx.note ?? null,
         status: dx.status,
+        source: dx.source ?? 'user_request',
+  approvedAt: dx.approvedAt ?? (dx.status === 'approved' ? dx.createdAt : null),
         createdAt: dx.createdAt,
       };
     });

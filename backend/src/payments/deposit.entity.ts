@@ -16,6 +16,12 @@ export enum DepositStatus {
   REJECTED = 'rejected',
 }
 
+// مصدر الطلب: طلب من المستخدم أو تعبئة رصيد مباشرة من الأدمن
+export enum DepositSource {
+  USER_REQUEST = 'user_request',
+  ADMIN_TOPUP = 'admin_topup',
+}
+
 @Entity({ name: 'deposit' })
 @Index(['tenantId', 'status', 'createdAt'])
 @Index(['tenantId', 'user_id'])
@@ -36,12 +42,12 @@ export class Deposit {
   user_id: string;
 
   /** وسيلة الدفع المختارة */
-  @ManyToOne(() => PaymentMethod, { onDelete: 'RESTRICT', eager: false })
+  @ManyToOne(() => PaymentMethod, { onDelete: 'RESTRICT', eager: false, nullable: true })
   @JoinColumn({ name: 'method_id' })
-  method: PaymentMethod;
+  method?: PaymentMethod | null;
 
-  @Column({ type: 'uuid' })
-  method_id: string;
+  @Column({ type: 'uuid', nullable: true })
+  method_id?: string | null;
 
   /** مبلغ الإيداع الأصلي والعملة التي أرسل بها */
   @Column({ type: 'numeric', precision: 18, scale: 6 })
@@ -76,6 +82,19 @@ export class Deposit {
   })
   status: DepositStatus;
 
+  /** مصدر الطلب (لا يسمح للمستخدم بتغييره يحدد داخليًا) */
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'varchar' : 'enum',
+    enum: process.env.TEST_DB_SQLITE === 'true' ? undefined : DepositSource,
+    default: DepositSource.USER_REQUEST,
+    length: process.env.TEST_DB_SQLITE === 'true' ? 30 : undefined,
+  })
+  source: DepositSource;
+
   @CreateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamp with time zone' })
   createdAt: Date;
+
+  /** تاريخ الموافقة (يحدد عند الانتقال لأول مرة إلى approved) */
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamp with time zone', nullable: true })
+  approvedAt?: Date | null;
 }

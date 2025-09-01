@@ -267,6 +267,8 @@ export class UserController {
     return this.userService.addFunds(id, Number(amount), tenantId);
   }
 
+  // سيتم لاحقاً استبدال/تعزيز هذا المسار بمسار جديد يستخدم createAdminTopup لإنشاء سجل deposit approved مع source=admin_topup
+
   @Patch(':id/overdraft')
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()

@@ -28,6 +28,9 @@ export default function AdminUsersPage() {
   const [topupOpen, setTopupOpen] = useState(false);
   const [topupUser, setTopupUser] = useState<UserRow | null>(null);
   const [topupAmount, setTopupAmount] = useState<string>('');
+  const [methods, setMethods] = useState<{ id: string; name: string; type?: string; isActive?: boolean }[]>([]);
+  const [selectedMethodId, setSelectedMethodId] = useState<string>('');
+  const [topupNote, setTopupNote] = useState<string>('');
 
   const loadUsers = async () => {
     try {
@@ -81,6 +84,16 @@ export default function AdminUsersPage() {
       setTopupUser(u);
     }
     setTopupAmount('');
+    setSelectedMethodId('');
+    setTopupNote('');
+    // fetch active payment methods (admin)
+    try {
+      const { data } = await api.get<any[]>(API_ROUTES.admin.paymentMethods.base);
+      const active = (data || []).filter((m) => m.isActive !== false);
+      setMethods(active);
+    } catch {
+      setMethods([]);
+    }
     setTopupOpen(true);
   };
 
@@ -91,11 +104,22 @@ export default function AdminUsersPage() {
       alert('أدخل مبلغًا صحيحًا');
       return;
     }
+    if (!selectedMethodId) {
+      alert('اختر وسيلة الدفع');
+      return;
+    }
     try {
-      await api.patch(API_ROUTES.users.addFunds(topupUser.id), { amount });
+      await api.post(API_ROUTES.admin.deposits.topup, {
+        userId: topupUser.id,
+        amount,
+        methodId: selectedMethodId,
+        note: topupNote?.trim() ? topupNote.trim() : undefined,
+      });
       setTopupOpen(false);
       setTopupUser(null);
       setTopupAmount('');
+      setSelectedMethodId('');
+      setTopupNote('');
       await loadUsers();
     } catch {
       alert('فشل إضافة الرصيد');
@@ -261,6 +285,31 @@ export default function AdminUsersPage() {
                 className="w-full bg-bg-input border border-border px-3 py-2 rounded"
                 placeholder={`مثال: 100 ${currencySymbol(topupUser.currency?.code || undefined)}`}
                 inputMode="decimal"
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block mb-1">وسيلة الدفع<span className="text-danger"> *</span></label>
+              <select
+                value={selectedMethodId}
+                onChange={(e) => setSelectedMethodId(e.target.value)}
+                className="w-full bg-bg-input border border-border px-3 py-2 rounded"
+              >
+                <option value="">اختر وسيلة</option>
+                {methods.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <label className="block mb-1">ملاحظة (اختياري)</label>
+              <textarea
+                value={topupNote}
+                onChange={(e) => setTopupNote(e.target.value)}
+                rows={2}
+                className="w-full bg-bg-input border border-border px-3 py-2 rounded resize-none"
+                placeholder="مثال: شحن يدوي لأسباب دعم"
               />
             </div>
 
