@@ -19,7 +19,11 @@ export function usePasskeys() {
       if (verifyRes.status >= 300) throw new Error((verifyRes.data as any)?.message || 'فشل التحقق');
       return verifyRes.data;
     } catch (e: any) {
-      setError(e?.message || 'خطأ في إنشاء Passkey');
+      if (e?.response?.status === 401) {
+        setError('يجب تسجيل الدخول أولاً لإنشاء Passkey');
+      } else {
+        setError(e?.message || 'خطأ في إنشاء Passkey');
+      }
       throw e;
     } finally { setLoading(false); }
   }, []);
