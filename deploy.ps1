@@ -1,6 +1,6 @@
 # deploy.ps1
 $server = "root@49.13.133.189"
-$branch = "feat/phase8-frontend-roles-and-catalog"
+$branch = "main"
 
 Write-Host "Push changes to GitHub..."
 $status = git status --porcelain
