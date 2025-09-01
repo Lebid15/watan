@@ -13,7 +13,7 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       DEPLOY_DIR: /root/watan
-      RUN_MIGRATIONS: "false"
+      RUN_MIGRATIONS: "true"
     steps:
       # 0) تشخيص: تأكد أن المفتاح وصل من GitHub (لا نطبع المحتوى)
       - name: Check SSH key length (no print)
@@ -103,7 +103,7 @@ jobs:
             echo "REDIS_URL=${REDIS_URL}"
             echo "JWT_SECRET=${JWT_SECRET}"
             echo "PUBLIC_TENANT_BASE_DOMAIN=${PTBD}"
-            echo "AUTO_MIGRATIONS=false"
+            echo "AUTO_MIGRATIONS=true"
             echo "HOST=0.0.0.0"
             echo "PORT=3000"
             echo "INITIAL_ROOT_EMAIL=owner@example.com"
