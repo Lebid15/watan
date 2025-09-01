@@ -111,52 +111,23 @@ export class AuthController {
   @Post('logout')
   @ApiOperation({ summary: 'تسجيل الخروج ومسح كوكي auth' })
   async logout(@Res({ passthrough: true }) res: Response) {
-    const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.syrz1.com';
-    console.log('[AUTH] logout: clearing cookies for domain=', cookieDomain);
+    // نسخة خفيفة لتفادي 502 من Nginx (Too big header)
+    const names = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
+    // host-only + الجذر فقط لتقليل عدد ترويسات Set-Cookie
+    const domains: (string | undefined)[] = [undefined, '.syrz1.com'];
 
-    try {
-      const names = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
-      // تضمين host-only (undefined/'' يعني بدون domain) + جميع الدومينات المحتملة
-      const domains: (string | undefined)[] = [
-        undefined,
-        '',
-        '.syrz1.com',
-        'api.syrz1.com',
-        'sham.syrz1.com',
-        cookieDomain,
-      ];
-      const paths = ['/', '/api'];
-
-      for (const n of names) {
-        for (const domain of domains) {
-          for (const path of paths) {
-            const base = {
-              httpOnly: n === 'auth' || n === 'refresh_token',
-              secure: true,
-              sameSite: 'none' as const,
-              path,
-              ...(domain ? { domain } : {}), // بدون domain => host-only
-            };
-
-            try {
-              res.clearCookie(n, base);
-              res.cookie(n, '', { ...base, expires: new Date(0), maxAge: 0 });
-              console.log(
-                `[AUTH] logout: cleared cookie ${n} for domain=${domain ?? '(host-only)'} path=${path}`,
-              );
-            } catch (e) {
-              console.warn(
-                `[AUTH] logout: failed to clear cookie ${n} for domain=${domain ?? '(host-only)'} path=${path}:`,
-                (e as any)?.message,
-              );
-            }
-          }
-        }
+    for (const n of names) {
+      for (const domain of domains) {
+        const base = {
+          httpOnly: n === 'auth' || n === 'refresh_token',
+          secure: true,
+          sameSite: 'none' as const,
+          path: '/',
+          ...(domain ? { domain } : {}),
+        };
+        // نرسل Cookie منتهية فقط (بدون clearCookie) لتقليل عدد الرؤوس
+        res.cookie(n, '', { ...base, expires: new Date(0), maxAge: 0 });
       }
-
-      console.log('[AUTH] logout: completed cookie clearing (all domains & host-only)');
-    } catch (e) {
-      console.warn('[AUTH] failed to clear auth cookies:', (e as any)?.message);
     }
     return { ok: true };
   }
