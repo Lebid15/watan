@@ -46,7 +46,7 @@ export default function DepositMethodsPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); }, []);
 
   return (
     <div className="min-h-screen p-4 max-w-5xl mx-auto bg-bg-base text-text-primary" dir="rtl">
