@@ -13,6 +13,7 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       DEPLOY_DIR: /root/watan
+      RUN_MIGRATIONS: "false"
     steps:
       # 0) تشخيص: تأكد أن المفتاح وصل من GitHub (لا نطبع المحتوى)
       - name: Check SSH key length (no print)
@@ -102,7 +103,7 @@ jobs:
             echo "REDIS_URL=${REDIS_URL}"
             echo "JWT_SECRET=${JWT_SECRET}"
             echo "PUBLIC_TENANT_BASE_DOMAIN=${PTBD}"
-            echo "AUTO_MIGRATIONS=true"
+            echo "AUTO_MIGRATIONS=false"
             echo "HOST=0.0.0.0"
             echo "PORT=3000"
             echo "INITIAL_ROOT_EMAIL=owner@example.com"
@@ -203,6 +204,7 @@ jobs:
           ssh ${VPS_USER}@${VPS_HOST} "bash -c 'timeout 5 bash -c </dev/tcp/$host/$port'" 2>/dev/null && echo "Port reachable" || { echo "Cannot reach $host:$port (firewall/DNS?)."; exit 1; }
 
       - name: Run backend migrations in container
+        if: ${{ env.RUN_MIGRATIONS == 'true' }}
         run: |
           set -euo pipefail
           if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
