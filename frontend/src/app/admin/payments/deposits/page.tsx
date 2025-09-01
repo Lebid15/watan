@@ -180,7 +180,7 @@ export default function AdminDepositsPage() {
   };
 
   // removed duplicate initial fetch
-  useEffect(() => { fetchPage(true); }, [activeTab, fetchPage]);
+  useEffect(() => { fetchPage(true); }, [activeTab]);
 
   const setStatus = async (row: DepositRow, status: DepositStatus) => {
     const verb =
