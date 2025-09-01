@@ -8,59 +8,55 @@ import { Request } from 'express';
 export class PagesController {
   constructor(@InjectRepository(SiteSetting) private repo: Repository<SiteSetting>) {}
 
-  @Get('about')  
-  async about(@Req() req: Request) { 
-    const tenantId = (req as any)?.tenant?.id;
-    console.log('[PAGES] about: tenantId=', tenantId, 'tenant=', (req as any)?.tenant);
-    
-    if (!tenantId) {
-      console.log('[PAGES] about: no tenantId found, returning 401');
-      throw new HttpException('Auth required', HttpStatus.UNAUTHORIZED);
-    }
-    
-    try {
-      console.log('[PAGES] about: querying site_settings with tenantId=', tenantId, 'key=about');
-      const setting = await this.repo.findOne({ where: { key: 'about', tenantId } });
-      console.log('[PAGES] about: found setting=', setting);
-      
-      if (!setting) {
-        console.log('[PAGES] about: no setting found, returning 204');
-        throw new HttpException('Page content not found', HttpStatus.NO_CONTENT);
-      }
-      
-      return setting.value ?? '';
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      console.error('[PAGES] about: database error=', error);
-      throw new HttpException('Failed to fetch about page', HttpStatus.INTERNAL_SERVER_ERROR);
+  private async hasTenantColumn(): Promise<boolean> {
+    const rows = await this.repo.query(
+      `SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name='site_settings'
+          AND column_name='tenantId'
+        LIMIT 1`
+    );
+    return rows?.length > 0;
+  }
+
+  private async getSettingValue(key: 'about' | 'infoes', tenantId: string | null): Promise<string | null> {
+    const hasTenant = await this.hasTenantColumn();
+
+    if (hasTenant) {
+      // إذا كان العمود موجودًا: جرّب tenantId أولاً، ثم قيمة عامة (NULL) ثم قيمة عامة بلا عمود (توافقًا)
+      const byTenant = tenantId
+        ? await this.repo.findOne({ where: { key, tenantId } as any })
+        : null;
+      if (byTenant?.value != null) return byTenant.value;
+
+      const byNull = await this.repo.findOne({ where: { key, tenantId: null } as any });
+      if (byNull?.value != null) return byNull.value;
+
+      const byKeyOnly = await this.repo.findOne({ where: { key } as any });
+      if (byKeyOnly?.value != null) return byKeyOnly.value;
+
+      return null;
+    } else {
+      // لا يوجد tenantId في الجدول: اعتمد المفتاح فقط
+      const plain = await this.repo.findOne({ where: { key } as any });
+      return plain?.value ?? null;
     }
   }
-  
-  @Get('infoes') 
-  async infoes(@Req() req: Request) { 
-    const tenantId = (req as any)?.tenant?.id;
-    console.log('[PAGES] infoes: tenantId=', tenantId, 'tenant=', (req as any)?.tenant);
-    
-    if (!tenantId) {
-      console.log('[PAGES] infoes: no tenantId found, returning 401');
-      throw new HttpException('Auth required', HttpStatus.UNAUTHORIZED);
-    }
-    
-    try {
-      console.log('[PAGES] infoes: querying site_settings with tenantId=', tenantId, 'key=infoes');
-      const setting = await this.repo.findOne({ where: { key: 'infoes', tenantId } });
-      console.log('[PAGES] infoes: found setting=', setting);
-      
-      if (!setting) {
-        console.log('[PAGES] infoes: no setting found, returning 204');
-        throw new HttpException('Page content not found', HttpStatus.NO_CONTENT);
-      }
-      
-      return setting.value ?? '';
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      console.error('[PAGES] infoes: database error=', error);
-      throw new HttpException('Failed to fetch infoes page', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
+
+  @Get('about')
+  async about(@Req() req: Request) {
+    const tenantId: string | null = (req as any)?.tenant?.id ?? null;
+    const value = await this.getSettingValue('about', tenantId);
+    if (value == null) throw new HttpException('Page content not found', HttpStatus.NO_CONTENT);
+    return value;
+  }
+
+  @Get('infoes')
+  async infoes(@Req() req: Request) {
+    const tenantId: string | null = (req as any)?.tenant?.id ?? null;
+    const value = await this.getSettingValue('infoes', tenantId);
+    if (value == null) throw new HttpException('Page content not found', HttpStatus.NO_CONTENT);
+    return value;
   }
 }

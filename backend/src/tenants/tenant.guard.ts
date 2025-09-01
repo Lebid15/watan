@@ -58,6 +58,7 @@ export class TenantGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req: any = context.switchToHttp().getRequest();
   const path = req.path || req.url || '';
+    if (/^\/api\/pages\/(about|infoes)$/.test(path)) return true;
   const original = req.originalUrl || '';
   // Allow dev-token issuance regardless of prefix variations (defensive)
   if (path.includes('auth/dev-token')) return true;
