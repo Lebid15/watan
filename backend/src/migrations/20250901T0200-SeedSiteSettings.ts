@@ -47,7 +47,5 @@ export class SeedSiteSettings20250901T0200 implements MigrationInterface {
             DELETE FROM site_settings 
             WHERE key = 'infoes' AND value = 'تعليمات الاستخدام'
         `);
-        
-        console.log('🗑️ Removed default seeded site_settings');
     }
 }
