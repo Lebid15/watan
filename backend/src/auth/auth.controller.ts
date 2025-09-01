@@ -88,33 +88,48 @@ export class AuthController {
   @Post('logout')
   @ApiOperation({ summary: 'تسجيل الخروج ومسح كوكي auth' })
   async logout(@Res({ passthrough: true }) res: Response) {
-    // Clear the auth cookie using same attributes (domain/path) so browser actually removes it.
     const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.syrz1.com';
+    
+    console.log('[AUTH] logout: clearing cookies for domain=', cookieDomain);
+    
     try {
-      const names = ['auth', 'access_token', 'role', 'tenant_host'];
+      const names = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
+      const domains = ['.syrz1.com', 'api.syrz1.com', cookieDomain];
+      const paths = ['/', '/api'];
+      
       for (const n of names) {
-        // clearCookie ensures expiry header
-        res.clearCookie(n, {
-          httpOnly: n === 'auth',
-          secure: true,
-          sameSite: 'none',
-          domain: cookieDomain,
-          path: '/',
-        });
-        // Extra defensive explicit expired cookie (Safari quirk)
-        res.cookie(n, '', {
-          httpOnly: n === 'auth',
-          secure: true,
-          sameSite: 'none',
-          domain: cookieDomain,
-          path: '/',
-          expires: new Date(0),
-          maxAge: 0,
-        });
+        for (const domain of domains) {
+          for (const path of paths) {
+            try {
+              res.clearCookie(n, {
+                httpOnly: n === 'auth' || n === 'refresh_token',
+                secure: true,
+                sameSite: 'none',
+                domain: domain,
+                path: path,
+              });
+              
+              res.cookie(n, '', {
+                httpOnly: n === 'auth' || n === 'refresh_token',
+                secure: true,
+                sameSite: 'none',
+                domain: domain,
+                path: path,
+                expires: new Date(0),
+                maxAge: 0,
+              });
+              
+              console.log(`[AUTH] logout: cleared cookie ${n} for domain=${domain} path=${path}`);
+            } catch (e) {
+              console.warn(`[AUTH] logout: failed to clear cookie ${n} for domain=${domain} path=${path}:`, (e as any)?.message);
+            }
+          }
+        }
       }
-      console.log('[AUTH][LOGOUT] cleared cookies domain=', cookieDomain);
+      
+      console.log('[AUTH] logout: completed cookie clearing');
     } catch (e) {
-      console.warn('[AUTH] failed to clear auth cookie:', (e as any)?.message);
+      console.warn('[AUTH] failed to clear auth cookies:', (e as any)?.message);
     }
     return { ok: true };
   }

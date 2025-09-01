@@ -308,10 +308,52 @@ export const Api = {
   logout: async () => {
     try {
       const res = await api.post('/auth/logout');
+      
+      const cookieNames = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
+      const domains = ['.syrz1.com', 'api.syrz1.com'];
+      const paths = ['/', '/api'];
+      
+      for (const name of cookieNames) {
+        for (const domain of domains) {
+          for (const path of paths) {
+            try {
+              document.cookie = `${name}=; Max-Age=0; path=${path}; domain=${domain}; secure; SameSite=None`;
+            } catch {}
+          }
+        }
+      }
+      
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('auth');
+      } catch {}
+      
+      console.log('[API] logout: cleared all authentication data');
       return res;
     } catch (e) {
-      // حتى لو فشل (شبكة أو 404 قديم قبل نشر) نمسح الكوكي client-side كـ fallback
-      try { document.cookie = 'auth=; Max-Age=0; path=/; domain=.syrz1.com; secure; SameSite=None'; } catch {}
+      console.warn('[API] logout: server logout failed, clearing cookies anyway');
+      
+      const cookieNames = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
+      const domains = ['.syrz1.com', 'api.syrz1.com'];
+      const paths = ['/', '/api'];
+      
+      for (const name of cookieNames) {
+        for (const domain of domains) {
+          for (const path of paths) {
+            try {
+              document.cookie = `${name}=; Max-Age=0; path=${path}; domain=${domain}; secure; SameSite=None`;
+            } catch {}
+          }
+        }
+      }
+      
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('auth');
+      } catch {}
+      
       throw e;
     }
   },
