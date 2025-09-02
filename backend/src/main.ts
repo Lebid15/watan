@@ -75,12 +75,35 @@ async function bootstrap() {
   if (process.env.FRONTEND_ORIGIN) {
     baseCorsOrigins.push(process.env.FRONTEND_ORIGIN);
   }
+  // دالة مطابقة مرنة (strings + RegExp)
+  function isOriginAllowed(origin?: string | null): boolean {
+    if (!origin) return true; // طلبات نفس الأصل (مثل curl أو server-to-server)
+    return baseCorsOrigins.some((o) => {
+      if (o instanceof RegExp) return o.test(origin);
+      return o === origin;
+    });
+  }
+
   app.enableCors({
-    origin: baseCorsOrigins,
-    credentials: true, // السماح بإرسال الكوكيز
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) {
+        if (origin) console.log('[CORS] allow', origin);
+        callback(null, origin || true);
+      } else {
+        console.warn('[CORS] reject', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  // أضفنا X-Upload-Correlation لمعالجة خطأ preflight الحالي
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Host', 'X-Tenant-Id', 'X-Upload-Correlation'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Tenant-Host',
+      'X-Tenant-Id',
+      'X-Upload-Correlation',
+      'Accept'
+    ],
   });
 
   // ✅ تفعيل cookie-parser لقراءة التوكن من الكوكي عند اللزوم

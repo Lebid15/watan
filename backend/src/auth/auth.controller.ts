@@ -108,6 +108,33 @@ export class AuthController {
     return { token: access_token };
   }
 
+  // DEBUG ONLY: تفقد حالة الجلسة والكوكي والدومين والـ Tenant المستنتج.
+  // لا تترك هذا في الإنتاج طويلًا (يحذف بعد حل المشكلة) لأنه قد يكشف بعض المعلومات الداخلية (الأسماء فقط بدون أسرار).
+  @Post('debug-session')
+  @ApiOperation({ summary: 'DEBUG: فحص الكوكي والـ Tenant (يحذف لاحقاً)' })
+  async debugSession(@Req() req: Request) {
+    const anyReq: any = req as any;
+    return {
+      now: new Date().toISOString(),
+      origin: req.headers.origin,
+      host: req.headers.host,
+      xTenantHost: req.headers['x-tenant-host'],
+      xTenantId: req.headers['x-tenant-id'] || req.headers['X-Tenant-Id'],
+      tenantResolved: anyReq?.tenant ? { id: (anyReq.tenant as any).id, code: (anyReq.tenant as any).code } : null,
+      cookiesKeys: Object.keys((req as any).cookies || {}),
+      authCookiePresent: !!(req as any).cookies?.auth,
+      authCookieSample: (req as any).cookies?.auth ? (req as any).cookies.auth.slice(0, 16) + '...' : null,
+      bearerHeader: req.headers.authorization ? 'present' : 'missing',
+      userFromBearer: anyReq?.user ? { id: anyReq.user.id || anyReq.user.sub, role: anyReq.user.role, tenantId: anyReq.user.tenantId ?? null } : null,
+      headers: {
+        'access-control-request-headers': req.headers['access-control-request-headers'],
+        'access-control-request-method': req.headers['access-control-request-method'],
+        referer: req.headers.referer,
+        'user-agent': req.headers['user-agent'],
+      },
+    };
+  }
+
   @Post('logout')
   @ApiOperation({ summary: 'تسجيل الخروج ومسح كوكي auth' })
   async logout(@Res({ passthrough: true }) res: Response) {
