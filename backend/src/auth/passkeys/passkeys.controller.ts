@@ -24,7 +24,8 @@ export class PasskeysController {
   @Post('options/register')
   async optionsRegister(@Req() req: any, @Body() body: { label?: string }) {
     const label = (body?.label || '').trim();
-    return this.svc.startRegistration(req.user, label || undefined); // returns { options, challengeRef }
+  // Return raw PublicKeyCredentialCreationOptionsJSON directly (with challenge + challengeRef)
+  return this.svc.startRegistration(req.user, label || undefined);
   }
 
   @UseGuards(JwtAuthGuard)

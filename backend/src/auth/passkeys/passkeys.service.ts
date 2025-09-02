@@ -73,15 +73,16 @@ export class PasskeysService {
       authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
       challenge,
     });
-    // Extract serializable properties (omit binary userID etc.)
+    // Normalized JSON the browser expects. Attach challengeRef for later verification.
     const options: any = {
-      challenge, // reuse original challenge value
-      timeout: (rawOptions as any).timeout,
-      rp: (rawOptions as any).rp,
+      ...rawOptions,
+      challenge,
       user: { name: user.email },
-      authenticatorSelection: (rawOptions as any).authenticatorSelection,
+      challengeRef,
     };
-  return { options, challengeRef };
+    // Remove binary userID if present to stay JSON safe
+    delete (options.user as any).id;
+    return options;
   }
 
   async finishRegistration(user: any, payload: any, tenantId: string | null, origin: string) {
