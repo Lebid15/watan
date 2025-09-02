@@ -1,6 +1,7 @@
 "use client";
-// منع الكاش أثناء التطوير لهذه الصفحة (App Router)
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
