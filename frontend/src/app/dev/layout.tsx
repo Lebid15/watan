@@ -1,6 +1,5 @@
 "use client";
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 import DevNavbar from './DevNavbar';
 import MobileZoomFrame from '@/components/MobileZoomFrame';
