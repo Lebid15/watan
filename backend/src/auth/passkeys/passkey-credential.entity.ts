@@ -7,7 +7,7 @@ import { User } from '../../user/user.entity';
 export class PasskeyCredential {
   @PrimaryGeneratedColumn('uuid') id: string;
 
-  @Column({ type: 'uuid' }) userId: string;
+  @Column({ name: 'user_id', type: 'uuid' }) userId: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
