@@ -7,6 +7,8 @@ interface Pkg { id:string; name:string|null; publicCode:number|null; basePrice?:
 interface Product { id:string; name:string; description?:string; isActive:boolean; packages:Pkg[] }
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 export default function DevEditProductPage(){
   const { id } = useParams<{id:string}>();
