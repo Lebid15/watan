@@ -16,14 +16,17 @@ export default function PasskeysPage() {
   const [loading, setLoading] = useState(true);
   const { show } = useToast();
   const [label, setLabel] = useState('');
+  const [errorShown, setErrorShown] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-  const res = await api.get<PasskeyItem[]>(API_ROUTES.auth.passkeys.list, { validateStatus: () => true });
-  if (res.status === 200) setItems(res.data); else if (res.status === 401) { throw new Error('يجب تسجيل الدخول'); } else throw new Error('تعذر الجلب');
-    } catch (e: any) { show(e?.message || 'خطأ'); }
+      const res = await api.get<PasskeyItem[]>(API_ROUTES.auth.passkeys.list, { validateStatus: () => true });
+      if (res.status === 200) setItems(res.data);
+      else if (res.status === 401) { if(!errorShown){ show('يجب تسجيل الدخول'); setErrorShown(true);} router.push('/login'); }
+      else throw new Error('تعذر الجلب');
+    } catch (e: any) { if(!errorShown){ show(e?.message || 'خطأ'); setErrorShown(true);} }
     finally { setLoading(false); }
   };
 
