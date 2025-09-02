@@ -6,7 +6,7 @@ import { useToast } from '@/context/ToastContext';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 
-interface PasskeyItem { id: string; credentialId: string; label?: string | null; lastUsedAt?: string | null; createdAt: string; }
+interface PasskeyItem { id: string; name: string; lastUsedAt?: string | null; createdAt: string; }
 
 export default function PasskeysPage() {
   const { user } = useUser();
@@ -21,8 +21,8 @@ export default function PasskeysPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get<PasskeyItem[]>(API_ROUTES.auth.passkeys.list, { validateStatus: () => true });
-      if (res.status === 200) setItems(res.data); else throw new Error('تعذر الجلب');
+  const res = await api.get<PasskeyItem[]>(API_ROUTES.auth.passkeys.list, { validateStatus: () => true });
+  if (res.status === 200) setItems(res.data); else if (res.status === 401) { throw new Error('يجب تسجيل الدخول'); } else throw new Error('تعذر الجلب');
     } catch (e: any) { show(e?.message || 'خطأ'); }
     finally { setLoading(false); }
   };
@@ -61,11 +61,11 @@ export default function PasskeysPage() {
       {!loading && items.length === 0 && <div className="text-sm text-gray-500">لا توجد مفاتيح بعد.</div>}
 
       <ul className="space-y-3">
-        {items.map(i => (
+    {items.map(i => (
           <li key={i.id} className="border rounded p-3 flex justify-between items-center bg-white dark:bg-gray-800">
             <div>
-              <div className="font-medium text-sm">{i.label || 'بدون اسم'} <span className="text-gray-400 text-xs">({i.credentialId.slice(0,8)}…)</span></div>
-              <div className="text-xs text-gray-500">أُنشئ: {new Date(i.createdAt).toLocaleString()} {i.lastUsedAt && <>• آخر استخدام: {new Date(i.lastUsedAt).toLocaleString()}</>}</div>
+        <div className="font-medium text-sm">{i.name || 'Passkey'} <span className="text-gray-400 text-xs">#{i.id.slice(0,8)}</span></div>
+        <div className="text-xs text-gray-500">أُنشئ: {new Date(i.createdAt).toLocaleString()} {i.lastUsedAt && <>• آخر استخدام: {new Date(i.lastUsedAt).toLocaleString()}</>}</div>
             </div>
             <button
               onClick={async ()=>{
@@ -76,7 +76,7 @@ export default function PasskeysPage() {
                 }
                 if(!confirm('حذف هذا المفتاح؟')) return;
                 try {
-                  await api.delete(API_ROUTES.auth.passkeys.delete(i.credentialId));
+          await api.delete(API_ROUTES.auth.passkeys.delete(i.id));
                   show('تم الحذف');
                   await load();
                 } catch (e:any) { show(e?.message || 'فشل'); }

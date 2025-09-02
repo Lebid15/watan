@@ -503,6 +503,12 @@ api.interceptors.response.use(
         }
       } else if (status === 401) {
         const p = window.location.pathname || '';
+        const isPasskeysPage = p === '/user/passkeys' || p === '/admin/settings/passkeys';
+        const isPasskeysEndpoint = typeof error?.config?.url === 'string' && /\/auth\/passkeys/.test(error.config.url);
+        // قمع التوجيه العام لو كان 401 قادم من passkeys خارج الصفحة المخصصة
+        if (isPasskeysEndpoint && !isPasskeysPage) {
+          return Promise.reject(error);
+        }
         const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
         const onAuthPages  = p === '/login' || p === '/register';
         if (!inBackoffice && !onAuthPages) {
