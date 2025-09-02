@@ -38,7 +38,7 @@ export default function DevNavbar() {
   return (
     <nav className="w-full border-b backdrop-blur sticky top-0 z-20 bg-red-500 text-white">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-4">
-        <div className="text-xl font-bold">Developer Portal</div>
+        {/* <div className="text-xl font-bold">Developer Portal</div> */}
         <div className="flex gap-2 flex-1 overflow-x-auto">
           {tabs.map((t) => {
             const active = isActive(t.href);
