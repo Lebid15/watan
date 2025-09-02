@@ -1,4 +1,7 @@
-'use client';
+"use client";
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 import { useEffect, useState, useRef } from 'react';
 import api, { API_ROUTES } from '@/utils/api';
 import { usePasskeys } from '@/hooks/usePasskeys';
@@ -18,35 +21,65 @@ export default function AdminSettingsPasskeysPage() {
   const [label, setLabel] = useState('');
   const inputRef = useRef<HTMLInputElement|null>(null);
   const [errorShown, setErrorShown] = useState(false);
+  const mounted = useRef(false);
+  const inFlight = useRef(false);
+  const [firstPaintDone, setFirstPaintDone] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get<PasskeyItem[]>(API_ROUTES.auth.passkeys.list, { validateStatus: () => true });
-      if (res.status === 200) setItems(res.data); else if (res.status === 401) { if(!errorShown){ show('يرجى تسجيل الدخول'); setErrorShown(true);} router.push('/login'); }
-    } catch (e:any) { if(!errorShown){ show(e?.message || 'خطأ'); setErrorShown(true);} }
-    finally { setLoading(false); }
-  };
-
-  useEffect(()=>{ if(!user){ router.push('/login'); return;} load(); },[user]);
+  useEffect(() => {
+    if (!user) { router.push('/login'); return; }
+    if (mounted.current || inFlight.current) return;
+    mounted.current = true;
+    inFlight.current = true;
+    const ctrl = new AbortController();
+    const started = Date.now();
+    api.get<PasskeyItem[]>(API_ROUTES.auth.passkeys.list, { validateStatus: () => true, signal: ctrl.signal as any })
+      .then(res => {
+        if (res.status === 200) setItems(res.data);
+        else if (res.status === 401) { if(!errorShown){ setErrorShown(true); show('يرجى تسجيل الدخول'); } router.push('/login'); }
+      })
+      .catch(err => {
+        if (!ctrl.signal.aborted && !errorShown) { setErrorShown(true); /* عرض محلي فقط */ console.warn('[Passkeys] load failed', err?.message || err); }
+      })
+      .finally(() => {
+        const elapsed = Date.now() - started;
+        const remaining = elapsed < 300 ? 300 - elapsed : 0; // ضمان 300ms للـ skeleton
+        setTimeout(() => { setLoading(false); setFirstPaintDone(true); inFlight.current = false; }, remaining);
+      });
+    return () => ctrl.abort();
+  }, [user]);
 
   return (
     <div className="admin-container py-4 max-w-3xl">
       <h1 className="text-xl font-bold mb-4">مفاتيح المرور (الأمان)</h1>
       <p className="text-sm text-text-secondary mb-6">أدر مفاتيح المرور المرتبطة بحساب المالك. استخدم مفاتيح متعددة لأجهزة مختلفة.</p>
-      <div className="mb-6 flex gap-2 items-end">
+  <div className="mb-6 flex gap-2 items-end">
         <div className="flex-1">
           <label className="block text-sm font-medium mb-1">تسمية الجهاز</label>
           <input ref={inputRef} value={label} onChange={e=>setLabel(e.target.value)} placeholder="مثال: لابتوب المكتب" className="w-full border border-border rounded px-3 py-2 text-sm bg-bg-surface" />
         </div>
         <button
           disabled={opLoading}
-          onClick={async ()=>{ try { await registerPasskey(label || 'جهازي'); setLabel(''); show('تم الإنشاء'); await load(); } catch (e:any) { show(e?.message || 'فشل'); } }}
+          onClick={async ()=>{ try { await registerPasskey(label || 'جهازي'); setLabel(''); show('تم الإنشاء');
+            // إعادة تحميل بعد الإنشاء (مع حراسة لمنع تكرار قبل نهاية السابق)
+            mounted.current = false; // للسماح باستدعاء fetch جديد مرة واحدة
+            inFlight.current = false;
+            setLoading(true);
+            // تنفيذ fetch جديد
+            const ctrl = new AbortController();
+            api.get<PasskeyItem[]>(API_ROUTES.auth.passkeys.list, { validateStatus: () => true, signal: ctrl.signal as any })
+              .then(res => { if(res.status===200) setItems(res.data); })
+              .finally(()=> setLoading(false));
+          } catch (e:any) { show(e?.message || 'فشل'); } }}
           className="bg-primary text-white text-sm px-4 py-2 rounded hover:brightness-110 disabled:opacity-60"
         >{opLoading? '...' : 'إنشاء مفتاح'}</button>
       </div>
-      {loading && <div>جاري التحميل...</div>}
-      {!loading && items.length === 0 && <div className="text-sm text-text-secondary">لا توجد مفاتيح.</div>}
+      {loading && (
+        <div className="animate-pulse space-y-2" aria-busy="true">
+          <div className="h-4 bg-bg-surface-alt rounded w-1/3" />
+          <div className="h-32 bg-bg-surface-alt rounded" />
+        </div>
+      )}
+      {!loading && items.length === 0 && <div className="text-sm text-text-secondary transition-opacity duration-300 opacity-100">لا توجد مفاتيح.</div>}
       <table className="w-full text-sm border border-border rounded overflow-hidden">
         <thead className="bg-bg-surface-alt">
           <tr>
@@ -56,7 +89,7 @@ export default function AdminSettingsPasskeysPage() {
             <th className="p-2 text-right">إجراءات</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className={loading ? 'opacity-0' : 'opacity-100 transition-opacity duration-300'}>
           {items.map(pk => (
             <tr key={pk.id} className="border-t border-border">
               <td className="p-2">{pk.name || 'Passkey'} <span className="text-xs text-text-secondary">#{pk.id.slice(0,8)}</span></td>
@@ -68,7 +101,10 @@ export default function AdminSettingsPasskeysPage() {
                   onClick={async ()=>{
                     if(items.length === 1){ show('لا يمكن حذف آخر مفتاح'); return; }
                     if(!confirm('حذف هذا المفتاح؟')) return;
-                    try { await api.delete(API_ROUTES.auth.passkeys.delete(pk.id)); show('تم الحذف'); await load(); } catch(e:any){ show(e?.message || 'فشل'); }
+                    try { await api.delete(API_ROUTES.auth.passkeys.delete(pk.id)); show('تم الحذف');
+                      // تحديث محلي بدون جلب كامل لتفادي الوميض
+                      setItems(prev => prev.filter(r => r.id !== pk.id));
+                    } catch(e:any){ show(e?.message || 'فشل'); }
                   }}
                   className="text-red-600 hover:underline disabled:opacity-40"
                 >حذف</button>
