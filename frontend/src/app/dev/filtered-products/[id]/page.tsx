@@ -1,14 +1,13 @@
-"use client";
+'use client';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import api from '@/utils/api';
 
 interface Pkg { id:string; name:string|null; publicCode:number|null; basePrice?:number; isActive:boolean; }
 interface Product { id:string; name:string; description?:string; isActive:boolean; packages:Pkg[] }
-
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-export const fetchCache = 'force-no-store';
 
 export default function DevEditProductPage(){
   const { id } = useParams<{id:string}>();
