@@ -159,7 +159,13 @@ export class PasskeysService {
 
   async list(userId: string) {
   if (!this.enabled) return [];
-    return this.creds.find({ where: { userId } });
+    const rows = await this.creds.find({ where: { userId } });
+    return rows.map(r => ({
+      id: r.id,
+      name: r.deviceType || 'Passkey',
+      createdAt: r.createdAt,
+      lastUsedAt: r.lastUsedAt || null,
+    }));
   }
 
   async delete(userId: string, id: string) {
