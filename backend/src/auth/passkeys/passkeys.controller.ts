@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Param, Body, UseGuards, Req, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Param, Body, UseGuards, Req, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PasskeysService } from './passkeys.service';
 import { JwtAuthGuard } from '../jwt-auth.guard';
 import { AuthService } from '../auth.service';
@@ -22,8 +22,9 @@ export class PasskeysController {
 
   @UseGuards(JwtAuthGuard)
   @Post('options/register')
-  async optionsRegister(@Req() req: any) {
-  return this.svc.startRegistration(req.user); // now returns { options, challengeRef }
+  async optionsRegister(@Req() req: any, @Body() body: { label?: string }) {
+    const label = (body?.label || '').trim();
+    return this.svc.startRegistration(req.user, label || undefined); // returns { options, challengeRef }
   }
 
   @UseGuards(JwtAuthGuard)

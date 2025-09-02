@@ -10,19 +10,21 @@ export function usePasskeys() {
   const registerPasskey = useCallback(async (label?: string) => {
     setError(null); setLoading(true);
     try {
-      const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/options/register', {});
+      const safeLabel = (label || '').trim();
+      const { data: optRes } = await api.post<{ options: any; challengeRef: string }>('/auth/passkeys/options/register', safeLabel ? { label: safeLabel } : {} , { validateStatus: () => true });
+      if((optRes as any)?.error){ throw new Error((optRes as any).details || 'تعذر إنشاء المفتاح'); }
       const { options, challengeRef } = optRes;
       
       const attResp = await startRegistration(options);
       
-      const verifyRes = await api.post('/auth/passkeys/register', { response: attResp, challengeRef, label }, { validateStatus: () => true });
-      if (verifyRes.status >= 300) throw new Error((verifyRes.data as any)?.message || 'فشل التحقق');
+      const verifyRes = await api.post('/auth/passkeys/register', { response: attResp, challengeRef, label: safeLabel }, { validateStatus: () => true });
+      if (verifyRes.status >= 300) throw new Error((verifyRes.data as any)?.details || (verifyRes.data as any)?.message || 'فشل التحقق');
       return verifyRes.data;
     } catch (e: any) {
       if (e?.response?.status === 401) {
         setError('يجب تسجيل الدخول أولاً لإنشاء Passkey');
       } else {
-        setError(e?.message || 'خطأ في إنشاء Passkey');
+        setError(e?.response?.data?.details || e?.message || 'خطأ في إنشاء Passkey');
       }
       throw e;
     } finally { setLoading(false); }

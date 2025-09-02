@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PasskeyCredential } from './passkey-credential.entity';
@@ -22,6 +22,7 @@ export class PasskeysService {
   private rpName = 'Watan';
   private prod: boolean;
   private enabled: boolean; // disable gracefully if required env missing in prod
+  private logger = new Logger('Passkeys');
 
   constructor(
   @InjectRepository(PasskeyCredential) private creds: Repository<PasskeyCredential>,
@@ -44,8 +45,13 @@ export class PasskeysService {
     return this.creds.find({ where: { userId } });
   }
 
-  async startRegistration(user: any) {
-  if (!this.enabled) throw new BadRequestException('Passkeys disabled');
+  async startRegistration(user: any, label?: string) {
+    if (!this.enabled) throw new BadRequestException('Passkeys disabled');
+    const deviceLabel = label?.trim();
+    if (deviceLabel && deviceLabel.length > 64) {
+      throw new BadRequestException({ error: 'INVALID_INPUT', details: 'label is too long' });
+    }
+    this.logger.debug('passkeys/options/register', { userId: user.id, label: deviceLabel });
     const existing = await this.getUserCredentials(user.id);
     const composite = await this.challenges.create('reg', user.id); // id.challenge
     const [challengeRef, challenge] = composite.split('.', 2);
@@ -75,7 +81,7 @@ export class PasskeysService {
       user: { name: user.email },
       authenticatorSelection: (rawOptions as any).authenticatorSelection,
     };
-    return { options, challengeRef };
+  return { options, challengeRef };
   }
 
   async finishRegistration(user: any, payload: any, tenantId: string | null, origin: string) {
@@ -101,6 +107,7 @@ export class PasskeysService {
       credentialId: credentialIdB64,
       publicKey: credentialPublicKey,
       counter,
+      deviceType: payload.label?.trim() || 'My device',
     });
     await this.creds.save(entity);
     try { await this.audit.log('passkey_add', { actorUserId: user.id, targetUserId: user.id, targetTenantId: tenantId ?? null, meta: { credentialId: entity.credentialId } }); } catch {}

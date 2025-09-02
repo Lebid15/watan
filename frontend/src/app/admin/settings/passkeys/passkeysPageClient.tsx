@@ -12,7 +12,7 @@ interface PasskeyItem { id: string; name: string; createdAt: string; lastUsedAt?
 export default function PasskeysPageClient() {
   const { user } = useUser();
   const router = useRouter();
-  const { registerPasskey, loading: opLoading } = usePasskeys();
+  const { registerPasskey, loading: opLoading, error: opError } = usePasskeys();
   const { show } = useToast();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<PasskeyItem[]>([]);
@@ -55,8 +55,8 @@ export default function PasskeysPageClient() {
           <input ref={inputRef} value={label} onChange={e=>setLabel(e.target.value)} placeholder="مثال: لابتوب المكتب" className="w-full border border-border rounded px-3 py-2 text-sm bg-bg-surface" />
         </div>
         <button
-          disabled={opLoading}
-          onClick={async ()=>{ try { await registerPasskey(label || 'جهازي'); setLabel(''); show('تم الإنشاء');
+          disabled={opLoading || (!label.trim())}
+          onClick={async ()=>{ try { await registerPasskey(label || 'My device'); setLabel(''); show('تم الإنشاء');
             mounted.current = false; inFlight.current = false; setLoading(true);
             const ctrl = new AbortController();
             api.get<PasskeyItem[]>(API_ROUTES.auth.passkeys.list, { validateStatus: () => true, signal: ctrl.signal as any })
@@ -66,6 +66,7 @@ export default function PasskeysPageClient() {
           className="bg-primary text-white text-sm px-4 py-2 rounded hover:brightness-110 disabled:opacity-60"
         >{opLoading? '...' : 'إنشاء مفتاح'}</button>
       </div>
+  {opError && <div className="text-red-500 text-xs mt-[-12px] mb-4">{opError}</div>}
       {loading && (
         <div className="animate-pulse space-y-2" aria-busy="true">
           <div className="h-4 bg-bg-surface-alt rounded w-1/3" />
