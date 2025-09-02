@@ -6,11 +6,20 @@ import { PasskeyChallengeStore } from './challenge-store.service';
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
 import { AuditService } from '../../audit/audit.service';
 
+export function isAllowedOrigin(o?: string) {
+  if (!o) return false;
+  let u: URL;
+  try { u = new URL(o); } catch { return false; }
+  const host = u.hostname.toLowerCase();
+  const https = u.protocol === 'https:';
+  const inZone = host === 'syrz1.com' || host.endsWith('.syrz1.com');
+  return https && inZone;
+}
+
 @Injectable()
 export class PasskeysService {
   private rpId: string;
   private rpName = 'Watan';
-  private rpOrigin: string;
   private prod: boolean;
   private enabled: boolean; // disable gracefully if required env missing in prod
 
@@ -21,19 +30,12 @@ export class PasskeysService {
   ) {
     this.prod = (process.env.NODE_ENV === 'production');
     this.rpId = process.env.RP_ID || 'localhost';
-    this.rpOrigin = process.env.RP_ORIGIN || 'http://localhost:3000';
     const strict = process.env.PASSKEYS_STRICT === 'true';
-    if (this.prod && (!process.env.RP_ID || !process.env.RP_ORIGIN)) {
-      if (strict) {
-        // Explicitly require configuration
-        throw new Error('RP_ID and RP_ORIGIN required in production for WebAuthn (PASSKEYS_STRICT=true)');
-      } else {
-        // Soft-disable feature instead of crashing whole app
-        // eslint-disable-next-line no-console
-        console.warn('[Passkeys] Disabled: missing RP_ID / RP_ORIGIN in production. Set PASSKEYS_STRICT=true to enforce.');
-        this.enabled = false;
-        return;
-      }
+    if (this.prod && !process.env.RP_ID) {
+      if (strict) throw new Error('RP_ID required in production (PASSKEYS_STRICT=true)');
+      console.warn('[Passkeys] Disabled: missing RP_ID in production');
+      this.enabled = false;
+      return;
     }
     this.enabled = true;
   }
@@ -76,16 +78,17 @@ export class PasskeysService {
     return { options, challengeRef };
   }
 
-  async finishRegistration(user: any, payload: any, tenantId: string | null) {
+  async finishRegistration(user: any, payload: any, tenantId: string | null, origin: string) {
   if (!this.enabled) throw new BadRequestException('Passkeys disabled');
     const { response, challengeRef } = payload || {};
     if (!response || !challengeRef) throw new BadRequestException('Missing response or challengeRef');
     const challenge = await this.challenges.consumeById(challengeRef, 'reg', user.id);
     if (!challenge) throw new BadRequestException('Invalid or expired challenge');
+    if (!isAllowedOrigin(origin)) throw new ForbiddenException('Invalid origin');
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge: challenge,
-      expectedOrigin: this.rpOrigin,
+      expectedOrigin: origin,
       expectedRPID: this.rpId,
       requireUserVerification: false,
     });
@@ -120,7 +123,7 @@ export class PasskeysService {
     return { options, challengeRef };
   }
 
-  async finishAuthentication(user: any, payload: any) {
+  async finishAuthentication(user: any, payload: any, origin: string) {
   if (!this.enabled) throw new BadRequestException('Passkeys disabled');
     const { response, challengeRef } = payload || {};
     if (!response || !challengeRef) throw new BadRequestException('Missing response or challengeRef');
@@ -129,11 +132,12 @@ export class PasskeysService {
     const credIdB64 = response.id; // base64url id
     const dbCred = await this.creds.findOne({ where: { credentialId: credIdB64 } });
     if (!dbCred) throw new NotFoundException('Credential not found');
+    if (!isAllowedOrigin(origin)) throw new ForbiddenException('Invalid origin');
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge: challenge,
       expectedRPID: this.rpId,
-      expectedOrigin: this.rpOrigin,
+      expectedOrigin: origin,
       requireUserVerification: false,
       credential: {
   id: dbCred.credentialId,

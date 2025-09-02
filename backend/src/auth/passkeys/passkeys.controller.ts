@@ -30,7 +30,8 @@ export class PasskeysController {
   @Post('register')
   async register(@Req() req: any, @Body() body: any) {
     const tenantId = req.user.tenantId ?? null;
-  return this.svc.finishRegistration(req.user, body, tenantId);
+    const origin = req.headers.origin as string;
+    return this.svc.finishRegistration(req.user, body, tenantId, origin);
   }
 
   // Login via passkey (no existing JWT)
@@ -50,7 +51,7 @@ export class PasskeysController {
   }
 
   @Post('login')
-  async login(@Body() body: { emailOrUsername: string; tenantId?: string | null; response: any; challengeRef: string }) {
+  async login(@Req() req: any, @Body() body: { emailOrUsername: string; tenantId?: string | null; response: any; challengeRef: string }) {
     if (!body?.emailOrUsername || !body?.response || !body?.challengeRef) throw new BadRequestException('Missing fields');
     const tenantId = body.tenantId ?? null;
     let user = await this.users.findByEmail(body.emailOrUsername, tenantId, ['priceGroup']);
@@ -59,7 +60,8 @@ export class PasskeysController {
       user = await this.users.findOwnerByEmailOrUsername(body.emailOrUsername, ['priceGroup']);
     }
     if (!user) throw new NotFoundException('User not found');
-  const result = await this.svc.finishAuthentication(user, { response: body.response, challengeRef: body.challengeRef });
+    const origin = req.headers.origin as string;
+    const result = await this.svc.finishAuthentication(user, { response: body.response, challengeRef: body.challengeRef }, origin);
     // Issue JWT
     const login = await this.auth.login(user, result.tenantId ?? user.tenantId ?? null);
     try { await this.audit.log('passkey_login_token', { actorUserId: user.id, targetUserId: user.id, targetTenantId: login.user.tenantId ?? null, meta: { via: 'passkey' } }); } catch {}
