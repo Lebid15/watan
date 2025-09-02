@@ -50,41 +50,57 @@ export class PasskeysService {
 
   async startRegistration(user: any, label?: string) {
     if (!this.enabled) throw new BadRequestException('Passkeys disabled');
+
     const deviceLabel = label?.trim();
     if (deviceLabel && deviceLabel.length > 64) {
       throw new BadRequestException({ error: 'INVALID_INPUT', details: 'label is too long' });
     }
+
     this.logger.debug('passkeys/options/register', { userId: user.id, label: deviceLabel });
+
     const existing = await this.getUserCredentials(user.id);
     const composite = await this.challenges.create('reg', user.id); // id.challenge
     const [challengeRef, challenge] = composite.split('.', 2);
-    // simplewebauthn v10+ requires userID as a BufferSource (not string)
+
+    // simplewebauthn v10+: userID should be BufferSource; derive from UUID if possible
     let userIdBytes: Uint8Array;
     try {
       const hex = (user.id || '').replace(/-/g, '');
-      if (hex.length === 32) userIdBytes = Buffer.from(hex, 'hex'); else userIdBytes = Buffer.from(user.id, 'utf8');
-    } catch { userIdBytes = Buffer.from(user.id, 'utf8'); }
-    const rawOptions = generateRegistrationOptions({
+      if (hex.length === 32) userIdBytes = Buffer.from(hex, 'hex');
+      else userIdBytes = Buffer.from(user.id, 'utf8');
+    } catch {
+      userIdBytes = Buffer.from(user.id, 'utf8');
+    }
+
+    const rawOptions: any = generateRegistrationOptions({
       rpID: this.rpId,
       rpName: this.rpName,
-      userID: userIdBytes, // BufferSource
+      userID: userIdBytes,
       userName: user.email,
       timeout: 60_000,
       attestationType: 'none',
       // keep credential id as base64url string per library type expectations
-      excludeCredentials: existing.map(c => ({ id: c.credentialId as any })),
+      excludeCredentials: existing.map(c => ({ id: c.credentialId as any, type: 'public-key' })), // ✅ type added
       authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
       challenge,
     });
 
-    // Build JSON-safe options (preserve user.id) + attach challengeRef
+    // ✅ Defensive fallbacks (in case any field got stripped by serializers)
+    rawOptions.pubKeyCredParams ??= [
+      { type: 'public-key', alg: -7 },    // ES256
+      { type: 'public-key', alg: -257 },  // RS256
+    ];
+    rawOptions.rp ??= { id: this.rpId, name: this.rpName };
+
     const userIdB64 = Buffer.from(userIdBytes).toString('base64url');
+
+    // Build JSON-safe options (preserve user.id) + attach challengeRef
     const options: any = {
       ...rawOptions,
       challenge,
       user: {
-        ...(rawOptions as any).user,
-        id: userIdB64,               // ✅ لا نحذفه
+        ...(rawOptions.user || {}),
+        id: userIdB64,                 // ✅ لا تحذف
         name: user.email,
         displayName: user.email,
       },
@@ -92,7 +108,7 @@ export class PasskeysService {
     };
 
     this.logger.log(
-      `[PASSKEYS_BACK_BUILD] startRegistration preservedUserIdPrefix=${userIdB64.slice(0,8)} len=${userIdB64.length} challengeRef=${challengeRef}`
+      `[PASSKEYS_BACK_BUILD] pubKeyCredParams=${Array.isArray(options.pubKeyCredParams)} len=${options.pubKeyCredParams?.length ?? 0}`
     );
 
     return options;
