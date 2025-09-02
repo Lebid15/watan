@@ -57,53 +57,43 @@ async function bootstrap() {
   // ✅ /api مرة واحدة فقط
   app.setGlobalPrefix('api');
 
-  // ✅ CORS مضبوط للواجهة
-  const baseCorsOrigins: (string|RegExp)[] = [
-    'http://localhost:3000',
-    'https://watan-frontend.onrender.com',
-    'http://ahmad.localhost:3000',
-    'http://saeed.localhost:3000',
-    // النطاق الجديد للإنتاج (الجذر)
-    'https://syrz1.com',
-    'https://www.syrz1.com',
-    // نمط عام للنطاقات الفرعية المحلية
-    /^http:\/\/[a-zA-Z0-9-]+\.localhost:3000$/,
-  // ✅ السماح بكل النطاقات الفرعية للإنتاج *.syrz1.com
-  /^https:\/\/[a-zA-Z0-9-]+\.syrz1\.com$/,
-  ];
-  // يسمح بتحديد أصل إضافي عبر متغير بيئة FRONTEND_ORIGIN (مثال: https://preview.syrz1.com)
-  if (process.env.FRONTEND_ORIGIN) {
-    baseCorsOrigins.push(process.env.FRONTEND_ORIGIN);
+  // ✅ تفعيل CORS مبكر جدًا (قبل أي middlewares أخرى) مع دعم *.syrz1.com + localhost للتطوير
+  const devOrigin = 'http://localhost:3000';
+  function originAllowed(origin?: string | null): boolean {
+    if (!origin) return true; // طلبات داخلية
+    if (origin === devOrigin) return true;
+    // قبول أي https://<sub>.syrz1.com أو الجذر نفسه
+    if (/^https:\/\/(?:[a-zA-Z0-9-]+\.)?syrz1\.com$/i.test(origin)) return true;
+    return false;
   }
-  // دالة مطابقة مرنة (strings + RegExp)
-  function isOriginAllowed(origin?: string | null): boolean {
-    if (!origin) return true; // طلبات نفس الأصل (مثل curl أو server-to-server)
-    return baseCorsOrigins.some((o) => {
-      if (o instanceof RegExp) return o.test(origin);
-      return o === origin;
-    });
-  }
+  const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
+  const ALLOWED_HEADERS = 'Content-Type, Authorization, X-Tenant-Host, X-Tenant-Id, X-Upload-Correlation, Accept';
 
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (isOriginAllowed(origin)) {
-        if (origin) console.log('[CORS] allow', origin);
-        callback(null, origin || true);
-      } else {
-        console.warn('[CORS] reject', origin);
-        callback(new Error('Not allowed by CORS'));
+  // Middleware يدوي لضبط هيدرات CORS + Vary: Origin لكل الردود (نجاح أو خطأ)
+  app.use((req: any, res: any, next: any) => {
+    const origin = req.headers.origin as string | undefined;
+    if (originAllowed(origin)) {
+      if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        console.log('[CORS] allow', origin);
       }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Tenant-Host',
-      'X-Tenant-Id',
-      'X-Upload-Correlation',
-      'Accept'
-    ],
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    } else if (origin) {
+      console.warn('[CORS] reject', origin);
+    }
+    if (req.method === 'OPTIONS') {
+      if (originAllowed(origin)) {
+        if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', ALLOWED_METHODS);
+        res.setHeader('Access-Control-Allow-Headers', ALLOWED_HEADERS);
+        res.setHeader('Vary', 'Origin');
+        res.setHeader('Access-Control-Max-Age', '600');
+      }
+      return res.status(204).end();
+    }
+    next();
   });
 
   // ✅ تفعيل cookie-parser لقراءة التوكن من الكوكي عند اللزوم
