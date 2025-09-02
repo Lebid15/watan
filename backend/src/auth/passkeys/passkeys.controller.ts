@@ -25,7 +25,20 @@ export class PasskeysController {
   async optionsRegister(@Req() req: any, @Body() body: { label?: string }) {
     const label = (body?.label || '').trim();
   // Return raw PublicKeyCredentialCreationOptionsJSON directly (with challenge + challengeRef)
+    this.svc['logger']?.debug?.('options/register called', { enabled: (this.svc as any).enabled, hasRP: !!(this.svc as any).rpId });
   return this.svc.startRegistration(req.user, label || undefined);
+  }
+
+  // Temporary debug endpoint (remove after diagnostics)
+  @UseGuards(JwtAuthGuard)
+  @Get('_debug')
+  async debug(@Req() req: any) {
+    return {
+      enabled: (this.svc as any).enabled,
+      rpId: (this.svc as any).rpId,
+      nodeEnv: process.env.NODE_ENV,
+      hasRP: !!process.env.RP_ID,
+    };
   }
 
   @UseGuards(JwtAuthGuard)

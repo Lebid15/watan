@@ -30,15 +30,18 @@ export class PasskeysService {
   private audit: AuditService,
   ) {
     this.prod = (process.env.NODE_ENV === 'production');
-    this.rpId = process.env.RP_ID || 'localhost';
+    // Flexible fallback chain for rpId
+    this.rpId = process.env.RP_ID || process.env.PUBLIC_TENANT_BASE_DOMAIN || 'syrz1.com';
     const strict = process.env.PASSKEYS_STRICT === 'true';
-    if (this.prod && !process.env.RP_ID) {
+    this.logger.log(`[init] prod=${this.prod} strict=${strict} hasRP=${!!(process.env.RP_ID)} rpId=${this.rpId} enabled(pre)=${this.enabled}`);
+    if (this.prod && !this.rpId) {
       if (strict) throw new Error('RP_ID required in production (PASSKEYS_STRICT=true)');
-      console.warn('[Passkeys] Disabled: missing RP_ID in production');
+      this.logger.warn('[Passkeys] Disabled: missing rpId');
       this.enabled = false;
-      return;
+    } else {
+      this.enabled = true;
     }
-    this.enabled = true;
+    this.logger.log(`[init] enabled=${this.enabled} rpId=${this.rpId}`);
   }
 
   async getUserCredentials(userId: string) {
