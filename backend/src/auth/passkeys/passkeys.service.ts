@@ -67,24 +67,34 @@ export class PasskeysService {
     const rawOptions = generateRegistrationOptions({
       rpID: this.rpId,
       rpName: this.rpName,
-      userID: userIdBytes,
+      userID: userIdBytes, // BufferSource
       userName: user.email,
       timeout: 60_000,
       attestationType: 'none',
-  // keep credential id as base64url string per library type expectations
-  excludeCredentials: existing.map(c => ({ id: c.credentialId })),
+      // keep credential id as base64url string per library type expectations
+      excludeCredentials: existing.map(c => ({ id: c.credentialId as any })),
       authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
       challenge,
     });
-    // Normalized JSON the browser expects. Attach challengeRef for later verification.
+
+    // Build JSON-safe options (preserve user.id) + attach challengeRef
+    const userIdB64 = Buffer.from(userIdBytes).toString('base64url');
     const options: any = {
       ...rawOptions,
       challenge,
-      user: { name: user.email },
+      user: {
+        ...(rawOptions as any).user,
+        id: userIdB64,               // ✅ لا نحذفه
+        name: user.email,
+        displayName: user.email,
+      },
       challengeRef,
     };
-    // Remove binary userID if present to stay JSON safe
-    delete (options.user as any).id;
+
+    this.logger.log(
+      `[PASSKEYS_BACK_BUILD] startRegistration preservedUserIdPrefix=${userIdB64.slice(0,8)} len=${userIdB64.length} challengeRef=${challengeRef}`
+    );
+
     return options;
   }
 
