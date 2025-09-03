@@ -14,6 +14,7 @@ import { User } from '../user/user.entity';
 import { AuthToken } from './auth-token.entity';
 import { AuthTokenService } from './auth-token.service';
 import { AuditModule } from '../audit/audit.module';
+import { EmailService } from '../common/email.service';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { AuditModule } from '../audit/audit.module';
     }),
     AuditModule,
   ],
-  providers: [AuthService, JwtStrategy, AuthTokenService, RateLimiterRegistry, RateLimitGuard],
+  providers: [AuthService, JwtStrategy, AuthTokenService, RateLimiterRegistry, RateLimitGuard, EmailService],
   controllers: [AuthController],
   exports: [AuthService, JwtModule],
 })
