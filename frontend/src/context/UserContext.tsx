@@ -64,6 +64,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const parts = effectiveToken.split('.');
         if (parts.length === 3 && parts[1] && typeof parts[1] === 'string') {
           const payloadPart = parts[1];
+          if (!payloadPart || typeof payloadPart !== 'string') return;
           const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
           const json = JSON.parse(typeof atob !== 'undefined' ? atob(b64) : Buffer.from(b64, 'base64').toString());
           if (json?.sub) {
