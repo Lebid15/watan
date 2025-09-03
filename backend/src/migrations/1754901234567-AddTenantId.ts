@@ -17,12 +17,10 @@ export class AddTenantId1754901234567 implements MigrationInterface {
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'product_orders' AND column_name = 'userId'
       ) THEN
-        EXECUTE $$
-          UPDATE "product_orders" o
-          SET "tenantId" = u."tenantId"
-          FROM "users" u
-          WHERE o."userId" = u."id" AND o."tenantId" IS NULL
-        $$;
+        UPDATE "product_orders" o
+        SET "tenantId" = u."tenantId"
+        FROM "users" u
+        WHERE o."userId" = u."id" AND o."tenantId" IS NULL;
       ELSE
         RAISE NOTICE '[AddTenantId] Skipped backfill: product_orders.userId column missing.';
       END IF;

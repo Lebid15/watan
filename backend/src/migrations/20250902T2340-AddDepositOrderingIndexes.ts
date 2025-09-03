@@ -7,6 +7,30 @@ export class AddDepositOrderingIndexes20250902T2340 implements MigrationInterfac
   name = 'AddDepositOrderingIndexes20250902T2340';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const depositTableExists = await queryRunner.query(`
+      SELECT 1 FROM information_schema.tables WHERE table_name='deposit'
+    `);
+    
+    if (depositTableExists.length === 0) {
+      console.log('AddDepositOrderingIndexes: deposit table does not exist, skipping migration');
+      return;
+    }
+
+    const hasUserId = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='user_id'
+    `);
+    const hasApprovedAt = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='approvedAt'
+    `);
+    const hasTenantId = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='tenantId'
+    `);
+
+    if (hasUserId.length === 0 || hasApprovedAt.length === 0 || hasTenantId.length === 0) {
+      console.log('AddDepositOrderingIndexes: deposit table missing required columns (user_id, approvedAt, tenantId), skipping migration');
+      return;
+    }
+
     const driver = (queryRunner.connection as any).options.type;
     if (driver === 'sqlite') {
       await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_deposit_user_time ON deposit (user_id, approvedAt DESC, createdAt DESC, id DESC);`);

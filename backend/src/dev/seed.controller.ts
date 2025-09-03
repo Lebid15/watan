@@ -1,14 +1,17 @@
 import { Controller, Post } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { Product } from '../products/product.entity';
 import { ProductPackage } from '../products/product-package.entity';
+import { seedGlobalProducts } from '../scripts/seed-global-products';
 
 @Controller('dev/seed')
 export class DevSeedController {
   constructor(
     @InjectRepository(Product) private productsRepo: Repository<Product>,
     @InjectRepository(ProductPackage) private packagesRepo: Repository<ProductPackage>,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   /**
@@ -49,5 +52,11 @@ export class DevSeedController {
       }
     }
     return { message: 'Seeded', products: created.length };
+  }
+
+  @Post('global-products')
+  async seedGlobalProducts() {
+    await seedGlobalProducts(this.dataSource);
+    return { message: 'Global products seeded successfully' };
   }
 }

@@ -72,10 +72,31 @@ END$$;
       );
     `);
 
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_deposit_user" ON "deposit" ("user_id");`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_deposit_method" ON "deposit" ("method_id");`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_deposit_status" ON "deposit" ("status");`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_deposit_createdAt" ON "deposit" ("createdAt");`);
+    const hasUserId = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='user_id'
+    `);
+    const hasMethodId = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='method_id'
+    `);
+    const hasStatus = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='status'
+    `);
+    const hasCreatedAt = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='createdAt'
+    `);
+
+    if (hasUserId.length > 0) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_deposit_user" ON "deposit" ("user_id");`);
+    }
+    if (hasMethodId.length > 0) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_deposit_method" ON "deposit" ("method_id");`);
+    }
+    if (hasStatus.length > 0) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_deposit_status" ON "deposit" ("status");`);
+    }
+    if (hasCreatedAt.length > 0) {
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_deposit_createdAt" ON "deposit" ("createdAt");`);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

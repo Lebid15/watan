@@ -33,64 +33,80 @@ END$$;`);
     await queryRunner.query(`UPDATE "deposit" SET "source"='user_request' WHERE "source" IS NULL;`);
 
     // Make method_id nullable (if it exists and constraint present)
-    await queryRunner.query(`
-      DO $$
-      DECLARE
-        col_nullable INTEGER;
-      BEGIN
-        -- Drop FK temporarily if exists (to alter nullability)
-        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FK_deposit_method') THEN
-          ALTER TABLE "deposit" DROP CONSTRAINT "FK_deposit_method";
-        END IF;
-        -- Alter column to nullable if not already
-        ALTER TABLE "deposit" ALTER COLUMN "method_id" DROP NOT NULL;
-      END$$;
+    const hasMethodId = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='method_id'
     `);
+    
+    if (hasMethodId.length > 0) {
+      await queryRunner.query(`
+        DO $$
+        DECLARE
+          col_nullable INTEGER;
+        BEGIN
+          -- Drop FK temporarily if exists (to alter nullability)
+          IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FK_deposit_method') THEN
+            ALTER TABLE "deposit" DROP CONSTRAINT "FK_deposit_method";
+          END IF;
+          -- Alter column to nullable if not already
+          ALTER TABLE "deposit" ALTER COLUMN "method_id" DROP NOT NULL;
+        END$$;
+      `);
+    } else {
+      console.log('AddDepositSourceAndNullableMethod: method_id column does not exist, skipping nullability change');
+    }
 
-    // Recreate FK with ON DELETE RESTRICT allowing nulls
-    await queryRunner.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FK_deposit_method') THEN
-          ALTER TABLE "deposit"
-            ADD CONSTRAINT "FK_deposit_method"
-            FOREIGN KEY ("method_id") REFERENCES "payment_method"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;
-        END IF;
-      END$$;
-    `);
+    // Recreate FK with ON DELETE RESTRICT allowing nulls (only if method_id column exists)
+    if (hasMethodId.length > 0) {
+      await queryRunner.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FK_deposit_method') THEN
+            ALTER TABLE "deposit"
+              ADD CONSTRAINT "FK_deposit_method"
+              FOREIGN KEY ("method_id") REFERENCES "payment_method"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+          END IF;
+        END$$;
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Reverse: attempt to set NOT NULL again (may fail if null data left)
-    await queryRunner.query(`
-      DO $$
-      BEGIN
-        -- Drop FK first
-        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FK_deposit_method') THEN
-          ALTER TABLE "deposit" DROP CONSTRAINT "FK_deposit_method";
-        END IF;
-        -- Attempt to set NOT NULL (ignore errors if null values exist)
-        BEGIN
-          ALTER TABLE "deposit" ALTER COLUMN "method_id" SET NOT NULL;
-        EXCEPTION WHEN others THEN NULL; END;
-      END$$;
+    const hasMethodId = await queryRunner.query(`
+      SELECT 1 FROM information_schema.columns WHERE table_name='deposit' AND column_name='method_id'
     `);
+    
+    if (hasMethodId.length > 0) {
+      // Reverse: attempt to set NOT NULL again (may fail if null data left)
+      await queryRunner.query(`
+        DO $$
+        BEGIN
+          -- Drop FK first
+          IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FK_deposit_method') THEN
+            ALTER TABLE "deposit" DROP CONSTRAINT "FK_deposit_method";
+          END IF;
+          -- Attempt to set NOT NULL (ignore errors if null values exist)
+          BEGIN
+            ALTER TABLE "deposit" ALTER COLUMN "method_id" SET NOT NULL;
+          EXCEPTION WHEN others THEN NULL; END;
+        END$$;
+      `);
+
+      // Recreate FK
+      await queryRunner.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FK_deposit_method') THEN
+            ALTER TABLE "deposit"
+              ADD CONSTRAINT "FK_deposit_method"
+              FOREIGN KEY ("method_id") REFERENCES "payment_method"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;
+          END IF;
+        END$$;
+      `);
+    }
 
     // Drop source column
     await queryRunner.query(`ALTER TABLE "deposit" DROP COLUMN IF EXISTS "source";`);
     // Drop enum type
     await queryRunner.query(`DROP TYPE IF EXISTS "public"."deposit_source_enum";`);
-
-    // Recreate FK
-    await queryRunner.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='FK_deposit_method') THEN
-          ALTER TABLE "deposit"
-            ADD CONSTRAINT "FK_deposit_method"
-            FOREIGN KEY ("method_id") REFERENCES "payment_method"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;
-        END IF;
-      END$$;
-    `);
   }
 }

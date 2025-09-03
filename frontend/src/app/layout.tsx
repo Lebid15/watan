@@ -18,11 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               const viewport = document.createElement('meta');
               viewport.name = 'viewport';
               
-              if (isBackoffice) {
-                viewport.content = 'width=1280, initial-scale=0.4, minimum-scale=0.25, maximum-scale=5, user-scalable=yes, viewport-fit=cover';
-              } else {
-                viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
-              }
+              viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
               
               document.head.appendChild(viewport);
             })();`,
