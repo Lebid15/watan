@@ -22,7 +22,7 @@ export function decodeRoleFromToken(token: string): AppRole | '' {
     const parts = token.split('.');
     if (parts.length !== 3) return '';
     const part = parts[1];
-    if (!part) return '';
+    if (!part || typeof part !== 'string') return '';
     const json = JSON.parse(atob(part.replace(/-/g,'+').replace(/_/g,'/')));
     return normalizeRole(json?.role);
   } catch { return ''; }

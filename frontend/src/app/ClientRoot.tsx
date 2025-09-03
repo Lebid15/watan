@@ -38,7 +38,7 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
     try {
       if (token && typeof token === 'string' && token.includes('.')) {
         const parts = token.split('.');
-        if (parts.length === 3 && parts[1]) {
+        if (parts.length === 3 && parts[1] && typeof parts[1] === 'string') {
           const payloadPart = parts[1];
           const b64 = payloadPart.replace(/-/g,'+').replace(/_/g,'/');
           const json = JSON.parse(atob(b64));
