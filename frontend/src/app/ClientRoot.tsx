@@ -36,11 +36,16 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
     // لدينا توكن: بدل مسحه (يُسبب حلقة إعادة تحميل) نحدد ما إذا كنا على نطاق فرعي ونوجه مباشرةً
     let role: string | null = null;
     try {
-      const payloadPart = token.split('.')[1];
-      const b64 = payloadPart.replace(/-/g,'+').replace(/_/g,'/');
-      const json = JSON.parse(atob(b64));
-      role = (json?.role || '').toLowerCase();
-      if (role && ['instance_owner','owner','admin'].includes(role)) role = 'tenant_owner';
+      if (token && typeof token === 'string' && token.includes('.')) {
+        const parts = token.split('.');
+        if (parts.length === 3 && parts[1]) {
+          const payloadPart = parts[1];
+          const b64 = payloadPart.replace(/-/g,'+').replace(/_/g,'/');
+          const json = JSON.parse(atob(b64));
+          role = (json?.role || '').toLowerCase();
+          if (role && ['instance_owner','owner','admin'].includes(role)) role = 'tenant_owner';
+        }
+      }
     } catch {}
     const host = window.location.host;
     const parts = host.split('.');

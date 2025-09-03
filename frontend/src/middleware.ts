@@ -92,12 +92,15 @@ export function middleware(req: NextRequest) {
 
   // Decode JWT payload (best-effort) to extract email for developer whitelist
   let email: string | null = null;
-  if (token.includes('.')) {
+  if (token && typeof token === 'string' && token.includes('.')) {
     try {
-      const payloadPart = token.split('.')[1];
-      const b64 = payloadPart.replace(/-/g,'+').replace(/_/g,'/');
-      const json = JSON.parse(atob(b64));
-      email = (json.email || json.user?.email || json.sub || '').toLowerCase();
+      const parts = token.split('.');
+      if (parts.length === 3 && parts[1]) {
+        const payloadPart = parts[1];
+        const b64 = payloadPart.replace(/-/g,'+').replace(/_/g,'/');
+        const json = JSON.parse(atob(b64));
+        email = (json.email || json.user?.email || json.sub || '').toLowerCase();
+      }
     } catch {}
   }
   // Normalize legacy role names: instance_owner → tenant_owner (hierarchy merge), owner → tenant_owner

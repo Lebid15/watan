@@ -24,11 +24,16 @@ export default function LoginPage() {
       document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
       // استخرج الدور من التوكن (Base64 URL) وضعه في كوكي ليستفيد منه middleware
       try {
-        const payloadPart = token.split('.')[1];
-        const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-        const json = JSON.parse(atob(b64));
-        if (json?.role) {
-          document.cookie = `role=${json.role}; Path=/; Max-Age=${60*60*24*7}`;
+        if (token && typeof token === 'string' && token.includes('.')) {
+          const parts = token.split('.');
+          if (parts.length === 3 && parts[1]) {
+            const payloadPart = parts[1];
+            const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+            const json = JSON.parse(atob(b64));
+            if (json?.role) {
+              document.cookie = `role=${json.role}; Path=/; Max-Age=${60*60*24*7}`;
+            }
+          }
         }
       } catch {}
       // تحديد مسار الوجهة:
@@ -45,12 +50,15 @@ export default function LoginPage() {
         }
       } catch {}
       try {
-        const payloadPart = token.split('.')[1];
-        const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-        const json = JSON.parse(atob(b64));
-        const rr = (json?.role || '').toLowerCase();
-        const email = (json?.email || json?.user?.email || '').toLowerCase();
-        decodedRole = rr;
+        if (token && typeof token === 'string' && token.includes('.')) {
+          const parts = token.split('.');
+          if (parts.length === 3 && parts[1]) {
+            const payloadPart = parts[1];
+            const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+            const json = JSON.parse(atob(b64));
+            const rr = (json?.role || '').toLowerCase();
+            const email = (json?.email || json?.user?.email || '').toLowerCase();
+            decodedRole = rr;
         let norm = (rr === 'instance_owner' || rr === 'owner' || rr === 'admin') ? 'tenant_owner' : rr;
         const envList = (process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || process.env.DEVELOPER_EMAILS || '')
           .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
@@ -81,29 +89,31 @@ export default function LoginPage() {
           setLoading(false);
           return;
         }
-        // الآن تحديد الوجهة (إذا كانت nextDest موجودة نتحقق من صلاحيتها)
-        const defaultDest = (() => {
-          if (isSub) {
-            if (norm === 'tenant_owner') return '/admin/dashboard';
-            if (norm === 'distributor') return '/admin/distributor';
-            if (norm === 'user') return '/';
-            if (norm === 'developer') {
-              const apex = configuredApex || apexHost;
-              return `${window.location.protocol}//${apex}/dev`;
+            // الآن تحديد الوجهة (إذا كانت nextDest موجودة نتحقق من صلاحيتها)
+            const defaultDest = (() => {
+              if (isSub) {
+                if (norm === 'tenant_owner') return '/admin/dashboard';
+                if (norm === 'distributor') return '/admin/distributor';
+                if (norm === 'user') return '/';
+                if (norm === 'developer') {
+                  const apex = configuredApex || apexHost;
+                  return `${window.location.protocol}//${apex}/dev`;
+                }
+                return '/';
+              }
+              return '/dev'; // apex + developer
+            })();
+            // حماية: لو query next تشير إلى /dev لكن المستخدم ليس developer (لم يحدث return أعلاه لأنها ساب دومين) نلغيها
+            if (nextDest) {
+              if (nextDest.startsWith('/dev') && norm !== 'developer') nextDest = defaultDest;
+              if (isApex && norm !== 'developer') nextDest = defaultDest; // should not happen due للمنع
+            } else {
+              nextDest = defaultDest;
             }
-            return '/';
           }
-          return '/dev'; // apex + developer
-        })();
-        // حماية: لو query next تشير إلى /dev لكن المستخدم ليس developer (لم يحدث return أعلاه لأنها ساب دومين) نلغيها
-        if (nextDest) {
-          if (nextDest.startsWith('/dev') && norm !== 'developer') nextDest = defaultDest;
-          if (isApex && norm !== 'developer') nextDest = defaultDest; // should not happen due للمنع
-        } else {
-          nextDest = defaultDest;
         }
       } catch { nextDest = '/'; }
-      router.push(nextDest);
+      router.push(nextDest || '/');
     } catch (e:any) {
       setError(e?.message || 'فشل الدخول');
     } finally { setLoading(false); }

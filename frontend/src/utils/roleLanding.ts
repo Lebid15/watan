@@ -18,7 +18,11 @@ export function landingPath(role: AppRole): string {
 
 export function decodeRoleFromToken(token: string): AppRole | '' {
   try {
-    const part = token.split('.')[1];
+    if (!token || typeof token !== 'string' || !token.includes('.')) return '';
+    const parts = token.split('.');
+    if (parts.length !== 3) return '';
+    const part = parts[1];
+    if (!part) return '';
     const json = JSON.parse(atob(part.replace(/-/g,'+').replace(/_/g,'/')));
     return normalizeRole(json?.role);
   } catch { return ''; }
