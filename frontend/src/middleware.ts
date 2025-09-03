@@ -95,7 +95,7 @@ export function middleware(req: NextRequest) {
   if (token && typeof token === 'string' && token.includes('.')) {
     try {
       const parts = token.split('.');
-      if (parts.length === 3 && parts[1]) {
+      if (parts.length === 3 && parts[1] && typeof parts[1] === 'string') {
         const payloadPart = parts[1];
         const b64 = payloadPart.replace(/-/g,'+').replace(/_/g,'/');
         const json = JSON.parse(atob(b64));
