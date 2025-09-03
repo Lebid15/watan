@@ -126,6 +126,19 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleReset2FA = async (userId: string) => {
+    if (!confirm('هل أنت متأكد من إعادة تعيين المصادقة الثنائية لهذا المستخدم؟ سيتم إجباره على إعداد المصادقة من جديد.')) {
+      return;
+    }
+
+    try {
+      await api.post(`/auth/totp/reset/${userId}`);
+      alert('تم إعادة تعيين المصادقة الثنائية بنجاح');
+    } catch (error: any) {
+      alert(error?.response?.data?.message || 'فشل في إعادة تعيين المصادقة الثنائية');
+    }
+  };
+
   const filtered = users.filter((u) => {
     const t = search.toLowerCase();
     return (
@@ -210,6 +223,13 @@ export default function AdminUsersPage() {
                             title="إضافة إلى الرصيد"
                           >
                             +
+                          </button>
+                          <button
+                            onClick={() => handleReset2FA(u.id)}
+                            className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                            title="إعادة تعيين المصادقة الثنائية"
+                          >
+                            Reset 2FA
                           </button>
                           <Link
                             href={`/admin/users/${u.id}`}

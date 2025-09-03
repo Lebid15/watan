@@ -7,7 +7,6 @@ import BottomNav from '@/components/layout/BottomNav';
 import { UserProvider } from '../context/UserContext';
 import { ToastProvider } from '@/context/ToastContext';
 import ThemeFab from '@/components/ThemeFab';
-import PasskeyPrompt from '@/components/auth/PasskeyPrompt';
 
 // مؤقتاً: I18nProvider محلي فقط لتغليف children بدون منطق ترجمة
 const I18nProvider: React.FC<{ locale?: string; children: React.ReactNode }> = ({ children }) => <>{children}</>;
@@ -91,7 +90,6 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
           >
             {children}
           </main>
-          {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <PasskeyPrompt />}
           {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <BottomNav />}
         </UserProvider>
       </I18nProvider>

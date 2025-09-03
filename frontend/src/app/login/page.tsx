@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
-import { usePasskeys } from '@/hooks/usePasskeys';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,8 +9,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { authenticateWithPasskey, registerPasskey, loading: passkeyLoading, error: passkeyError } = usePasskeys();
-  const [addingPasskey, setAddingPasskey] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,20 +160,6 @@ export default function LoginPage() {
     }
   };
 
-  const doPasskeyLogin = async () => {
-    if (!identifier) { setError('أدخل بريدك أو اسم المستخدم أولاً'); return; }
-    try {
-  await authenticateWithPasskey(identifier);
-  // دفع إلى الجذر ثم middleware يتولى التوجيه حسب الدور
-  router.push('/');
-    } catch {/* handled in hook */}
-  };
-
-  const doRegisterPasskey = async () => {
-    if (!localStorage.getItem('token')) { setError('سجّل الدخول أولاً لإضافة مفتاح'); return; }
-    setAddingPasskey(true);
-    try { await registerPasskey('جهازي'); } catch {/* hook error */} finally { setAddingPasskey(false); }
-  };
 
   return (
     <div className="min-h-screen w-full bg-[var(--bg-main)] flex justify-center">
@@ -203,16 +186,6 @@ export default function LoginPage() {
           <div className="flex justify-between text-xs text-gray-600">
             <a href="/password-reset" className="underline">نسيت كلمة المرور؟</a>
             <a href="/verify-email" className="underline">التحقق من البريد</a>
-          </div>
-          <div className="pt-4 space-y-3 border-t">
-            <div className="text-center text-sm font-medium">أو استخدم مفاتيح المرور</div>
-            <button type="button" onClick={doPasskeyLogin} disabled={passkeyLoading || !identifier} className="w-full bg-emerald-600 text-white py-2 rounded text-sm hover:brightness-110 disabled:opacity-50 transition">
-              {passkeyLoading ? '...' : 'دخول بـ Passkey'}
-            </button>
-            <button type="button" onClick={doRegisterPasskey} disabled={addingPasskey || passkeyLoading} className="w-full bg-gray-700 text-white py-2 rounded text-sm hover:brightness-110 disabled:opacity-50 transition">
-              {addingPasskey || passkeyLoading ? '...' : 'إضافة Passkey (بعد تسجيل الدخول)'}
-            </button>
-            {passkeyError && <div className="text-xs text-red-600 text-center">{passkeyError}</div>}
           </div>
           <p className="text-center text-xs text-gray-600 pt-2">لا تملك حساباً؟ <a href="/register" className="text-sky-600 underline">إنشاء حساب</a></p>
         </form>

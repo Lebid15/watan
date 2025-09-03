@@ -13,6 +13,10 @@ import { Tenant } from '../tenants/tenant.entity';
 import { User } from '../user/user.entity';
 import { AuthToken } from './auth-token.entity';
 import { AuthTokenService } from './auth-token.service';
+import { TotpService } from './totp/totp.service';
+import { TotpController } from './totp/totp.controller';
+import { TotpCredential } from './totp/totp-credential.entity';
+import { RecoveryCode } from './totp/recovery-code.entity';
 import { AuditModule } from '../audit/audit.module';
 import { EmailService } from '../common/email.service';
 
@@ -21,15 +25,15 @@ import { EmailService } from '../common/email.service';
     UserModule,  // مهم جداً: إضافة UserModule هنا ليتمكن AuthService من استخدام UserService
     PassportModule,
   // ✅ نضيف مستودع Tenant هنا حتى نسمح لـ AuthController بالبحث بالـ tenantCode
-  TypeOrmModule.forFeature([Tenant, User, AuthToken]),
+  TypeOrmModule.forFeature([Tenant, User, AuthToken, TotpCredential, RecoveryCode]),
     JwtModule.register({
       secret: jwtConstants.secret,
       signOptions: { expiresIn: '1d' },
     }),
     AuditModule,
   ],
-  providers: [AuthService, JwtStrategy, AuthTokenService, RateLimiterRegistry, RateLimitGuard, EmailService],
-  controllers: [AuthController],
-  exports: [AuthService, JwtModule],
+  providers: [AuthService, JwtStrategy, AuthTokenService, TotpService, RateLimiterRegistry, RateLimitGuard, EmailService],
+  controllers: [AuthController, TotpController],
+  exports: [AuthService, TotpService, JwtModule],
 })
 export class AuthModule {}

@@ -26,7 +26,7 @@ export class PasskeysService {
   private rpId: string;
   private rpName = 'Watan';
   private prod: boolean;
-  private enabled: boolean;
+  private enabled: boolean = false;
   private logger = new Logger('Passkeys');
 
   constructor(
@@ -37,84 +37,17 @@ export class PasskeysService {
     this.prod = (process.env.NODE_ENV === 'production');
     this.rpId = process.env.RP_ID || process.env.PUBLIC_TENANT_BASE_DOMAIN || 'syrz1.com';
     const strict = process.env.PASSKEYS_STRICT === 'true';
-    this.logger.log(`[init] prod=${this.prod} strict=${strict} hasRP=${!!process.env.RP_ID} rpId=${this.rpId}`);
-    if (this.prod && !this.rpId) {
-      if (strict) throw new Error('RP_ID required in production (PASSKEYS_STRICT=true)');
-      this.logger.warn('[Passkeys] Disabled: missing rpId');
-      this.enabled = false;
-    } else {
-      this.enabled = true;
-    }
-    this.logger.log(`[init] enabled=${this.enabled} rpId=${this.rpId}`);
+    this.logger.log(`[init] PASSKEYS DISABLED FOR SECURITY OVERHAUL`);
+    this.enabled = false;
   }
 
   async getUserCredentials(userId: string) {
-    return this.creds.find({ where: { userId } });
+    throw new BadRequestException('Passkeys disabled - use TOTP authentication');
   }
 
   // ---------- Registration (Options) ----------
   async startRegistration(user: any, label?: string) {
-    if (!this.enabled) throw new BadRequestException('Passkeys disabled');
-    // PATCHED: defensive user check
-    if (!user || !user.id) {
-      this.logger.error('[startRegistration] user or user.id missing');
-      throw new BadRequestException('Invalid user');
-    }
-    const deviceLabel = label?.trim();
-    if (deviceLabel && deviceLabel.length > 64) {
-      throw new BadRequestException({ error: 'INVALID_INPUT', details: 'label is too long' });
-    }
-    this.logger.debug('passkeys/options/register', { userId: user.id, label: deviceLabel });
-
-    const existing = await this.getUserCredentials(user.id);
-    const validExisting = existing.filter(c => !!c.credentialId);
-    if (validExisting.length !== existing.length) {
-      this.logger.warn(`[startRegistration] filteredInvalid existing creds total=${existing.length} valid=${validExisting.length}`);
-    }
-
-    const composite = await this.challenges.create('reg', user.id); // id.challenge
-    const [challengeRef, challenge] = composite.split('.', 2);
-
-    // simplewebauthn requires userID BufferSource
-    let userIdBytes: Uint8Array;
-    try {
-      const hex = (user.id || '').replace(/-/g, '');
-      if (hex.length === 32) userIdBytes = Buffer.from(hex, 'hex');
-      else userIdBytes = Buffer.from(user.id, 'utf8');
-    } catch {
-      userIdBytes = Buffer.from(user.id, 'utf8');
-    }
-
-    const rawOptions = generateRegistrationOptions({
-      rpID: this.rpId,
-      rpName: this.rpName,
-      userID: userIdBytes,
-      userName: user.email,
-      timeout: 60_000,
-      attestationType: 'none',
-      excludeCredentials: validExisting.map(c => ({ id: c.credentialId as any, type: 'public-key' })), // PATCHED
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
-      challenge,
-    });
-
-    const userIdB64 = Buffer.from(userIdBytes).toString('base64url');
-    const options: any = {
-      ...rawOptions,
-      challenge,
-      user: {
-        ...(rawOptions as any).user,
-        id: userIdB64,
-        name: user.email,
-        displayName: user.email,
-      },
-      challengeRef,
-    };
-
-    this.logger.log(
-      `[PASSKEYS_BACK_BUILD] startRegistration preservedUserIdPrefix=${userIdB64.slice(0, 8)} len=${userIdB64.length} challengeRef=${challengeRef}`,
-    );
-
-    return options;
+    throw new BadRequestException('Passkeys disabled - use TOTP authentication');
   }
 
   // ---------- Registration (Finish) ----------
@@ -172,25 +105,7 @@ export class PasskeysService {
       this.logger.error('[startAuthentication] user or user.id missing');
       throw new BadRequestException('Invalid user');
     }
-    const allCreds = await this.getUserCredentials(user.id);
-    const creds = allCreds.filter(c => !!c.credentialId);
-    if (creds.length !== allCreds.length) {
-      this.logger.warn(`[startAuthentication] filtered invalid creds total=${allCreds.length} valid=${creds.length}`);
-    }
-    if (!creds.length) throw new NotFoundException('No passkeys');
-
-    const composite = await this.challenges.create('auth', user.id);
-    const [challengeRef, challenge] = composite.split('.', 2);
-
-    const options = generateAuthenticationOptions({
-      rpID: this.rpId,
-      timeout: 60_000,
-      allowCredentials: creds.map(c => ({ id: c.credentialId, type: 'public-key' })), // PATCHED
-      userVerification: 'preferred',
-      challenge,
-    });
-
-    return { options, challengeRef };
+    throw new BadRequestException('Passkeys disabled - use TOTP authentication');
   }
 
   // ---------- Authentication (Finish) ----------

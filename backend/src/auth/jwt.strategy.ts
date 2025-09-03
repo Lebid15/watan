@@ -40,15 +40,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // eslint-disable-next-line no-console
       console.log('[JWT][DEBUG] payload', { sub: payload.sub, role: payload.role, tenantId: payload.tenantId, exp: payload.exp });
     }
-  const role = (payload.role || 'user').toString().toLowerCase();
-  const roleFinal = mapLegacyRole(role);
+    const role = (payload.role || 'user').toString().toLowerCase();
+    const roleFinal = mapLegacyRole(role);
     const allowsNullTenant = ['instance_owner', 'developer'].includes(role);
-    // Allow null tenantId for passkey registration so users can add global credential before tenant association.
-    if (!payload.tenantId && !allowsNullTenant) {
-      // still allow if route is passkeys/options/register (cannot access request here easily unless using validate with req param)
-      // To avoid larger refactor, we'll just permit null tenantId for all roles temporarily (security acceptable if other guards restrict tenant routes)
-      // throw new UnauthorizedException('بيانات التوكن غير صالحة: tenantId مفقود لهذا الدور');
+    
+    if (!payload.totpVerified && !payload.setupMode) {
+      throw new UnauthorizedException('TOTP verification required');
     }
+    
     return {
       id: payload.sub,
       sub: payload.sub,
@@ -56,6 +55,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role, // الدور الأصلي (legacy)
       roleFinal, // الدور النهائي بعد المواءمة
       tenantId: payload.tenantId ?? null,
+      totpVerified: payload.totpVerified || false,
+      setupMode: payload.setupMode || false,
     };
   }
 }
