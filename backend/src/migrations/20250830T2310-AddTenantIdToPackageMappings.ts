@@ -6,6 +6,15 @@ import { MigrationInterface, QueryRunner, TableColumn, TableIndex } from 'typeor
  */
 export class AddTenantIdToPackageMappings20250830T2310 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const packageMappingsTableExists = await queryRunner.query(`
+      SELECT 1 FROM information_schema.tables WHERE table_name='package_mappings'
+    `);
+    
+    if (packageMappingsTableExists.length === 0) {
+      console.log('AddTenantIdToPackageMappings: package_mappings table does not exist, skipping migration');
+      return;
+    }
+
     // 1) Add tenantId (nullable first for backfill)
     const hasTenantId = await queryRunner.hasColumn('package_mappings', 'tenantId');
     if (!hasTenantId) {
