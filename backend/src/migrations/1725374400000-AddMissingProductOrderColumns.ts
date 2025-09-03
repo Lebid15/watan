@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddMissingProductOrderColumns20250903T1430 implements MigrationInterface {
-  name = 'AddMissingProductOrderColumns20250903T1430';
+export class AddMissingProductOrderColumns1725374400000 implements MigrationInterface {
+  name = 'AddMissingProductOrderColumns1725374400000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     const missingColumns = [
