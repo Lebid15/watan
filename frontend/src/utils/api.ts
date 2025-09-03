@@ -311,7 +311,7 @@ export const Api = {
       const res = await api.post('/auth/logout');
       
       const cookieNames = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
-      const domains = ['.syrz1.com', 'api.syrz1.com'];
+      const domains = [window.location.hostname, `.${window.location.hostname}`, '.syrz1.com', 'api.syrz1.com'];
       const paths = ['/', '/api'];
       
       for (const name of cookieNames) {
@@ -336,7 +336,7 @@ export const Api = {
       console.warn('[API] logout: server logout failed, clearing cookies anyway');
       
       const cookieNames = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
-      const domains = ['.syrz1.com', 'api.syrz1.com'];
+      const domains = [window.location.hostname, `.${window.location.hostname}`, '.syrz1.com', 'api.syrz1.com'];
       const paths = ['/', '/api'];
       
       for (const name of cookieNames) {

@@ -25,6 +25,7 @@ import { AuditService } from '../audit/audit.service';
 import { RateLimit } from '../common/rate-limit.guard';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { EmailService } from '../common/email.service';
 import type { Request, Response } from 'express';
 
 class LoginDto {
@@ -50,6 +51,7 @@ export class AuthController {
     private tokens: AuthTokenService,
     private audit: AuditService,
     private jwt: JwtService,
+    private emailService: EmailService,
   ) {}
 
   @Post('login')
@@ -304,7 +306,7 @@ export class AuthController {
       24 * 60 * 60 * 1000,
     );
     // Simulate sending email by logging token (would integrate with real email service)
-    console.log('[EMAIL][VERIFY] token for user', user.email, raw);
+    await this.emailService.sendPasswordResetEmail(user.email, raw, req.headers['x-tenant-host'] as string);
     try {
       await this.audit.log('email_verify_request', {
         actorUserId: user.id,
@@ -346,7 +348,7 @@ export class AuthController {
 
   @Post('request-password-reset')
   @RateLimit({ windowMs: 10 * 60 * 1000, max: 5, id: 'pwdresetreq' })
-  async requestPasswordReset(@Body() body: { emailOrUsername: string; tenantCode?: string }) {
+  async requestPasswordReset(@Body() body: { emailOrUsername: string; tenantCode?: string }, @Req() req: any) {
     if (!body?.emailOrUsername) throw new BadRequestException('emailOrUsername required');
 
     let tenantId: string | null = null;
@@ -375,7 +377,7 @@ export class AuthController {
         'password_reset',
         60 * 60 * 1000,
       );
-      console.log('[EMAIL][PWDRESET] token for user', user.email, raw);
+      await this.emailService.sendPasswordResetEmail(user.email, raw, req.headers['x-tenant-host'] as string);
       try {
         await this.audit.log('password_reset_request', {
           actorUserId: user.id,

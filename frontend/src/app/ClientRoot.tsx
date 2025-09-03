@@ -14,7 +14,7 @@ const I18nProvider: React.FC<{ locale?: string; children: React.ReactNode }> = (
 
 export default function ClientRoot({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hideHeaderFooter = pathname === '/login' || pathname === '/register';
+  const hideHeaderFooter = pathname === '/login' || pathname === '/register' || pathname === '/password-reset';
   const isBackoffice = pathname?.startsWith('/admin') || pathname?.startsWith('/dev');
   const hasRoleAreaLayout =
     pathname?.startsWith('/tenant') ||
