@@ -3,7 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PasskeyCredential } from './passkey-credential.entity';
 import { PasskeyChallengeStore } from './challenge-store.service';
-import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from '@simplewebauthn/server';
 import { AuditService } from '../../audit/audit.service';
 
 export function isAllowedOrigin(o?: string) {
@@ -21,19 +26,18 @@ export class PasskeysService {
   private rpId: string;
   private rpName = 'Watan';
   private prod: boolean;
-  private enabled: boolean; // disable gracefully if required env missing in prod
+  private enabled: boolean;
   private logger = new Logger('Passkeys');
 
   constructor(
-  @InjectRepository(PasskeyCredential) private creds: Repository<PasskeyCredential>,
-  private challenges: PasskeyChallengeStore,
-  private audit: AuditService,
+    @InjectRepository(PasskeyCredential) private creds: Repository<PasskeyCredential>,
+    private challenges: PasskeyChallengeStore,
+    private audit: AuditService,
   ) {
     this.prod = (process.env.NODE_ENV === 'production');
-    // Flexible fallback chain for rpId
     this.rpId = process.env.RP_ID || process.env.PUBLIC_TENANT_BASE_DOMAIN || 'syrz1.com';
     const strict = process.env.PASSKEYS_STRICT === 'true';
-    this.logger.log(`[init] prod=${this.prod} strict=${strict} hasRP=${!!(process.env.RP_ID)} rpId=${this.rpId} enabled(pre)=${this.enabled}`);
+    this.logger.log(`[init] prod=${this.prod} strict=${strict} hasRP=${!!process.env.RP_ID} rpId=${this.rpId}`);
     if (this.prod && !this.rpId) {
       if (strict) throw new Error('RP_ID required in production (PASSKEYS_STRICT=true)');
       this.logger.warn('[Passkeys] Disabled: missing rpId');
@@ -48,43 +52,58 @@ export class PasskeysService {
     return this.creds.find({ where: { userId } });
   }
 
+  // ---------- Registration (Options) ----------
   async startRegistration(user: any, label?: string) {
     if (!this.enabled) throw new BadRequestException('Passkeys disabled');
+    // PATCHED: defensive user check
+    if (!user || !user.id) {
+      this.logger.error('[startRegistration] user or user.id missing');
+      throw new BadRequestException('Invalid user');
+    }
     const deviceLabel = label?.trim();
     if (deviceLabel && deviceLabel.length > 64) {
       throw new BadRequestException({ error: 'INVALID_INPUT', details: 'label is too long' });
     }
     this.logger.debug('passkeys/options/register', { userId: user.id, label: deviceLabel });
+
     const existing = await this.getUserCredentials(user.id);
+    const validExisting = existing.filter(c => !!c.credentialId);
+    if (validExisting.length !== existing.length) {
+      this.logger.warn(`[startRegistration] filteredInvalid existing creds total=${existing.length} valid=${validExisting.length}`);
+    }
+
     const composite = await this.challenges.create('reg', user.id); // id.challenge
     const [challengeRef, challenge] = composite.split('.', 2);
-    // simplewebauthn v10+ requires userID as a BufferSource (not string)
+
+    // simplewebauthn requires userID BufferSource
     let userIdBytes: Uint8Array;
     try {
       const hex = (user.id || '').replace(/-/g, '');
-      if (hex.length === 32) userIdBytes = Buffer.from(hex, 'hex'); else userIdBytes = Buffer.from(user.id, 'utf8');
-    } catch { userIdBytes = Buffer.from(user.id, 'utf8'); }
+      if (hex.length === 32) userIdBytes = Buffer.from(hex, 'hex');
+      else userIdBytes = Buffer.from(user.id, 'utf8');
+    } catch {
+      userIdBytes = Buffer.from(user.id, 'utf8');
+    }
+
     const rawOptions = generateRegistrationOptions({
       rpID: this.rpId,
       rpName: this.rpName,
-      userID: userIdBytes, // BufferSource
+      userID: userIdBytes,
       userName: user.email,
       timeout: 60_000,
       attestationType: 'none',
-      // keep credential id as base64url string per library type expectations
-      excludeCredentials: existing.map(c => ({ id: c.credentialId as any })),
+      excludeCredentials: validExisting.map(c => ({ id: c.credentialId as any, type: 'public-key' })), // PATCHED
       authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
       challenge,
     });
 
-    // Build JSON-safe options (preserve user.id) + attach challengeRef
     const userIdB64 = Buffer.from(userIdBytes).toString('base64url');
     const options: any = {
       ...rawOptions,
       challenge,
       user: {
         ...(rawOptions as any).user,
-        id: userIdB64,               // ✅ لا نحذفه
+        id: userIdB64,
         name: user.email,
         displayName: user.email,
       },
@@ -92,19 +111,21 @@ export class PasskeysService {
     };
 
     this.logger.log(
-      `[PASSKEYS_BACK_BUILD] startRegistration preservedUserIdPrefix=${userIdB64.slice(0,8)} len=${userIdB64.length} challengeRef=${challengeRef}`
+      `[PASSKEYS_BACK_BUILD] startRegistration preservedUserIdPrefix=${userIdB64.slice(0, 8)} len=${userIdB64.length} challengeRef=${challengeRef}`,
     );
 
     return options;
   }
 
+  // ---------- Registration (Finish) ----------
   async finishRegistration(user: any, payload: any, tenantId: string | null, origin: string) {
-  if (!this.enabled) throw new BadRequestException('Passkeys disabled');
+    if (!this.enabled) throw new BadRequestException('Passkeys disabled');
     const { response, challengeRef } = payload || {};
     if (!response || !challengeRef) throw new BadRequestException('Missing response or challengeRef');
     const challenge = await this.challenges.consumeById(challengeRef, 'reg', user.id);
     if (!challenge) throw new BadRequestException('Invalid or expired challenge');
     if (!isAllowedOrigin(origin)) throw new ForbiddenException('Invalid origin');
+
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge: challenge,
@@ -112,9 +133,17 @@ export class PasskeysService {
       expectedRPID: this.rpId,
       requireUserVerification: false,
     });
-    if (!verification.verified || !verification.registrationInfo) throw new BadRequestException('Registration not verified');
-    const { credential: { id: rawId, publicKey: credentialPublicKey, counter } } = verification.registrationInfo as any;
+
+    if (!verification.verified || !verification.registrationInfo) {
+      throw new BadRequestException('Registration not verified');
+    }
+
+    const {
+      credential: { id: rawId, publicKey: credentialPublicKey, counter },
+    } = verification.registrationInfo as any;
+
     const credentialIdB64 = Buffer.from(rawId).toString('base64url');
+
     const entity = this.creds.create({
       userId: user.id,
       tenantId: tenantId ?? null,
@@ -124,36 +153,61 @@ export class PasskeysService {
       deviceType: payload.label?.trim() || 'My device',
     });
     await this.creds.save(entity);
-    try { await this.audit.log('passkey_add', { actorUserId: user.id, targetUserId: user.id, targetTenantId: tenantId ?? null, meta: { credentialId: entity.credentialId } }); } catch {}
+    try {
+      await this.audit.log('passkey_add', {
+        actorUserId: user.id,
+        targetUserId: user.id,
+        targetTenantId: tenantId ?? null,
+        meta: { credentialId: entity.credentialId },
+      });
+    } catch {}
     return { ok: true, id: entity.id };
   }
 
+  // ---------- Authentication (Options) ----------
   async startAuthentication(user: any) {
-  if (!this.enabled) throw new BadRequestException('Passkeys disabled');
-    const creds = await this.getUserCredentials(user.id);
+    if (!this.enabled) throw new BadRequestException('Passkeys disabled');
+    // PATCHED: defensive user check
+    if (!user || !user.id) {
+      this.logger.error('[startAuthentication] user or user.id missing');
+      throw new BadRequestException('Invalid user');
+    }
+    const allCreds = await this.getUserCredentials(user.id);
+    const creds = allCreds.filter(c => !!c.credentialId);
+    if (creds.length !== allCreds.length) {
+      this.logger.warn(`[startAuthentication] filtered invalid creds total=${allCreds.length} valid=${creds.length}`);
+    }
     if (!creds.length) throw new NotFoundException('No passkeys');
+
     const composite = await this.challenges.create('auth', user.id);
     const [challengeRef, challenge] = composite.split('.', 2);
+
     const options = generateAuthenticationOptions({
       rpID: this.rpId,
       timeout: 60_000,
-  allowCredentials: creds.map(c => ({ id: c.credentialId })),
+      allowCredentials: creds.map(c => ({ id: c.credentialId, type: 'public-key' })), // PATCHED
       userVerification: 'preferred',
       challenge,
     });
+
     return { options, challengeRef };
   }
 
+  // ---------- Authentication (Finish) ----------
   async finishAuthentication(user: any, payload: any, origin: string) {
-  if (!this.enabled) throw new BadRequestException('Passkeys disabled');
+    if (!this.enabled) throw new BadRequestException('Passkeys disabled');
     const { response, challengeRef } = payload || {};
     if (!response || !challengeRef) throw new BadRequestException('Missing response or challengeRef');
+
     const challenge = await this.challenges.consumeById(challengeRef, 'auth', user.id);
     if (!challenge) throw new BadRequestException('Invalid or expired challenge');
-    const credIdB64 = response.id; // base64url id
+
+    const credIdB64 = response.id;
     const dbCred = await this.creds.findOne({ where: { credentialId: credIdB64 } });
     if (!dbCred) throw new NotFoundException('Credential not found');
+
     if (!isAllowedOrigin(origin)) throw new ForbiddenException('Invalid origin');
+
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge: challenge,
@@ -161,25 +215,44 @@ export class PasskeysService {
       expectedOrigin: origin,
       requireUserVerification: false,
       credential: {
-  id: dbCred.credentialId,
+        id: dbCred.credentialId,
         publicKey: dbCred.publicKey,
         counter: Number(dbCred.counter),
         transports: (dbCred.transports as any) || undefined,
       },
     });
+
     if (!verification.verified || !verification.authenticationInfo) {
-      try { await this.audit.log('passkey_login_fail', { actorUserId: user.id, targetUserId: user.id, targetTenantId: dbCred?.tenantId ?? null, meta: { reason: 'verification_failed' } }); } catch {}
+      try {
+        await this.audit.log('passkey_login_fail', {
+          actorUserId: user.id,
+          targetUserId: user.id,
+          targetTenantId: dbCred?.tenantId ?? null,
+          meta: { reason: 'verification_failed' },
+        });
+      } catch {}
       throw new ForbiddenException('Auth not verified');
     }
+
     dbCred.counter = verification.authenticationInfo.newCounter;
     dbCred.lastUsedAt = new Date();
     await this.creds.save(dbCred);
-    try { await this.audit.log('passkey_login_success', { actorUserId: user.id, targetUserId: user.id, targetTenantId: dbCred.tenantId ?? null, meta: { credentialId: dbCred.credentialId } }); } catch {}
+
+    try {
+      await this.audit.log('passkey_login_success', {
+        actorUserId: user.id,
+        targetUserId: user.id,
+        targetTenantId: dbCred.tenantId ?? null,
+        meta: { credentialId: dbCred.credentialId },
+      });
+    } catch {}
+
     return { ok: true, tenantId: dbCred.tenantId };
   }
 
+  // ---------- List ----------
   async list(userId: string) {
-  if (!this.enabled) return [];
+    if (!this.enabled) return [];
     const rows = await this.creds.find({ where: { userId } });
     return rows.map(r => ({
       id: r.id,
@@ -189,12 +262,20 @@ export class PasskeysService {
     }));
   }
 
+  // ---------- Delete ----------
   async delete(userId: string, id: string) {
-  if (!this.enabled) throw new BadRequestException('Passkeys disabled');
+    if (!this.enabled) throw new BadRequestException('Passkeys disabled');
     const cred = await this.creds.findOne({ where: { id, userId } });
     if (!cred) throw new NotFoundException('Credential not found');
-  await this.creds.remove(cred);
-  try { await this.audit.log('passkey_delete', { actorUserId: userId, targetUserId: userId, targetTenantId: cred.tenantId ?? null, meta: { credentialId: cred.credentialId } }); } catch {}
+    await this.creds.remove(cred);
+    try {
+      await this.audit.log('passkey_delete', {
+        actorUserId: userId,
+        targetUserId: userId,
+        targetTenantId: cred.tenantId ?? null,
+        meta: { credentialId: cred.credentialId },
+      });
+    } catch {}
     return { ok: true };
   }
 }
