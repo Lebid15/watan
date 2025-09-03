@@ -15,14 +15,39 @@ export default function LoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setError(null);
+    setLoading(true); 
+    setError(null);
     try {
-      const res = await api.post('/auth/login', { emailOrUsername: identifier, password }, { validateStatus: () => true });
-      if (res.status >= 300) throw new Error((res.data as any)?.message || 'فشل الدخول');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      const res = await api.post('/auth/login', 
+        { emailOrUsername: identifier, password }, 
+        { 
+          validateStatus: () => true,
+          signal: controller.signal,
+          timeout: 30000
+        }
+      );
+      
+      clearTimeout(timeoutId);
+      if (res.status >= 300) {
+        throw new Error((res.data as any)?.message || 'فشل الدخول');
+      }
+      
       const token = (res.data as any).token || (res.data as any).access_token;
-      localStorage.setItem('token', token);
-      document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
-      // استخرج الدور من التوكن (Base64 URL) وضعه في كوكي ليستفيد منه middleware
+      
+      if (!token) {
+        throw new Error('لم يتم استلام رمز الدخول من الخادم');
+      }
+      
+      try {
+        localStorage.setItem('token', token);
+        document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
+      } catch (storageError) {
+        console.warn('Failed to store token:', storageError);
+        throw new Error('فشل في حفظ بيانات الدخول');
+      }
       try {
         if (token && typeof token === 'string' && token.includes('.')) {
           const parts = token.split('.');
@@ -35,20 +60,21 @@ export default function LoginPage() {
             }
           }
         }
-      } catch {}
-      // تحديد مسار الوجهة:
-      // 1) احترام باراميتر next إن وُجد (ومسار داخلي آمن)
-      // 2) وإلا اختر حسب الدور
+      } catch (tokenError) {
+        console.warn('Failed to parse token for role:', tokenError);
+      }
       let nextDest: string | null = null;
-      // سنقوم دائماً بفك التوكن وفرض القيود (حتى لو وُجد query next) ثم بعد السماح نقرر الوجهة
       let decodedRole = '';
+      
       try {
         const url = new URL(window.location.href);
         const candidate = url.searchParams.get('next');
         if (candidate && /^\//.test(candidate) && !/^\/api\b/.test(candidate)) {
-          nextDest = candidate; // سنعيد التحقق لاحقاً
+          nextDest = candidate;
         }
-      } catch {}
+      } catch (urlError) {
+        console.warn('Failed to parse URL for next parameter:', urlError);
+      }
       try {
         if (token && typeof token === 'string' && token.includes('.')) {
           const parts = token.split('.');
@@ -78,7 +104,6 @@ export default function LoginPage() {
             document.cookie = 'role=; Max-Age=0; path=/';
             localStorage.removeItem('token');
             setError('غير مسموح: بريد غير مُخوَّل (قائمة المطورين)');
-            setLoading(false);
             return;
           }
         } else if (isApex) {
@@ -86,7 +111,6 @@ export default function LoginPage() {
           document.cookie = 'role=; Max-Age=0; path=/';
           localStorage.removeItem('token');
           setError('الدخول عبر النطاق الرئيسي مقصور على المطوّر. استخدم نطاق المتجر (subdomain).');
-          setLoading(false);
           return;
         }
             // الآن تحديد الوجهة (إذا كانت nextDest موجودة نتحقق من صلاحيتها)
@@ -113,10 +137,28 @@ export default function LoginPage() {
           }
         }
       } catch { nextDest = '/'; }
-      router.push(nextDest || '/');
-    } catch (e:any) {
-      setError(e?.message || 'فشل الدخول');
-    } finally { setLoading(false); }
+      try {
+        await router.push(nextDest || '/');
+      } catch (routerError) {
+        console.warn('Router navigation failed:', routerError);
+        window.location.href = nextDest || '/';
+      }
+      
+    } catch (e: any) {
+      console.error('Login error:', e);
+      
+      if (e.name === 'AbortError') {
+        setError('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى.');
+      } else if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
+        setError('انتهت مهلة الاتصال. تحقق من اتصال الإنترنت.');
+      } else if (e.message?.includes('Network Error')) {
+        setError('خطأ في الشبكة. تحقق من اتصال الإنترنت.');
+      } else {
+        setError(e?.message || 'فشل الدخول');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const doPasskeyLogin = async () => {
