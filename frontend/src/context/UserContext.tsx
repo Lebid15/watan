@@ -59,20 +59,26 @@ export function UserProvider({ children }: { children: ReactNode }) {
     let fallback: Partial<User> | null = null;
     let decodedRole: string | null = null;
     try {
-  const payloadPart = (effectiveToken || '').split('.')[1];
-      const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-      const json = JSON.parse(typeof atob !== 'undefined' ? atob(b64) : Buffer.from(b64, 'base64').toString());
-      if (json?.sub) {
-  decodedRole = (json.role || 'user').toLowerCase();
-  if (decodedRole && ['instance_owner','owner','admin'].includes(decodedRole)) decodedRole = 'tenant_owner';
-        fallback = {
-          id: json.sub,
-          email: json.email || '',
-          name: json.fullName || json.email || 'User',
-          role: decodedRole || 'user',
-          balance: 0,
-          currency: 'USD', // افتراضي للمطور أو أي مستخدم بلا بيانات تفصيلية
-        } as User;
+      if (!effectiveToken || typeof effectiveToken !== 'string' || !effectiveToken.includes('.')) {
+      } else {
+        const parts = effectiveToken.split('.');
+        if (parts.length === 3 && parts[1]) {
+          const payloadPart = parts[1];
+          const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+          const json = JSON.parse(typeof atob !== 'undefined' ? atob(b64) : Buffer.from(b64, 'base64').toString());
+          if (json?.sub) {
+            decodedRole = (json.role || 'user').toLowerCase();
+            if (decodedRole && ['instance_owner','owner','admin'].includes(decodedRole)) decodedRole = 'tenant_owner';
+            fallback = {
+              id: json.sub,
+              email: json.email || '',
+              name: json.fullName || json.email || 'User',
+              role: decodedRole || 'user',
+              balance: 0,
+              currency: 'USD', // افتراضي للمطور أو أي مستخدم بلا بيانات تفصيلية
+            } as User;
+          }
+        }
       }
     } catch {}
 

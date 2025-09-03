@@ -47,8 +47,10 @@ export function usePasskeys() {
       if (verifyRes.status >= 300 || !(verifyRes.data as any)?.access_token) throw new Error((verifyRes.data as any)?.message || 'فشل تسجيل الدخول');
       
       const token = (verifyRes.data as any).access_token as string;
-      localStorage.setItem('token', token);
-      document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
+      if (token && typeof token === 'string') {
+        localStorage.setItem('token', token);
+        document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
+      }
       return verifyRes.data;
     } catch (e: any) {
       setError(e?.message || 'خطأ في تسجيل الدخول بـ Passkey');
