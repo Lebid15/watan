@@ -323,4 +323,14 @@ export class UserService {
     await this.usersRepository.save(user);
     return { ok: true };
   }
+  async findAnyByEmailOrUsername(identifier: string, relations: string[] = []) {
+  if (!identifier) return null;
+  return this.usersRepository.findOne({
+    where: [
+      { email: identifier },        // أي مستأجر
+      { username: identifier },
+    ],
+    relations,
+  });
+}
 }
