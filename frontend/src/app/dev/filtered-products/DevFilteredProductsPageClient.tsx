@@ -37,5 +37,185 @@ export default function DevFilteredProductsPageClient(){
   useEffect(()=>{ if(!productSelectOpen) return; const fn = (e:MouseEvent)=>{ if(!dropdownRef.current) return; if(!dropdownRef.current.contains(e.target as any)) setProductSelectOpen(false); }; window.addEventListener('mousedown',fn); return ()=> window.removeEventListener('mousedown',fn); },[productSelectOpen]);
   const productOptions = useMemo(()=>{ if(!q) return products; return products.filter(p=> p.name.toLowerCase().includes(q.toLowerCase())); },[products,q]);
 
-  return (<div className="space-y-4">{/* retained original UI truncated for brevity */}<h1 className="text-2xl font-bold">كل المنتجات (Dev2)</h1></div>);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">كل المنتجات (Dev2)</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={() => router.push('/dev/filtered-products/new')}
+            className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+          >
+            منتج جديد
+          </button>
+          <button
+            onClick={() => setCloneOpen(!cloneOpen)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            استنساخ من العالمي
+          </button>
+        </div>
+      </div>
+
+      {loading && <div className="text-sm">تحميل...</div>}
+      {error && <div className="text-sm text-red-600">{error}</div>}
+
+      <div className="relative" ref={dropdownRef}>
+        <button
+          onClick={() => setProductSelectOpen(!productSelectOpen)}
+          className="flex items-center gap-2 px-3 py-2 border rounded bg-white"
+        >
+          <span className="text-sm">
+            {selectedProductId ? products.find(p => p.id === selectedProductId)?.name || 'منتج محدد' : 'كل المنتجات'}
+          </span>
+          <span className="text-xs">▼</span>
+        </button>
+        
+        {productSelectOpen && (
+          <div className="absolute top-full left-0 mt-1 w-64 bg-white border rounded shadow-lg z-10">
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="بحث..."
+              className="w-full px-3 py-2 border-b text-sm"
+            />
+            <div className="max-h-48 overflow-y-auto">
+              <button
+                onClick={() => { setSelectedProductId(undefined); setProductSelectOpen(false); }}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100"
+              >
+                كل المنتجات
+              </button>
+              {productOptions.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => { setSelectedProductId(p.id); setProductSelectOpen(false); }}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100"
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border rounded">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="px-4 py-2 text-right">#</th>
+              <th className="px-4 py-2 text-right">الاسم</th>
+              <th className="px-4 py-2 text-right">الباقات</th>
+              <th className="px-4 py-2 text-right">نشط</th>
+              <th className="px-4 py-2 text-right">إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((product, index) => (
+              <tr key={product.id} className="odd:bg-white even:bg-gray-50">
+                <td className="px-4 py-2">{index + 1}</td>
+                <td className="px-4 py-2 font-medium">{product.name}</td>
+                <td className="px-4 py-2">{product.packages.length}</td>
+                <td className="px-4 py-2">
+                  <span className={`inline-block w-3 h-3 rounded-full ${product.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
+                </td>
+                <td className="px-4 py-2">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => router.push(`/dev/filtered-products/${product.id}`)}
+                      className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      تعديل
+                    </button>
+                    <button
+                      onClick={() => deleteProduct(product.id)}
+                      disabled={deleting[product.id]}
+                      className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {deleting[product.id] ? 'حذف...' : 'حذف'}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  لا توجد منتجات
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {cloneOpen && (
+        <div className="bg-white border rounded p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold">استنساخ من المنتجات العالمية</h3>
+            <button
+              onClick={() => setCloneOpen(false)}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ✕
+            </button>
+          </div>
+          
+          {globalLoading && <div className="text-sm">تحميل المنتجات العالمية...</div>}
+          
+          <div className="space-y-2">
+            <input
+              value={globalQ}
+              onChange={e => setGlobalQ(e.target.value)}
+              placeholder="بحث في المنتجات العالمية..."
+              className="w-full px-3 py-2 border rounded text-sm"
+            />
+            
+            <div className="max-h-48 overflow-y-auto border rounded">
+              {globalProducts
+                .filter(p => !globalQ || p.name?.toLowerCase().includes(globalQ.toLowerCase()))
+                .map(p => (
+                  <div key={p.id} className="flex items-center justify-between p-2 hover:bg-gray-50">
+                    <span className="text-sm">{p.name}</span>
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`استنساخ المنتج "${p.name}"؟`)) return;
+                        setCloning(true);
+                        try {
+                          await api.post('/dev/filtered-products/clone', { globalProductId: p.id });
+                          await load();
+                          setCloneOpen(false);
+                        } catch (e: any) {
+                          alert(e?.response?.data?.message || e?.message || 'فشل الاستنساخ');
+                        } finally {
+                          setCloning(false);
+                        }
+                      }}
+                      disabled={cloning}
+                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {cloning ? 'استنساخ...' : 'استنساخ'}
+                    </button>
+                  </div>
+                ))}
+            </div>
+            
+            <button
+              onClick={loadGlobal}
+              className="w-full px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+            >
+              تحديث القائمة
+            </button>
+          </div>
+        </div>
+      )}
+
+      {backendMeta.gitSha && (
+        <div className="text-xs text-gray-500">
+          Build: {backendMeta.gitSha?.substring(0, 8)} | {backendMeta.buildTime}
+        </div>
+      )}
+    </div>
+  );
 }
