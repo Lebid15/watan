@@ -109,4 +109,13 @@ export class User {
   // Phase4: تمكين واجهة API خارجية (nullable حتى التفعيل اليدوي)
   @Column({ type: 'boolean', nullable: true, default: false })
   apiEnabled?: boolean | null;
+
+  @Column({ type: 'boolean', default: true }) mfaRequired: boolean;
+  @Column({ type: 'boolean', default: false }) forceTotpEnroll: boolean;
+  @Column({ type: 'integer', default: 0 }) totpFailedAttempts: number;
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz',
+    nullable: true,
+  })
+  totpLockedUntil?: Date | null;
 }

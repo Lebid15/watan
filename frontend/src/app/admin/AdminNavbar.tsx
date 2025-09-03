@@ -46,7 +46,6 @@ export default function AdminNavbar() {
         { name: 'المظهر', href: '/admin/settings/theme' },
         { name: 'من نحن', href: '/admin/settings/about' },
         { name: 'تعليمات', href: '/admin/settings/infoes' },
-  { name: 'مفاتيح المرور', href: '/admin/settings/passkeys' },
         { name: 'إعادة تعيين كلمة المرور', href: '/admin/settings/password-reset' },
       ],
     },

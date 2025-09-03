@@ -38,7 +38,7 @@ export class PasskeysController {
   @Post('options/register')
   async optionsRegister(@Req() req: any, @Body() body: { label?: string }) {
     const label = (body?.label || '').trim() || undefined;
-    return this.svc.startRegistration(req.user, label);
+    throw new BadRequestException('Passkeys disabled - use TOTP authentication');
   }
 
   // Debug (temporary)
@@ -57,9 +57,7 @@ export class PasskeysController {
   @UseGuards(JwtAuthGuard)
   @Post('register')
   async register(@Req() req: any, @Body() body: any) {
-    const tenantId = req.user.tenantId ?? null;
-    const origin = req.headers.origin as string;
-    return this.svc.finishRegistration(req.user, body, tenantId, origin);
+    throw new BadRequestException('Passkeys disabled - use TOTP authentication');
   }
 
   // Get authentication (login) options (no JWT)
@@ -89,12 +87,7 @@ export class PasskeysController {
 
     if (!user) throw new NotFoundException('User not found');
 
-    const { options, challengeRef } = await this.svc.startAuthentication(user);
-    return {
-      options,
-      challengeRef,
-      userHint: { id: user.id, tenantId: user.tenantId ?? null },
-    };
+    throw new BadRequestException('Passkeys disabled - use TOTP authentication');
   }
 
   // Finish authentication (login) with passkey
@@ -124,24 +117,7 @@ export class PasskeysController {
 
     if (!user) throw new NotFoundException('User not found');
 
-    const origin = req.headers.origin as string;
-    const result = await this.svc.finishAuthentication(
-      user,
-      { response: body.response, challengeRef: body.challengeRef },
-      origin,
-    );
-
-    const login = await this.auth.login(user, result.tenantId ?? user.tenantId ?? null);
-    try {
-      await this.audit.log('passkey_login_token', {
-        actorUserId: user.id,
-        targetUserId: user.id,
-        targetTenantId: login.user.tenantId ?? null,
-        meta: { via: 'passkey' },
-      });
-    } catch {}
-
-    return login;
+    throw new BadRequestException('Passkeys disabled - use TOTP authentication');
   }
 
   // Delete a registered passkey

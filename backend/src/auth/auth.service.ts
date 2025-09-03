@@ -6,12 +6,14 @@ import * as argon2 from 'argon2';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { User } from '../user/user.entity';
+import { TotpService } from './totp/totp.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
+    private readonly totpService: TotpService,
   ) {}
 
   async validateByEmailOrUsername(
@@ -67,12 +69,60 @@ export class AuthService {
 
   async login(user: any, tenantIdFromContext: string | null) {
     const effectiveTenantId: string | null = user.tenantId ?? tenantIdFromContext ?? null;
-
+    
+    const totpEnabled = await this.totpService.hasTotpEnabled(user.id);
+    
+    if (!totpEnabled || user.forceTotpEnroll) {
+      const payload = {
+        email: user.email,
+        sub: user.id,
+        role: user.role ?? 'user',
+        tenantId: effectiveTenantId,
+        setupMode: true,
+        totpVerified: false,
+      };
+      
+      return {
+        access_token: this.jwtService.sign(payload, { expiresIn: '1h' }),
+        requiresSetup: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role ?? 'user',
+          tenantId: effectiveTenantId,
+        },
+      };
+    }
+    
     const payload = {
       email: user.email,
       sub: user.id,
       role: user.role ?? 'user',
       tenantId: effectiveTenantId,
+      totpVerified: false,
+      setupMode: false,
+    };
+
+    return {
+      access_token: this.jwtService.sign(payload, { expiresIn: '10m' }),
+      requiresTotp: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role ?? 'user',
+        tenantId: effectiveTenantId,
+      },
+    };
+  }
+
+  async completeTotpLogin(user: any, tenantId: string | null) {
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      role: user.role ?? 'user',
+      tenantId,
+      totpVerified: true,
+      setupMode: false,
     };
 
     return {
@@ -86,7 +136,7 @@ export class AuthService {
         phoneNumber: user.phoneNumber ?? null,
         priceGroupId: user.priceGroup?.id || null,
         priceGroupName: user.priceGroup?.name || null,
-        tenantId: effectiveTenantId,
+        tenantId,
       },
     };
   }

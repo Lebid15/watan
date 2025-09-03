@@ -90,14 +90,6 @@ export const API_ROUTES = {
     changePassword: `${EFFECTIVE_API_BASE_URL}/auth/change-password`,
   forgotPassword: `${EFFECTIVE_API_BASE_URL}/auth/password/forgot`,
   resetPassword: `${EFFECTIVE_API_BASE_URL}/auth/password/reset`,
-    passkeys: {
-      list: `${EFFECTIVE_API_BASE_URL}/auth/passkeys`,
-      regOptions: `${EFFECTIVE_API_BASE_URL}/auth/passkeys/registration/options`,
-      regVerify: `${EFFECTIVE_API_BASE_URL}/auth/passkeys/registration/verify`,
-      authOptions: `${EFFECTIVE_API_BASE_URL}/auth/passkeys/authentication/options`,
-      authVerify: `${EFFECTIVE_API_BASE_URL}/auth/passkeys/authentication/verify`,
-      delete: (id: string) => `${EFFECTIVE_API_BASE_URL}/auth/passkeys/${id}`,
-    },
   },
 
   users: {
@@ -503,12 +495,6 @@ api.interceptors.response.use(
         }
       } else if (status === 401) {
         const p = window.location.pathname || '';
-        const isPasskeysPage = p === '/user/passkeys' || p === '/admin/settings/passkeys';
-        const isPasskeysEndpoint = typeof error?.config?.url === 'string' && /\/auth\/passkeys/.test(error.config.url);
-        // قمع التوجيه العام لو كان 401 قادم من passkeys خارج الصفحة المخصصة
-        if (isPasskeysEndpoint && !isPasskeysPage) {
-          return Promise.reject(error);
-        }
         const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
         const onAuthPages  = p === '/login' || p === '/register';
         if (!inBackoffice && !onAuthPages) {
