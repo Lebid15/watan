@@ -13,11 +13,9 @@ export default function ProductsNavbar() {
     { name: 'ربط المستخدمين بالأسعار', href: '/admin/products/price-groups/users' },
     { name: 'العملات', href: '/admin/products/currencies' },
     { name: 'إعدادات API', href: '/admin/products/api-settings' },
-    // ⬇️ جديد: بجانب إعدادات API
-    { name: 'تفعيل الكتالوج', href: '/admin/products/catalog-setup' },
     { name: 'الأكواد الرقمية', href: '/admin/products/codes' },
     { name: 'توجيه الباقات', href: '/admin/products/package-routing' },
-    { name: 'تحليل الصور', href: '/admin/products/image-adoption' },
+    // محذوف مؤقتًا: تفعيل الكتالوج, تحليل الصور
   ];
 
   const isActive = (href: string) => {

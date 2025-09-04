@@ -12,7 +12,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   const router = useRouter();
   const search = useSearchParams();
   const isMobileFrame = search.get('mobile') === '1';
-  const alertMessage = 'تنبيه: تم تحديث النظام، يرجى مراجعة صفحة الطلبات لمعرفة التفاصيل.';
+  const [alertMessage, setAlertMessage] = useState('تنبيه: تم تحديث النظام، يرجى مراجعة صفحة الطلبات لمعرفة التفاصيل.');
 
   useEffect(() => {
     let mounted = true;
@@ -34,6 +34,14 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     })();
     return () => { mounted = false; };
   }, [router]);
+
+  // تحميل ملاحظة إدارية مخصصة إن وُجدت في localStorage
+  useEffect(() => {
+    try {
+      const note = localStorage.getItem('adminGlobalAlert');
+      if (note && note.trim()) setAlertMessage(note.trim());
+    } catch {}
+  }, []);
 
   const handleLogout = async () => {
     try { await api.post('/auth/logout'); } catch {}

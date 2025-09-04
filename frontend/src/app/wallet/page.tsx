@@ -1,7 +1,7 @@
 // src/app/wallet/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useAuthRequired } from '@/hooks/useAuthRequired';
 import { ErrorResponse } from '@/types/common';
@@ -190,6 +190,16 @@ export default function WalletPage() {
       ? 'ring-danger/30'
       : 'ring-warning/30';
 
+  // ترتيب السجلات: قيد المراجعة ثم مقبول ثم مرفوض، وداخل كل حالة الأحدث أولاً
+  const orderedRows = useMemo(() => {
+    const weight = (s: DepositStatus) => (s === 'pending' ? 0 : s === 'approved' ? 1 : 2);
+    return [...rows].sort((a, b) => {
+      const dw = weight(a.status) - weight(b.status);
+      if (dw !== 0) return dw;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [rows]);
+
   return (
     <div
       className="min-h-screen p-4 max-w-2xl mx-auto bg-bg-base text-text-primary"
@@ -207,7 +217,7 @@ export default function WalletPage() {
       ) : (
         <>
           <div className="space-y-3">
-            {rows.map((r) => {
+            {orderedRows.map((r) => {
               const isOpen = openId === r.id;
               return (
                 <div

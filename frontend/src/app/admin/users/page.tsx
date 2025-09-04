@@ -180,7 +180,8 @@ export default function AdminUsersPage() {
               <thead>
                 <tr className="bg-bg-surface-alt text-center">
                   <th className="border border-border p-2">اسم المستخدم</th>
-                  <th className="border border-border p-2">البريد الإلكتروني</th>
+                  {/** مخفي بناءً على طلب: عمود البريد الإلكتروني */}
+                  {/** <th className="border border-border p-2">البريد الإلكتروني</th> */}
                   <th className="border border-border p-2">الرصيد</th>
                   <th className="border border-border p-2">الحالة</th>
                   <th className="border border-border p-2">إجراءات</th>
@@ -202,7 +203,8 @@ export default function AdminUsersPage() {
                   return (
                     <tr key={u.id} className="text-center hover:bg-bg-surface-alt">
                       <td className="border border-border p-2">{u.username ?? '-'}</td>
-                      <td className="border border-border p-2">{u.email}</td>
+                      {/** مخفي بناءً على طلب: عمود البريد الإلكتروني */}
+                      {/** <td className="border border-border p-2">{u.email}</td> */}
                       <td className="border border-border p-2">{balanceDisplay}</td>
                       <td className="border border-border p-2">
                         <button

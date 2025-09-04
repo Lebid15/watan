@@ -14,6 +14,11 @@ function DevSettingsContent() {
             الأمان
           </Link>
         </li>
+        <li>
+          <Link href="/dev/settings/admin-note" className="text-link">
+            إرسال ملاحظة
+          </Link>
+        </li>
       </ul>
     </div>
   );

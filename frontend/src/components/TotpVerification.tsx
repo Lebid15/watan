@@ -58,10 +58,8 @@ export default function TotpVerification({ onSuccess, onCancel }: TotpVerificati
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-xl font-semibold mb-2">المصادقة الثنائية</h2>
-        <p className="text-text-secondary">
-          أدخل الرمز من تطبيق المصادقة أو استخدم رمز احتياطي
-        </p>
+        <h2 className="text-xl font-bold mb-2 text-black">المصادقة الثنائية</h2>
+        <p className="text-sm text-gray-600">أدخل الرمز من تطبيق المصادقة أو استخدم رمزًا احتياطيًا.</p>
       </div>
 
       <div>
@@ -69,29 +67,26 @@ export default function TotpVerification({ onSuccess, onCancel }: TotpVerificati
           type="text"
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
-          placeholder="123456"
-          className="w-full text-center text-2xl font-mono py-3 border rounded-lg"
+          className="w-full text-center tracking-widest text-2xl font-mono py-3 border-2 border-gray-300 rounded-lg focus:border-black focus:outline-none text-black bg-white"
           maxLength={8}
           autoFocus
         />
-        <p className="text-xs text-text-secondary mt-2 text-center">
-          رمز من 6 أرقام أو رمز احتياطي من 8 أحرف
-        </p>
+        <p className="text-xs text-gray-500 mt-2 text-center">رمز من 6 أرقام أو رمز احتياطي من 8 أحرف</p>
       </div>
 
       <div className="flex gap-3">
         <button
-          onClick={onCancel}
-          className="flex-1 bg-bg-surface-alt text-text-primary py-3 rounded-lg hover:bg-bg-surface-alt/80"
-        >
-          إلغاء
-        </button>
-        <button
           onClick={handleVerify}
           disabled={loading || !code}
-          className="flex-1 bg-primary text-white py-3 rounded-lg hover:bg-primary-hover disabled:opacity-50"
+          className="flex-1 bg-black text-white py-3 rounded-lg hover:bg-gray-800 disabled:opacity-50 transition"
         >
           {loading ? 'جاري التحقق...' : 'تحقق'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="flex-1 bg-gray-200 text-black py-3 rounded-lg hover:bg-gray-300 transition"
+        >
+          إلغاء
         </button>
       </div>
     </div>

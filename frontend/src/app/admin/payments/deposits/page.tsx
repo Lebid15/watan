@@ -139,6 +139,18 @@ export default function AdminDepositsPage() {
     return rows.filter(r => r.status === activeTab);
   }, [rows, activeTab]);
 
+  // ترتيب: قيد المراجعة أولاً ثم مقبول ثم مرفوض، وداخل كل حالة الأحدث أولاً
+  const sorted = useMemo(() => {
+    const weight = (s: DepositStatus) => (s === 'pending' ? 0 : s === 'approved' ? 1 : 2);
+    // ننسخ لتجنب تعديل الحالة الأصلية
+    return [...filtered].sort((a, b) => {
+      const dw = weight(a.status) - weight(b.status);
+      if (dw !== 0) return dw;
+      // الأحدث أولاً
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [filtered]);
+
   const buildUrl = (params: Record<string, string>) =>
     `${API_ROUTES.admin.deposits.base}?${new URLSearchParams(params).toString()}`;
 
@@ -245,7 +257,7 @@ export default function AdminDepositsPage() {
 
         {loading ? (
           <div className="text-text-secondary">جارِ التحميل...</div>
-        ) : filtered.length === 0 ? (
+  ) : sorted.length === 0 ? (
           <div className="text-text-secondary">لا توجد سجلات.</div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
@@ -264,7 +276,7 @@ export default function AdminDepositsPage() {
               </thead>
 
               <tbody>
-                {filtered.map((r) => {
+                {sorted.map((r) => {
                   const userLabel =
                     r.user?.username ||
                     r.user?.email ||

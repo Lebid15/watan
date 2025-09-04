@@ -13,7 +13,7 @@ interface UpdatePricesResponse {
 
 interface PriceGroup { id: string; name: string; }
 interface PackagePrice { id: string | null; price: number; groupId: string; groupName: string; }
-interface ProductPackage { id: string; name: string; capital: number; prices: PackagePrice[]; }
+interface ProductPackage { id: string; productId: string; name: string; capital: number; prices: PackagePrice[]; }
 interface ProductDTO {
   id: string; name: string;
   packages: { id: string; name: string; capital?: number; basePrice?: number; prices?: any[] }[];
@@ -328,12 +328,12 @@ export default function PriceGroupsPage() {
       const pList: { id: string; name: string; packageIds: string[] }[] = [];
       let allPkgs: ProductPackage[] = [];
 
-      for (const prod of data) {
+    for (const prod of data) {
         const pkgIds: string[] = [];
         for (const pkg of (prod.packages ?? [])) {
           const capital = toNumberSafe(pkg?.basePrice ?? pkg?.capital ?? 0);
           const prices = normalizePrices(pkg?.prices);
-          allPkgs.push({ id: pkg.id, name: pkg.name, capital, prices });
+      allPkgs.push({ id: pkg.id, productId: prod.id, name: pkg.name, capital, prices });
           pkgIds.push(pkg.id);
         }
         pList.push({ id: prod.id, name: prod.name, packageIds: pkgIds });
@@ -603,70 +603,78 @@ export default function PriceGroupsPage() {
         </button>
       </div>
 
-      {/* الجدول */}
-      <div className="table-wrap overflow-auto">
-        <table className="table min-w-[900px]">
-          <thead>
-            <tr>
-              <th>اسم الباقة</th>
-              <th>رأس المال (USD)</th>
-              {priceGroups.map((group) => (
-                <th key={group.id}>{group.name}</th>
-              ))}
-              <th className="w-28">الحالة</th>
-            </tr>
-          </thead>
-          <tbody>
-            {packages.map((pkg) => (
-              <tr key={pkg.id} className="hover:bg-primary/5">
-                <td className="font-medium">{pkg.name}</td>
-
-                <td>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={
-                      capitalDraft[pkg.id] ?? format2(pkg.capital)
-                    }
-                    onFocus={() => onCapitalFocus(pkg.id)}
-                    onChange={(e) => onCapitalChange(pkg.id, e.target.value)}
-                    onBlur={() => onCapitalBlur(pkg.id)}
-                    onKeyDown={(e) => onCapitalKeyDown(pkg.id, e)}
-                    className="input w-32"
-                  />
-                </td>
-
-                {priceGroups.map((group) => {
-                  const price = pkg.prices.find((p) => p.groupId === group.id)?.price ?? 0;
-                  const draft = priceDraft[pkg.id]?.[group.id];
-
-                  return (
-                    <td key={group.id}>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={draft ?? format2(price)}
-                        onFocus={() => onPriceFocus(pkg.id, group.id, price)}
-                        onChange={(e) => onPriceChange(pkg.id, group.id, e.target.value)}
-                        onBlur={() => onPriceBlur(pkg.id, group.id)}
-                        onKeyDown={(e) => onPriceKeyDown(pkg.id, group.id, e)}
-                        className="input w-32"
-                      />
-                    </td>
-                  );
-                })}
-
-                <td className="text-sm text-center">
-                  {savingMap[pkg.id] ? (
-                    <span className="text-warning">يحفظ…</span>
-                  ) : (
-                    <span className="text-green-600">✓ محفوظ</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* جداول منفصلة لكل منتج */}
+      <div className="space-y-10">
+        {productsList.map(prod => {
+          const prodPkgs = packages.filter(p => p.productId === prod.id);
+          if (!prodPkgs.length) return null;
+          return (
+            <div key={prod.id} className="border border-border rounded-xl overflow-hidden bg-bg-surface">
+              <div className="px-4 py-3 bg-bg-surface-alt flex items-center justify-between">
+                <h3 className="font-bold text-text-primary">{prod.name}</h3>
+                <span className="text-xs text-text-secondary">عدد الباقات: {prodPkgs.length}</span>
+              </div>
+              <div className="table-wrap overflow-auto">
+                <table className="table min-w-[900px]">
+                  <thead>
+                    <tr>
+                      <th>اسم الباقة</th>
+                      <th>رأس المال (USD)</th>
+                      {priceGroups.map((group) => (
+                        <th key={group.id}>{group.name}</th>
+                      ))}
+                      <th className="w-28">الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {prodPkgs.map(pkg => (
+                      <tr key={pkg.id} className="hover:bg-primary/5">
+                        <td className="font-medium">{pkg.name}</td>
+                        <td>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={capitalDraft[pkg.id] ?? format2(pkg.capital)}
+                            onFocus={() => onCapitalFocus(pkg.id)}
+                            onChange={(e) => onCapitalChange(pkg.id, e.target.value)}
+                            onBlur={() => onCapitalBlur(pkg.id)}
+                            onKeyDown={(e) => onCapitalKeyDown(pkg.id, e)}
+                            className="input w-32"
+                          />
+                        </td>
+                        {priceGroups.map(group => {
+                          const price = pkg.prices.find(p => p.groupId === group.id)?.price ?? 0;
+                          const draft = priceDraft[pkg.id]?.[group.id];
+                          return (
+                            <td key={group.id}>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={draft ?? format2(price)}
+                                onFocus={() => onPriceFocus(pkg.id, group.id, price)}
+                                onChange={(e) => onPriceChange(pkg.id, group.id, e.target.value)}
+                                onBlur={() => onPriceBlur(pkg.id, group.id)}
+                                onKeyDown={(e) => onPriceKeyDown(pkg.id, group.id, e)}
+                                className="input w-32"
+                              />
+                            </td>
+                          );
+                        })}
+                        <td className="text-sm text-center">
+                          {savingMap[pkg.id] ? (
+                            <span className="text-warning">يحفظ…</span>
+                          ) : (
+                            <span className="text-green-600">✓ محفوظ</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* نافذة التسعير الجماعي */}
