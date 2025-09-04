@@ -5,7 +5,7 @@ import api from '@/utils/api';
 import { useToast } from '@/context/ToastContext';
 
 interface TotpVerificationProps {
-  onSuccess: (token: string) => void;
+  onSuccess: (token: string) => void; // token parameter kept for compatibility (returns entered code)
   onCancel: () => void;
 }
 
@@ -24,12 +24,22 @@ export default function TotpVerification({ onSuccess, onCancel }: TotpVerificati
     try {
       const { data } = await api.post('/auth/totp/verify', { token: code });
       if (data.verified) {
-        if (data.token) {
-          try {
-            localStorage.setItem('token', data.token);
-            document.cookie = `access_token=${data.token}; Path=/; Max-Age=${60*60*24*7}`;
-          } catch {}
-        }
+        // ترقية التوكن: نقل pre_token إلى token (إن لم يرجع الخادم توكن نهائي)
+        let finalToken = data.token;
+        try {
+          if (!finalToken) {
+            // fallback: قد يكون verify أعاد نفس التوكن ضمن data.token لاحقًا
+            finalToken = data.token;
+          }
+          if (!finalToken) {
+            finalToken = localStorage.getItem('pre_token') || '';
+          }
+          if (finalToken) {
+            localStorage.setItem('token', finalToken);
+            localStorage.removeItem('pre_token');
+            document.cookie = `access_token=${finalToken}; Path=/; Max-Age=${60*60*24*7}`;
+          }
+        } catch {}
         onSuccess(code);
       } else {
         show('رمز التحقق غير صحيح');

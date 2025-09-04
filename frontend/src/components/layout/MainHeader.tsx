@@ -60,6 +60,7 @@ export default function MainHeader() {
   const curr = (user?.currency || 'USD').toUpperCase();
   const sym = currencySymbol(curr);
 
+  const isEndUser = user && !['tenant_owner','distributor','developer'].includes((user.role||'').toLowerCase());
   return (
     <header className="fixed top-0 left-0 w-full z-50 bg-bg-surface text-text-primary px-6 py-3 shadow">
       <div className="flex justify-between items-center">
@@ -108,13 +109,15 @@ export default function MainHeader() {
                   >
                     المفضلة
                   </button>
-                  <button
-                    role="menuitem"
-                    className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
-                    onClick={() => { setOpen(false); router.push('/user/security'); }}
-                  >
-                    الحماية
-                  </button>
+                  {isEndUser && (
+                    <button
+                      role="menuitem"
+                      className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
+                      onClick={() => { setOpen(false); router.push('/security'); }}
+                    >
+                      الأمان
+                    </button>
+                  )}
 
                   <div className="my-1 border-t border-border" />
 

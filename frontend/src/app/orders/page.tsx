@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useUser } from '@/context/UserContext';
 import api, { API_ROUTES } from '@/utils/api';
 import { formatGroupsDots } from '@/utils/format';
 import { useAuthRequired } from '@/hooks/useAuthRequired';
@@ -58,7 +59,12 @@ function extractProviderNote(raw?: string | null): string | null {
   return s || null;
 }
 
-function resolvePriceView(order: Order): { currencyCode: string; total: number; unit?: number } {
+function resolvePriceView(
+  order: Order,
+  userCurrency: string,
+  conversionRate: number
+): { currencyCode: string; total: number; unit?: number } {
+  // إذا كان الباك إند بالفعل يرسل display نستخدمه كما هو
   if (order.display && typeof order.display.totalPrice === 'number') {
     return {
       currencyCode: order.display.currencyCode,
@@ -66,8 +72,16 @@ function resolvePriceView(order: Order): { currencyCode: string; total: number; 
       unit: typeof order.display.unitPrice === 'number' ? Number(order.display.unitPrice) : undefined,
     };
   }
+  // fallback: قيم بالدولار
   const totalUSD = Number(order.priceUSD ?? 0);
-  const unitUSD  = order.unitPriceUSD != null ? Number(order.unitPriceUSD) : undefined;
+  const unitUSD = order.unitPriceUSD != null ? Number(order.unitPriceUSD) : undefined;
+  if (userCurrency && userCurrency !== 'USD' && conversionRate > 0) {
+    return {
+      currencyCode: userCurrency,
+      total: totalUSD * conversionRate,
+      unit: unitUSD == null ? undefined : unitUSD * conversionRate,
+    };
+  }
   return { currencyCode: 'USD', total: totalUSD, unit: unitUSD };
 }
 
@@ -98,6 +112,9 @@ const toLocalYMD = (d = new Date()) =>
 
 export default function OrdersPage() {
   useAuthRequired();
+  const { user } = useUser();
+  const userCurrency = (user as any)?.currency || (user as any)?.currencyCode || 'USD';
+  const [conversionRate, setConversionRate] = useState<number>(1);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,6 +183,28 @@ export default function OrdersPage() {
     };
     fetchOrders();
   }, []);
+
+  // جلب معدل التحويل لعملة المستخدم (مقابل 1 USD) إن لم تكن USD
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchRate() {
+      try {
+        if (!userCurrency || userCurrency === 'USD') { setConversionRate(1); return; }
+        const res = await api.get<any[]>(API_ROUTES.currencies.base);
+        const list = Array.isArray(res.data) ? res.data : [];
+        // نحاول العثور على حقل يمثل العملة: code + (rate أو factor أو value)
+        const row = list.find((c:any) => (c.code || c.currency || c.symbol) === userCurrency);
+        if (row) {
+          const rate = Number(row.rate ?? row.factor ?? row.value ?? row.usdRate ?? 0);
+          if (!cancelled && rate > 0) setConversionRate(rate);
+        }
+      } catch (e) {
+        // تجاهل بصمت؛ سنبقى على USD إن فشل
+      }
+    }
+    fetchRate();
+    return () => { cancelled = true; };
+  }, [userCurrency]);
 
   // ========== تحميل المزيد ==========
   async function loadMore() {
@@ -315,7 +354,7 @@ export default function OrdersPage() {
         <>
           <div className="space-y-3">
             {filteredOrders.map((order) => {
-              const view = resolvePriceView(order);
+              const view = resolvePriceView(order, userCurrency, conversionRate);
               const totalText = Number(view.total).toFixed(2);
               const dt = new Date(order.createdAt);
               return (
@@ -369,7 +408,7 @@ export default function OrdersPage() {
               <div className="text-center py-6 text-danger">{detailsError}</div>
             ) : (() => {
               const base = details || (selectedOrder as OrderDetails);
-              const view = resolvePriceView(base);
+              const view = resolvePriceView(base, userCurrency, conversionRate);
               const totalNum = Number(view.total) || 0;
               return (
                 <div className="space-y-3">
