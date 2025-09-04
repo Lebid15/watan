@@ -163,12 +163,14 @@ export class ProductsService {
 
       let sellTRY: number; let costTRY: number; let profitTRY: number;
       if (isFrozen) {
-        sellTRY = Number((frozen.sellTryAtApproval ?? 0).toFixed(2));
-        costTRY = Number((frozen.costTryAtApproval ?? 0).toFixed(2));
-        const profitFrozen = frozen.profitTryAtApproval != null
+        sellTRY = Number(frozen.sellTryAtApproval ?? 0);
+        costTRY = Number(frozen.costTryAtApproval ?? 0);
+        const profitFrozenRaw = frozen.profitTryAtApproval != null
           ? Number(frozen.profitTryAtApproval)
           : sellTRY - costTRY;
-        profitTRY = Number(profitFrozen.toFixed(2));
+        sellTRY = Number(sellTRY.toFixed(2));
+        costTRY = Number(costTRY.toFixed(2));
+        profitTRY = Number(profitFrozenRaw.toFixed(2));
       } else {
         if (isExternal) {
           const amt = Math.abs(Number(order.costAmount ?? 0));
@@ -1551,13 +1553,15 @@ export class ProductsService {
       let profitTRY: number;
 
       if (isFrozen) {
-        sellTRY = Number((frozen.sellTryAtApproval ?? 0).toFixed(2));
-        costTRY = Number((frozen.costTryAtApproval ?? 0).toFixed(2));
-        const profitFrozen =
+        sellTRY = Number(frozen.sellTryAtApproval ?? 0);
+        costTRY = Number(frozen.costTryAtApproval ?? 0);
+        const profitFrozenRaw =
           frozen.profitTryAtApproval != null
             ? Number(frozen.profitTryAtApproval)
             : sellTRY - costTRY;
-        profitTRY = Number(profitFrozen.toFixed(2));
+        sellTRY = Number(sellTRY.toFixed(2));
+        costTRY = Number(costTRY.toFixed(2));
+        profitTRY = Number(profitFrozenRaw.toFixed(2));
       } else {
         if (isExternal) {
           const amt = Math.abs(Number(order.costAmount ?? 0));
