@@ -184,7 +184,9 @@ function StatusDot({
 /* ============== أدوات مساعدة ============== */
 function money(n?: number, c?: string) {
   if (n === undefined || n === null) return '-';
-  return `${Number(n).toFixed(2)} ${c ?? ''}`.trim();
+  // استبدال TRY بالرمز المحلي TL في العرض فقط
+  const code = c === 'TRY' ? 'TL' : c;
+  return `${Number(n).toFixed(2)} ${code ?? ''}`.trim();
 }
 function fmtHMS(totalMs: number) {
   const ms = Math.max(0, totalMs);
@@ -1103,27 +1105,27 @@ export default function AdminOrdersPage() {
                     {o.package?.name ?? '-'}
                   </td>
 
-                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
-                    <div className="leading-tight">
-                      <div>{o.userIdentifier ?? '-'}</div>
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e w-28 max-w-[7rem]">
+                    <div className="leading-tight max-w-[7rem] mx-auto">
+                      <div className="truncate font-mono text-xs" title={o.userIdentifier ?? '-' }>{o.userIdentifier ?? '-'}</div>
                       {o.extraField ? (
-                        <div className="text-xs text-text-secondary mt-0.5 break-all">{o.extraField}</div>
+                        <div className="text-[10px] text-text-secondary mt-0.5 break-all max-w-[7rem]" title={o.extraField}>{o.extraField}</div>
                       ) : null}
                     </div>
                   </td>
 
-                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
-                    <div className="text-xs font-medium text-text-secondary">
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
+                    <div className="text-[10px] font-medium text-text-secondary">
                       {o.costUsdAtOrder != null ? `$${Number(o.costUsdAtOrder).toFixed(2)}` : (o.costTRY != null || o.costAmount != null ? '$-' : '-')}
                     </div>
-                    <div className="text-accent">{money(o.costTRY ?? o.costAmount, o.currencyTRY ?? o.costCurrency)}</div>
+                    <div className="text-accent font-semibold">{money(o.costTRY ?? o.costAmount, o.currencyTRY ?? o.costCurrency)}</div>
                   </td>
 
-                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
-                    <div className="text-xs font-medium text-text-secondary">
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
+                    <div className="text-[10px] font-medium text-text-secondary">
                       {o.sellUsdAtOrder != null ? `$${Number(o.sellUsdAtOrder).toFixed(2)}` : (o.sellTRY != null || o.sellPriceAmount != null || o.price != null ? '$-' : '-')}
                     </div>
-                    <div>{money(
+                    <div className="font-semibold">{money(
                       o.sellTRY ?? o.sellPriceAmount ?? o.price,
                       o.currencyTRY ?? o.sellPriceCurrency
                     )}</div>
@@ -1131,7 +1133,7 @@ export default function AdminOrdersPage() {
 
                   <td
                     className={[
-                      'text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight',
+                      'text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]',
                       (o.profitTRY ??
                         ((o.sellTRY ?? o.sellPriceAmount ?? o.price) as number) -
                           (o.costTRY ?? o.costAmount ?? 0)) > 0
@@ -1143,14 +1145,14 @@ export default function AdminOrdersPage() {
                         : '',
                     ].join(' ')}
                   >
-                    <div className="text-xs font-medium text-text-secondary">
+                    <div className="text-[10px] font-medium text-text-secondary">
                       {o.profitUsdAtOrder != null
                         ? `$${Number(o.profitUsdAtOrder).toFixed(2)}`
                         : (o.sellUsdAtOrder != null && o.costUsdAtOrder != null
                             ? `$${Number((Number(o.sellUsdAtOrder) - Number(o.costUsdAtOrder))).toFixed(2)}`
                             : (o.profitTRY != null || o.sellTRY != null ? '$-' : '-'))}
                     </div>
-                    <div>{money(
+                    <div className="font-semibold">{money(
                       o.profitTRY ??
                         (Number(o.sellTRY ?? o.sellPriceAmount ?? o.price) || 0) -
                           (Number(o.costTRY ?? o.costAmount) || 0),
