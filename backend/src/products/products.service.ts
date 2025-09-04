@@ -15,6 +15,11 @@ import { InternalOrderStatus } from './product-order.entity';
 import { decodeCursor, encodeCursor, toEpochMs } from '../utils/pagination';
 import { isFeatureEnabled } from '../common/feature-flags';
 import { IntegrationsService } from '../integrations/integrations.service';
+// Auto-dispatch related entities
+import { PackageRouting } from '../integrations/package-routing.entity';
+import { PackageMapping } from '../integrations/package-mapping.entity';
+import { PackageCost } from '../integrations/package-cost.entity';
+import { OrderDispatchLog } from './order-dispatch-log.entity';
 import { AccountingPeriodsService } from '../accounting/accounting-periods.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -35,6 +40,11 @@ export class ProductsService {
     private readonly integrations: IntegrationsService,
     private readonly accounting: AccountingPeriodsService,
     private readonly notifications: NotificationsService,
+  // Repos for auto-dispatch (lazy optional – injected only if entity registered)
+  @InjectRepository(PackageRouting) private readonly routingRepo: Repository<PackageRouting>,
+  @InjectRepository(PackageMapping) private readonly mappingRepo: Repository<PackageMapping>,
+  @InjectRepository(PackageCost) private readonly costRepo: Repository<PackageCost>,
+  @InjectRepository(OrderDispatchLog) private readonly dispatchLogRepo: Repository<OrderDispatchLog>,
   ) {}
 
   async listOrdersForAdmin(query: any, tenantId?: string) {
@@ -1146,9 +1156,120 @@ export class ProductsService {
     // if (!effectiveTenantId) throw new BadRequestException('tenantId is required');
 
     if (order.providerId || order.externalOrderId || order.status !== 'pending')
-      return;
+      return; // already dispatched or not pending
 
-    return;
+    // 1) Load routing rule for this package & tenant
+    let routing: PackageRouting | null = null;
+    try {
+      routing = await this.routingRepo.findOne({
+        where: { package: { id: (order as any).package.id } as any, tenantId: effectiveTenantId } as any,
+        relations: ['package'],
+      });
+    } catch {}
+    if (!routing) return; // no routing configured
+    if (routing.mode !== 'auto') return; // manual routing – skip
+    if (routing.providerType !== 'external') return; // we only auto-dispatch to external providers for now
+    if (!routing.primaryProviderId) return; // nothing to send to
+
+    const providerId = routing.primaryProviderId;
+
+    // 2) Ensure mapping exists
+    const mapping = await this.mappingRepo.findOne({
+      where: {
+        our_package_id: (order as any).package.id as any,
+        provider_api_id: providerId as any,
+        tenantId: effectiveTenantId as any,
+      } as any,
+    });
+    if (!mapping) return; // can't dispatch without mapping
+
+    // 3) Build payload (keep extra separate; provider driver merges if needed)
+    //    We purposely DO NOT concatenate extraField + userIdentifier here to avoid duplication problem you observed.
+    const providerProducts = await this.integrations.syncProducts(providerId, effectiveTenantId);
+    let oyun: string | undefined; let kupur: string | undefined;
+    const matched = providerProducts.find((p: any) => String(p.externalId) === String((mapping as any).provider_package_id));
+    if (matched?.meta) {
+      oyun = matched.meta.oyun ?? matched.meta.oyun_bilgi_id ?? undefined;
+      kupur = matched.meta.kupur ?? undefined;
+    }
+
+    const payload = {
+      productId: String((mapping as any).provider_package_id),
+      qty: Number((order as any).quantity ?? 1),
+      params: {
+        oyuncu_bilgi: (order as any).userIdentifier ?? undefined,
+        extra: (order as any).extraField ?? undefined,
+        oyun,
+        kupur,
+      },
+      clientOrderUuid: order.id,
+    };
+
+    // 4) Fetch cost snapshot (optional)
+    let costCurrency = 'USD';
+    let costAmount = 0;
+    try {
+      const costRow = await this.costRepo.findOne({
+        where: { package: { id: (order as any).package.id } as any, providerId: providerId as any, tenantId: effectiveTenantId } as any,
+        relations: ['package'],
+      });
+      if (costRow) {
+        costCurrency = (costRow as any).costCurrency || costCurrency;
+        const amt = Number((costRow as any).costAmount || 0);
+        if (amt > 0) costAmount = amt;
+      } else {
+        // fallback to package base price
+        costAmount = Number(((order as any).package as any)?.basePrice ?? ((order as any).package as any)?.capital ?? 0);
+      }
+    } catch {}
+
+    const logBase: Partial<OrderDispatchLog> = {
+      order: { id: order.id } as any,
+      action: 'dispatch' as any,
+      attemptsBefore: Number((order as any).attempts || 0),
+    } as any;
+
+    try {
+      const res = await this.integrations.placeOrder(providerId, effectiveTenantId, payload);
+      const externalOrderId = (res as any)?.externalOrderId ?? null;
+      const statusRaw: string = (res as any)?.providerStatus ?? ((res as any)?.mappedStatus as any) ?? 'sent';
+      const message: string =
+        ((res as any)?.raw && (((res as any).raw.message as any) || (res as any).raw.desc || (res as any).raw.raw)) || 'sent';
+
+      (order as any).providerId = providerId;
+      (order as any).externalOrderId = externalOrderId;
+      (order as any).externalStatus = this.mapMappedToExternalStatus(statusRaw);
+      (order as any).sentAt = new Date();
+      (order as any).lastSyncAt = new Date();
+      (order as any).lastMessage = String(message ?? '').slice(0, 250);
+      (order as any).attempts = ((order as any).attempts ?? 0) + 1;
+      (order as any).costCurrency = costCurrency;
+      (order as any).costAmount = Number(costAmount.toFixed(2));
+      const sell = Number((order as any).sellPriceAmount ?? (order as any).price ?? 0);
+      (order as any).profitAmount = Number((sell - (order as any).costAmount).toFixed(2));
+      await this.ordersRepo.save(order);
+
+      // log success
+      await this.dispatchLogRepo.save(
+        this.dispatchLogRepo.create({
+          ...(logBase as any),
+          result: 'success',
+          message,
+          payloadSnapshot: { providerId, payload, response: res },
+        }),
+      );
+      await this.addOrderNote(order.id, 'system', `Auto-dispatch → ext=${(order as any).externalStatus}, msg=${message}`);
+    } catch (e: any) {
+      await this.dispatchLogRepo.save(
+        this.dispatchLogRepo.create({
+          ...(logBase as any),
+          result: 'fail',
+          message: String(e?.message || 'auto-dispatch failed').slice(0, 250),
+          payloadSnapshot: { providerId, payload, error: { message: e?.message, stack: e?.stack } },
+        }),
+      );
+      await this.addOrderNote(order.id, 'system', `Auto-dispatch failed: ${String(e?.message || 'unknown')}`);
+    }
 
   }
 
