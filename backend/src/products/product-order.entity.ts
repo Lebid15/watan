@@ -74,6 +74,18 @@ export class ProductOrder {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   profitAmount: number;
 
+  /** 🔒 لقطة سعر البيع بالدولار وقت إنشاء الطلب (ثابت لا يتغير مع تغيّر أسعار الصرف) */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  sellUsdAtOrder?: number | null;
+
+  /** 🔒 لقطة التكلفة بالدولار وقت إنشاء الطلب (إن توفرت/محسوبة، وإلا تُملأ لاحقاً عند أول معرفة) */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  costUsdAtOrder?: number | null;
+
+  /** 🔒 لقطة الربح بالدولار عند الإنشاء (sellUsdAtOrder - costUsdAtOrder) */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  profitUsdAtOrder?: number | null;
+
   /** الحالة الداخلية */
   @Column({ type: 'varchar', default: 'pending' })
   status: InternalOrderStatus;

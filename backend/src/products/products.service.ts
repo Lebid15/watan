@@ -38,7 +38,216 @@ export class ProductsService {
   ) {}
 
   async listOrdersForAdmin(query: any, tenantId?: string) {
-    return { items: [], pageInfo: { hasMore: false, nextCursor: null }, meta: {} };
+    // NOTE: Admin هنا تعني مالك التينانت (INSTANCE_OWNER) فقط حسب الطلب.
+    // ندعم: status, q (رقم طلب أو بريد/يوزر), from/to بتاريخ YYYY-MM-DD, method(مزود/يدوي), limit, cursor
+    const dto: ListOrdersDto = query || {};
+    const limit = Math.min(Math.max(Number(dto.limit) || 25, 1), 100);
+
+    // فك المؤشر (cursor = createdAt|id بصيغة epochMs:id)
+    let cursorCreatedAt: number | null = null;
+    let cursorId: string | null = null;
+    if (dto.cursor) {
+      const decoded = decodeCursor(dto.cursor);
+      if (decoded) {
+        cursorCreatedAt = decoded.ts;
+        cursorId = decoded.id;
+      }
+    }
+
+    // تحميل العملات للتينانت للحساب TRY
+    const currencies = await (tenantId
+      ? this.currenciesRepo.find({ where: { tenantId } as any })
+      : this.currenciesRepo.find());
+    const getRate = (code: string) => {
+      const row = currencies.find(
+        (c) => c.code.toUpperCase() === code.toUpperCase(),
+      );
+      return row ? Number(row.rate) : undefined;
+    };
+    const TRY_RATE = getRate('TRY') ?? 1;
+    const toTRY = (amount: number, code?: string) => {
+      const c = (code || 'TRY').toUpperCase();
+      if (c === 'TRY') return amount;
+      const r = getRate(c);
+      if (!r || !Number.isFinite(r) || r <= 0) return amount;
+      return amount * (TRY_RATE / r);
+    };
+
+    const pickImage = (obj: any): string | null => {
+      if (!obj) return null;
+      return (
+        obj.imageUrl ||
+        obj.image ||
+        obj.logoUrl ||
+        obj.iconUrl ||
+        obj.icon ||
+        null
+      );
+    };
+
+    // مقدمي الخدمة (قد نحتاج نوع المزود لتطبيع التكلفة الخارجية)
+    const integrations = await this.integrations.list(String(tenantId));
+    const providersMap = new Map<string, string>();
+    for (const it of integrations as any[]) providersMap.set(it.id, it.provider);
+
+    const qb = this.ordersRepo
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.user', 'user')
+      .leftJoinAndSelect('user.currency', 'currency')
+      .leftJoinAndSelect('o.product', 'product')
+      .leftJoinAndSelect('o.package', 'package')
+      .where('o.tenantId = :tid', { tid: tenantId })
+      .orderBy('o.createdAt', 'DESC')
+      .addOrderBy('o.id', 'DESC');
+
+    if (dto.status) qb.andWhere('o.status = :status', { status: dto.status });
+
+    if (dto.q) {
+      const q = dto.q.trim();
+      if (/^\d+$/.test(q)) {
+        // بحث برقم الطلب
+        qb.andWhere('(o."orderNo" = :qInt OR o.id = :qId)', { qInt: Number(q), qId: q });
+      } else {
+        qb.andWhere(
+          new Brackets((b) => {
+            b.where('LOWER(user.email) LIKE :q').orWhere('LOWER(user.username) LIKE :q');
+          }),
+          { q: `%${q.toLowerCase()}%` },
+        );
+      }
+    }
+
+    if (dto.from) qb.andWhere('DATE(o.createdAt) >= :from', { from: dto.from });
+    if (dto.to) qb.andWhere('DATE(o.createdAt) <= :to', { to: dto.to });
+
+    if (dto.method) {
+      if (dto.method === 'manual') {
+        qb.andWhere('o.providerId IS NULL');
+      } else if (dto.method !== '') {
+        qb.andWhere('o.providerId = :pid', { pid: dto.method });
+      }
+    }
+
+    if (cursorCreatedAt && cursorId) {
+      qb.andWhere(
+        '(o.createdAt < :cAt OR (o.createdAt = :cAt AND o.id < :cId))',
+        { cAt: new Date(cursorCreatedAt), cId: cursorId },
+      );
+    }
+
+    qb.take(limit + 1); // لجلب عنصر زائد لمعرفة hasMore
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > limit;
+    const slice = hasMore ? rows.slice(0, limit) : rows;
+
+    // جمع IDs الموافقَة للحصول على اللقطات المجمدة (كما في getAllOrders)
+    const approvedIds = slice.filter((o) => o.status === 'approved').map((o) => o.id);
+    let frozenMap = new Map<string, any>();
+    if (approvedIds.length) {
+      const snapRows = await this.ordersRepo.query(
+        `SELECT id, COALESCE("fxLocked", false) AS "fxLocked", "sellTryAtApproval", "costTryAtApproval", "profitTryAtApproval", "approvedLocalDate"
+         FROM "product_orders" WHERE id = ANY($1::uuid[])`,
+        [approvedIds],
+      );
+      frozenMap = new Map(snapRows.map((r: any) => [String(r.id), r]));
+    }
+
+    const items = slice.map((order) => {
+      const priceUSD = Number(order.price) || 0;
+      const unitPriceUSD = order.quantity ? priceUSD / Number(order.quantity) : priceUSD;
+      const providerType = order.providerId ? providersMap.get(order.providerId) : undefined;
+      const isExternal = !!(order.providerId && order.externalOrderId);
+      const frozen = frozenMap.get(order.id);
+      const isFrozen = !!(frozen && frozen.fxLocked && order.status === 'approved');
+
+      let sellTRY: number; let costTRY: number; let profitTRY: number;
+      if (isFrozen) {
+        sellTRY = Number((frozen.sellTryAtApproval ?? 0).toFixed(2));
+        costTRY = Number((frozen.costTryAtApproval ?? 0).toFixed(2));
+        const profitFrozen = frozen.profitTryAtApproval != null
+          ? Number(frozen.profitTryAtApproval)
+          : sellTRY - costTRY;
+        profitTRY = Number(profitFrozen.toFixed(2));
+      } else {
+        if (isExternal) {
+          const amt = Math.abs(Number(order.costAmount ?? 0));
+            let cur = String(order.costCurrency || '').toUpperCase().trim();
+            if (providerType === 'znet') cur = 'TRY';
+            if (!cur) cur = 'USD';
+            costTRY = toTRY(amt, cur);
+        } else {
+          const baseUSD = Number((order as any).package?.basePrice ?? (order as any).package?.capital ?? 0);
+          const qty = Number(order.quantity ?? 1);
+          costTRY = baseUSD * qty * TRY_RATE;
+        }
+        sellTRY = priceUSD * TRY_RATE;
+        profitTRY = sellTRY - costTRY;
+        sellTRY = Number(sellTRY.toFixed(2));
+        costTRY = Number(costTRY.toFixed(2));
+        profitTRY = Number(profitTRY.toFixed(2));
+      }
+
+      const userRate = order.user?.currency ? Number(order.user.currency.rate) : 1;
+      const userCode = order.user?.currency ? order.user.currency.code : 'USD';
+      const totalUser = priceUSD * userRate;
+      const unitUser = unitPriceUSD * userRate;
+
+      const sellUsdSnap = (order as any).sellUsdAtOrder != null ? Number((order as any).sellUsdAtOrder) : priceUSD;
+      const costUsdSnap = (order as any).costUsdAtOrder != null ? Number((order as any).costUsdAtOrder) : null;
+      const profitUsdSnap = (order as any).profitUsdAtOrder != null
+        ? Number((order as any).profitUsdAtOrder)
+        : (costUsdSnap != null ? Number((sellUsdSnap - costUsdSnap).toFixed(4)) : null);
+
+      return {
+        id: order.id,
+        orderNo: (order as any).orderNo ?? null,
+        username: (order.user as any)?.username ?? null,
+        status: order.status,
+        externalStatus: (order as any).externalStatus,
+        externalOrderId: order.externalOrderId ?? null,
+        providerId: order.providerId ?? null,
+        quantity: order.quantity,
+        price: totalUser,
+        currencyCode: userCode,
+        unitPrice: unitUser,
+  priceUSD: sellUsdSnap, // استخدم اللقطة الثابتة لعرض USD
+  unitPriceUSD: order.quantity ? sellUsdSnap / Number(order.quantity) : sellUsdSnap,
+        display: { currencyCode: userCode, unitPrice: unitUser, totalPrice: totalUser },
+        currencyTRY: 'TRY',
+        sellTRY, costTRY, profitTRY,
+  sellUsdAtOrder: sellUsdSnap,
+  costUsdAtOrder: costUsdSnap,
+  profitUsdAtOrder: profitUsdSnap,
+        costAmount: order.costAmount ?? null,
+        costCurrency: order.costCurrency ?? null,
+        fxLocked: isFrozen,
+        approvedLocalDate: frozen?.approvedLocalDate ?? null,
+        sentAt: order.sentAt ? order.sentAt.toISOString() : null,
+        lastSyncAt: (order as any).lastSyncAt ? (order as any).lastSyncAt.toISOString() : null,
+        completedAt: order.completedAt ? order.completedAt.toISOString() : null,
+        createdAt: order.createdAt.toISOString(),
+        userEmail: order.user?.email || 'غير معروف',
+        extraField: (order as any).extraField ?? null,
+        product: { id: order.product?.id, name: order.product?.name, imageUrl: pickImage((order as any).product) },
+        package: { id: order.package?.id, name: order.package?.name, imageUrl: pickImage((order as any).package) },
+        providerMessage: (order as any).providerMessage ?? (order as any).lastMessage ?? null,
+        pinCode: (order as any).pinCode ?? null,
+        notesCount: Array.isArray((order as any).notes) ? (order as any).notes.length : 0,
+        manualNote: (order as any).manualNote ?? null,
+        lastMessage: (order as any).lastMessage ?? null,
+      };
+    });
+
+    const nextCursor = hasMore
+      ? encodeCursor(slice[slice.length - 1].createdAt.getTime(), slice[slice.length - 1].id)
+      : null;
+
+    return {
+      items,
+      pageInfo: { hasMore, nextCursor },
+      meta: { count: items.length },
+    };
   }
 
   // معرف التينانت الخاص بالمطور (مستودع عالمي)
@@ -1026,6 +1235,13 @@ export class ProductsService {
         extraField: extraField ?? null,
       });
 
+  // 🔒 لقطة USD وقت الإنشاء (price هو إجمالي البيع بالدولار بالفعل)
+  (order as any).sellUsdAtOrder = totalUSD;
+  const baseCostPerUnit = Number((pkg as any).basePrice ?? (pkg as any).capital ?? 0) || 0;
+  const costUsdSnapshot = baseCostPerUnit * Number(quantity);
+  (order as any).costUsdAtOrder = costUsdSnapshot;
+  (order as any).profitUsdAtOrder = Number((totalUSD - costUsdSnapshot).toFixed(4));
+
       // Phase2/3: تحديد الموزّع الجذر (سواء المستخدم نفسه موزّع أو مستخدم فرعي له parentUserId)
       let rootDistributor: any = null;
       const userAny: any = user as any;
@@ -1376,6 +1592,12 @@ export class ProductsService {
       const totalUser = priceUSD * userRate;
       const unitUser = unitPriceUSD * userRate;
 
+      const sellUsdSnap = (order as any).sellUsdAtOrder != null ? Number((order as any).sellUsdAtOrder) : priceUSD;
+      const costUsdSnap = (order as any).costUsdAtOrder != null ? Number((order as any).costUsdAtOrder) : null;
+      const profitUsdSnap = (order as any).profitUsdAtOrder != null
+        ? Number((order as any).profitUsdAtOrder)
+        : (costUsdSnap != null ? Number((sellUsdSnap - costUsdSnap).toFixed(4)) : null);
+
       return {
         id: order.id,
         orderNo: (order as any).orderNo ?? null,
@@ -1387,11 +1609,11 @@ export class ProductsService {
 
         quantity: order.quantity,
 
-        price: totalUser,
-        currencyCode: userCode,
-        unitPrice: unitUser,
-        priceUSD,
-        unitPriceUSD,
+  price: totalUser,
+  currencyCode: userCode,
+  unitPrice: unitUser,
+  priceUSD: sellUsdSnap,
+  unitPriceUSD: order.quantity ? sellUsdSnap / Number(order.quantity) : sellUsdSnap,
         display: {
           currencyCode: userCode,
           unitPrice: unitUser,
@@ -1403,7 +1625,10 @@ export class ProductsService {
         costTRY,
         profitTRY,
 
-        costAmount: order.costAmount ?? null,
+  sellUsdAtOrder: sellUsdSnap,
+  costUsdAtOrder: costUsdSnap,
+  profitUsdAtOrder: profitUsdSnap,
+  costAmount: order.costAmount ?? null,
         costCurrency: order.costCurrency ?? null,
 
         fxLocked: isFrozen,

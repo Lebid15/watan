@@ -116,6 +116,11 @@ interface Order {
   profitTRY?: number;
   currencyTRY?: string;
 
+  // 🔒 لقطات USD عند إنشاء الطلب
+  sellUsdAtOrder?: number;
+  costUsdAtOrder?: number | null;
+  profitUsdAtOrder?: number | null;
+
   providerId?: string | null;
   providerName?: string | null;
   externalOrderId?: string | null;
@@ -595,6 +600,11 @@ export default function AdminOrdersPage() {
       sellTRY:   sellTRY   != null ? Number(sellTRY)   : undefined,
       profitTRY: profitTRY != null ? Number(profitTRY) : undefined,
       currencyTRY: currencyTRY ?? undefined,
+
+  // === لقطات USD ===
+  sellUsdAtOrder: firstOf<number>(x, 'sellUsdAtOrder') != null ? Number(firstOf<number>(x, 'sellUsdAtOrder')) : undefined,
+  costUsdAtOrder: firstOf<number>(x, 'costUsdAtOrder') != null ? Number(firstOf<number>(x, 'costUsdAtOrder')) : null,
+  profitUsdAtOrder: firstOf<number>(x, 'profitUsdAtOrder') != null ? Number(firstOf<number>(x, 'profitUsdAtOrder')) : null,
 
       providerId,
       providerName,
@@ -1102,22 +1112,26 @@ export default function AdminOrdersPage() {
                     </div>
                   </td>
 
-                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
-                    <span className="text-accent">
-                      {money(o.costTRY ?? o.costAmount, o.currencyTRY ?? o.costCurrency)}
-                    </span>
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
+                    <div className="text-xs font-medium text-text-secondary">
+                      {o.costUsdAtOrder != null ? `$${Number(o.costUsdAtOrder).toFixed(2)}` : (o.costTRY != null || o.costAmount != null ? '$-' : '-')}
+                    </div>
+                    <div className="text-accent">{money(o.costTRY ?? o.costAmount, o.currencyTRY ?? o.costCurrency)}</div>
                   </td>
 
-                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
-                    {money(
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
+                    <div className="text-xs font-medium text-text-secondary">
+                      {o.sellUsdAtOrder != null ? `$${Number(o.sellUsdAtOrder).toFixed(2)}` : (o.sellTRY != null || o.sellPriceAmount != null || o.price != null ? '$-' : '-')}
+                    </div>
+                    <div>{money(
                       o.sellTRY ?? o.sellPriceAmount ?? o.price,
                       o.currencyTRY ?? o.sellPriceCurrency
-                    )}
+                    )}</div>
                   </td>
 
                   <td
                     className={[
-                      'text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e',
+                      'text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight',
                       (o.profitTRY ??
                         ((o.sellTRY ?? o.sellPriceAmount ?? o.price) as number) -
                           (o.costTRY ?? o.costAmount ?? 0)) > 0
@@ -1129,12 +1143,19 @@ export default function AdminOrdersPage() {
                         : '',
                     ].join(' ')}
                   >
-                    {money(
+                    <div className="text-xs font-medium text-text-secondary">
+                      {o.profitUsdAtOrder != null
+                        ? `$${Number(o.profitUsdAtOrder).toFixed(2)}`
+                        : (o.sellUsdAtOrder != null && o.costUsdAtOrder != null
+                            ? `$${Number((Number(o.sellUsdAtOrder) - Number(o.costUsdAtOrder))).toFixed(2)}`
+                            : (o.profitTRY != null || o.sellTRY != null ? '$-' : '-'))}
+                    </div>
+                    <div>{money(
                       o.profitTRY ??
                         (Number(o.sellTRY ?? o.sellPriceAmount ?? o.price) || 0) -
                           (Number(o.costTRY ?? o.costAmount) || 0),
                       o.currencyTRY ?? (o.sellPriceCurrency || o.costCurrency)
-                    )}
+                    )}</div>
                   </td>
 
                   <td className="bg-bg-surface p-2 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
