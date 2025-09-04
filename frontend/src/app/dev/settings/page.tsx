@@ -1,13 +1,30 @@
 'use client';
 import Link from 'next/link';
+import { Suspense } from 'react';
 
-export default function DevSettingsIndex(){
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+
+function DevSettingsContent() {
   return (
     <div className="p-6" dir="rtl">
       <h1 className="text-2xl font-bold mb-4">الإعدادات (Dev)</h1>
       <ul className="list-disc pr-6 space-y-2">
-        <li><Link href="/dev/settings/security" className="text-link">الأمان</Link></li>
+        <li>
+          <Link href="/dev/settings/security" className="text-link">
+            الأمان
+          </Link>
+        </li>
       </ul>
     </div>
+  );
+}
+
+export default function DevSettingsIndex() {
+  return (
+    <Suspense fallback={null}>
+      <DevSettingsContent />
+    </Suspense>
   );
 }
