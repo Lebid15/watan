@@ -11,8 +11,8 @@ interface PriceGroup {
 
 interface User {
   id: string;
-  email: string; // محفوظ لكن لن يُعرض الآن
-  username?: string | null;
+  email: string; // محفوظ للبحث وعدم العرض
+  username?: string | null; // الاسم الحقيقي (من /admin/users)
   priceGroupId?: string | null;
 }
 
@@ -24,26 +24,51 @@ export default function LinkUsersPricesPage() {
   const [search, setSearch] = useState('');
 
   const fetchUsers = async (): Promise<User[]> => {
-    const res = await api.get<any[]>(API_ROUTES.users.withPriceGroup);
-    return res.data
-      .map((u) => {
-        const rawUsername = u.username ?? u.userName ?? null;
-        // اشتقاق اسم مستخدم من الجزء قبل @ إذا لم يوجد اسم صريح
-        const derived = rawUsername && String(rawUsername).trim().length > 0
-          ? String(rawUsername).trim()
-          : (u.email ? String(u.email).split('@')[0] : null);
-        return {
-          id: u.id,
-            email: u.email, // محفوظ فقط للبحث وعدم العرض
-          username: derived,
+    // نجلب قائمتين: واحدة فيها معلومات الربط (priceGroup) وأخرى فيها الاسم الصحيح
+    const [withGroupRes, baseRes] = await Promise.all([
+      api.get<any[]>(API_ROUTES.users.withPriceGroup),
+      api.get<any[]>(API_ROUTES.users.base),
+    ]);
+
+    const withGroupArr = withGroupRes.data || [];
+    const baseArr = baseRes.data || [];
+
+    // خرائط سريعة
+    const groupMap = new Map<string, { priceGroupId: string | null }>();
+    for (const u of withGroupArr) {
+      groupMap.set(String(u.id), { priceGroupId: u.priceGroup?.id ?? null });
+    }
+
+    const result: User[] = [];
+    for (const u of baseArr) {
+      const id = String(u.id);
+      const email: string = u.email;
+      const rawUsername: string | null = (u.username ?? u.userName ?? '').trim() || null;
+      const username = rawUsername || null; // لا نشتق من البريد هنا؛ نريد الاسم الحقيقي فقط
+      const priceGroupId = groupMap.get(id)?.priceGroupId ?? null;
+      result.push({ id, email, username, priceGroupId });
+    }
+
+    // قد يوجد مستخدمون لديهم priceGroup لكن غير موجودين في baseArr (نضيفهم احتياطياً)
+    for (const u of withGroupArr) {
+      const id = String(u.id);
+      if (!result.find(r => r.id === id)) {
+        const email: string = u.email;
+        const rawUsername: string | null = (u.username ?? u.userName ?? '').trim() || null;
+        result.push({
+          id,
+          email,
+          username: rawUsername || null,
           priceGroupId: u.priceGroup?.id ?? null,
-        } as User;
-      })
-      .sort((a, b) => {
-        const an = (a.username || '').toLowerCase();
-        const bn = (b.username || '').toLowerCase();
-        return an.localeCompare(bn, 'ar');
-      });
+        });
+      }
+    }
+
+    return result.sort((a, b) => {
+      const an = (a.username || a.email || '').toLowerCase();
+      const bn = (b.username || b.email || '').toLowerCase();
+      return an.localeCompare(bn, 'ar');
+    });
   };
 
   const fetchGroups = async (): Promise<PriceGroup[]> => {
