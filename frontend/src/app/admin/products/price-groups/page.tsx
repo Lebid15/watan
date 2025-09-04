@@ -214,6 +214,8 @@ export default function PriceGroupsPage() {
   const [productsList, setProductsList] = useState<{ id: string; name: string; packageIds: string[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // فلتر المنتج (ALL = عرض كل المنتجات)
+  const [filterProductId, setFilterProductId] = useState<'ALL' | string>('ALL');
 
   const timersRef = useRef<Record<string, any>>({});
   const [savingMap, setSavingMap] = useState<Record<string, boolean>>({});
@@ -566,6 +568,11 @@ export default function PriceGroupsPage() {
     () => productsList.map(p => ({ value: p.id, label: p.name })),
     [productsList]
   );
+  // قائمة المنتجات المفلترة حسب اختيار المستخدم
+  const filteredProductsList = useMemo(
+    () => (filterProductId === 'ALL' ? productsList : productsList.filter(p => p.id === filterProductId)),
+    [productsList, filterProductId]
+  );
 
   if (loading) return <div className="p-4 text-text-primary">جارٍ التحميل...</div>;
   if (error) return <div className="p-4 text-danger">{error}</div>;
@@ -601,11 +608,22 @@ export default function PriceGroupsPage() {
         >
           🗑 حذف مجموعة
         </button>
+        {/* فلتر المنتج */}
+        <div className="min-w-[240px]">
+          <ComboBox
+            label="فلتر المنتج"
+            value={filterProductId}
+            onChange={(v) => setFilterProductId(v as any)}
+            options={productOptions}
+            allLabel="الكل"
+            placeholder="اختر المنتج"
+          />
+        </div>
       </div>
 
       {/* جداول منفصلة لكل منتج */}
       <div className="space-y-10">
-        {productsList.map(prod => {
+  {filteredProductsList.map(prod => {
           const prodPkgs = packages.filter(p => p.productId === prod.id);
           if (!prodPkgs.length) return null;
           return (
