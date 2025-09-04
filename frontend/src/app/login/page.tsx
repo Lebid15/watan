@@ -123,7 +123,9 @@ export default function LoginPage() {
         if (payload?.role) document.cookie = `role=${payload.role}; Path=/; Max-Age=${60*60*24*7}`;
       } catch {}
 
-      const needsTotp = payload && (payload.totpPending === true || (payload.totpVerified === false && payload.setupMode));
+  // لا نُظهر خطوة TOTP إلا إذا كان الحساب قد فعّل TOTP مسبقًا ويجب التحقق الآن.
+  // الاعتماد فقط على totpPending أو requiresTotp (إن وُجد) لتفادي ظهور النافذة أثناء الإعداد الأولي.
+  const needsTotp = !!(payload?.totpPending || payload?.requiresTotp);
       if (needsTotp) {
         setPendingToken(token);
         setTotpPhase('verify');
