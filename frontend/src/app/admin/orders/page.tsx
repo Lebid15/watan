@@ -1076,10 +1076,9 @@ export default function AdminOrdersPage() {
                 ? (providerNameOf(o.providerId, o.providerName) ?? '(مزود محذوف)')
                 : 'Manual';
 
-              // 👈 احسب رابط الصورة: جرّب الباقة ثم المنتج
-              const logoSrc = buildImageSrc(
-                (pickImageField(o.package) ?? pickImageField(o.product)) || null
-              );
+              // 👈 احسب رابط الصورة: جرّب الحقول المباشرة ثم fallback من logos (تم جلبه عبر استدعاء منفصل)
+              const rawLogo = (pickImageField(o.package) ?? pickImageField(o.product)) || logoUrlOf(o);
+              const logoSrc = buildImageSrc(rawLogo || null);
 
               return (
                 <tr key={o.id} className="group">
