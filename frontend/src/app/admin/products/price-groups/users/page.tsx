@@ -22,6 +22,7 @@ export default function LinkUsersPricesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [currentUserId, setCurrentUserId] = useState('');
 
   const fetchUsers = async (): Promise<User[]> => {
     // نجلب قائمتين: واحدة فيها معلومات الربط (priceGroup) وأخرى فيها الاسم الصحيح
@@ -83,6 +84,14 @@ export default function LinkUsersPricesPage() {
       return;
     }
 
+    // نجلب هوية المستخدم الحالي لاستبعاده لاحقاً
+    (async () => {
+      try {
+        const { data } = await api.get<any>('/users/profile-with-currency');
+        if (data?.id) setCurrentUserId(String(data.id));
+      } catch {}
+    })();
+
     Promise.all([fetchUsers(), fetchGroups()])
       .then(([usersData, groupsData]) => {
         setUsers(usersData);
@@ -118,12 +127,10 @@ export default function LinkUsersPricesPage() {
   if (error) return <div className="p-4 text-danger">{error}</div>;
 
   const searchLower = search.trim().toLowerCase();
-  const filteredUsers = !searchLower
-    ? users
-    : users.filter(u =>
-        (u.username || '').toLowerCase().includes(searchLower) ||
-        (u.email || '').toLowerCase().includes(searchLower)
-      );
+  const filteredUsers = (!searchLower ? users : users.filter(u =>
+    (u.username || '').toLowerCase().includes(searchLower) ||
+    (u.email || '').toLowerCase().includes(searchLower)
+  )).filter(u => !currentUserId || u.id !== currentUserId); // استثناء المستخدم الحالي
 
   return (
     <div className="p-4 min-h-screen bg-bg-base text-text-primary">

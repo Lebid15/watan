@@ -23,6 +23,7 @@ export default function AdminUsersPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState('');
 
   // حالة نافذة الإضافة (+)
   const [topupOpen, setTopupOpen] = useState(false);
@@ -47,6 +48,16 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     loadUsers();
+  }, []);
+
+  // جلب هوية المستخدم الحالي لاستبعاده من القائمة
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get<any>('/users/profile-with-currency');
+        if (data?.id) setCurrentUserId(String(data.id));
+      } catch {}
+    })();
   }, []);
 
   const handleDelete = async (id: string) => {
@@ -140,6 +151,7 @@ export default function AdminUsersPage() {
   };
 
   const filtered = users.filter((u) => {
+    if (currentUserId && u.id === currentUserId) return false; // استثناء مالك الساب دومين (أو المستخدم الحالي)
     const t = search.toLowerCase();
     return (
       u.email.toLowerCase().includes(t) ||
