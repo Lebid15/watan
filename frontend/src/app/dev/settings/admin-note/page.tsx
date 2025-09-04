@@ -22,7 +22,11 @@ export default function DevAdminNotePage() {
       // محاولة استدعاء API مستقبلي (معلق حالياً)
       // await api.post('/admin/global-alert', { message: trimmed });
 
-      try { localStorage.setItem('adminGlobalAlert', trimmed); } catch {}
+      try {
+        localStorage.setItem('adminGlobalAlert', trimmed);
+        // أطلق حدثاً مخصصاً لتحديث اللوحات المفتوحة بدون إعادة تحميل
+        window.dispatchEvent(new Event('adminGlobalAlertUpdated'));
+      } catch {}
       setFeedback('تم حفظ الملاحظة (محلياً حالياً).');
     } catch (err: any) {
       setFeedback(err?.response?.data?.message || 'فشل حفظ الملاحظة');
@@ -32,7 +36,10 @@ export default function DevAdminNotePage() {
   };
 
   const clearNote = () => {
-    try { localStorage.removeItem('adminGlobalAlert'); } catch {}
+    try {
+      localStorage.removeItem('adminGlobalAlert');
+      window.dispatchEvent(new Event('adminGlobalAlertUpdated'));
+    } catch {}
     setNote('');
     setFeedback('تم حذف الملاحظة.');
   };

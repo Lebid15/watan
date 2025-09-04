@@ -12,7 +12,8 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   const router = useRouter();
   const search = useSearchParams();
   const isMobileFrame = search.get('mobile') === '1';
-  const [alertMessage, setAlertMessage] = useState('تنبيه: تم تحديث النظام، يرجى مراجعة صفحة الطلبات لمعرفة التفاصيل.');
+  // رسالة التنبيه العامة (يتم ضبطها من صفحة المطور). نتركها فارغة إن لم تُحدد.
+  const [alertMessage, setAlertMessage] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -35,12 +36,34 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     return () => { mounted = false; };
   }, [router]);
 
-  // تحميل ملاحظة إدارية مخصصة إن وُجدت في localStorage
-  useEffect(() => {
+  // دالة إعادة تحميل الملاحظة من localStorage
+  const loadAlert = () => {
     try {
       const note = localStorage.getItem('adminGlobalAlert');
-      if (note && note.trim()) setAlertMessage(note.trim());
-    } catch {}
+      if (note && note.trim()) {
+        setAlertMessage(note.trim());
+      } else {
+        setAlertMessage('');
+      }
+    } catch {
+      setAlertMessage('');
+    }
+  };
+
+  // تحميل أولي + تحديث عند تركيز النافذة أو تغيير الرؤية أو استقبال حدث مخصص
+  useEffect(() => {
+    loadAlert();
+    const onCustom = () => loadAlert();
+    const onFocus = () => loadAlert();
+    const onVis = () => { if (document.visibilityState === 'visible') loadAlert(); };
+    window.addEventListener('adminGlobalAlertUpdated', onCustom as any);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('adminGlobalAlertUpdated', onCustom as any);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []);
 
   const handleLogout = async () => {
