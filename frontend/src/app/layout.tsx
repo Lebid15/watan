@@ -14,12 +14,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `(function(){
               const path = window.location.pathname;
               const isBackoffice = path.startsWith('/admin') || path.startsWith('/dev');
-              
               const viewport = document.createElement('meta');
               viewport.name = 'viewport';
-              
-              viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
-              
+              // في لوحات التحكم نعرض التصميم الكامل (1280px) مصغراً على الشاشات الأصغر.
+              // نسمح بالتكبير للمستخدم (لا نضع maximum-scale=1) حتى يستطيع تكبير عناصر صغيرة.
+              viewport.content = isBackoffice
+                ? 'width=1280, initial-scale=1'
+                : 'width=device-width, initial-scale=1, viewport-fit=cover';
               document.head.appendChild(viewport);
             })();`,
           }}
