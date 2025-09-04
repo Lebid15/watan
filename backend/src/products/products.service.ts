@@ -613,16 +613,20 @@ export class ProductsService {
     return rows
       .map((product: any) => {
         const mapped = this.mapEffectiveImage(product);
-        const activePackages = (product.packages || []).filter((p: any) => p.isActive && p.publicCode != null);
+        // Original logic required publicCode which caused empty list if seed packages lack codes.
+        const activeAll = (product.packages || []).filter((p: any) => p.isActive);
+        const activeWithCode = activeAll.filter((p: any) => p.publicCode != null);
         return {
           id: product.id,
-            name: product.name,
-          packagesActiveCount: activePackages.length,
-          hasAny: activePackages.length > 0,
+          name: product.name,
+          packagesActiveCount: activeAll.length,
+          packagesActiveWithCode: activeWithCode.length,
+          hasAny: activeAll.length > 0,
+          hasAnyWithCode: activeWithCode.length > 0,
           imageUrl: mapped.imageUrl || null,
         };
       })
-      .filter(p => p.packagesActiveCount > 0);
+      .filter(p => p.packagesActiveCount > 0); // still hide products with zero active packages
   }
 
   async findOneWithPackages(tenantId: string, id: string): Promise<any> {
