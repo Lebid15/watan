@@ -10,6 +10,7 @@ import {
   Param,
 } from '@nestjs/common';
 import { TotpService } from './totp.service';
+import { JwtService } from '@nestjs/jwt';
 import { JwtAuthGuard } from '../jwt-auth.guard';
 import { RolesGuard } from '../roles.guard';
 import { Roles } from '../roles.decorator';
@@ -20,7 +21,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 @Controller('auth/totp')
 @UseGuards(JwtAuthGuard)
 export class TotpController {
-  constructor(private readonly totpService: TotpService) {}
+  constructor(private readonly totpService: TotpService, private readonly jwt: JwtService) {}
 
   @Post('setup')
   @ApiBearerAuth()
@@ -59,8 +60,15 @@ export class TotpController {
     }
     
     const verified = await this.totpService.verifyToken(userId, body.token);
-    
-    return { verified };
+    if (!verified) return { verified: false };
+    const finalToken = this.jwt.sign({
+      email: req.user.email,
+      sub: userId,
+      role: req.user.role,
+      tenantId: req.user.tenantId ?? null,
+      totpVerified: true,
+    }, { expiresIn: '12h' });
+    return { verified: true, token: finalToken };
   }
 
   @Get('status')
@@ -70,6 +78,22 @@ export class TotpController {
     const enabled = await this.totpService.hasTotpEnabled(userId);
     
     return { enabled };
+  }
+
+  @Post('disable')
+  @ApiBearerAuth()
+  async disable(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    await this.totpService.disableTotp(userId);
+    return { success: true };
+  }
+
+  @Post('recovery-codes/regenerate')
+  @ApiBearerAuth()
+  async regenerateCodes(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    const codes = await this.totpService.regenerateRecoveryCodes(userId);
+    return { codes };
   }
 
   @Post('reset/:userId')

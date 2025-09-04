@@ -22,11 +22,14 @@ export default function TotpVerification({ onSuccess, onCancel }: TotpVerificati
 
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/totp/verify', {
-        token: code,
-      });
-
+      const { data } = await api.post('/auth/totp/verify', { token: code });
       if (data.verified) {
+        if (data.token) {
+          try {
+            localStorage.setItem('token', data.token);
+            document.cookie = `access_token=${data.token}; Path=/; Max-Age=${60*60*24*7}`;
+          } catch {}
+        }
         onSuccess(code);
       } else {
         show('رمز التحقق غير صحيح');

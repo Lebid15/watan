@@ -234,6 +234,37 @@ export class TotpService {
     return count > 0;
   }
 
+  async disableTotp(userId: string): Promise<void> {
+    const hadActive = await this.hasTotpEnabled(userId);
+    await this.totpRepo.update({ userId }, { isActive: false });
+    await this.recoveryRepo.delete({ userId });
+    // لا نفرض إعادة التسجيل تلقائياً؛ المستخدم عطّلها بنفسه
+    await this.userRepo.update(userId, {
+      forceTotpEnroll: false,
+      totpFailedAttempts: 0,
+      totpLockedUntil: null,
+    });
+    if (hadActive) {
+      await this.audit.log('totp_disabled', {
+        actorUserId: userId,
+        targetUserId: userId,
+      });
+    }
+  }
+
+  async regenerateRecoveryCodes(userId: string): Promise<string[]> {
+    const enabled = await this.hasTotpEnabled(userId);
+    if (!enabled) throw new BadRequestException('TOTP not enabled');
+    await this.recoveryRepo.delete({ userId });
+    const codes = await this.generateRecoveryCodes(userId);
+    await this.audit.log('recovery_codes_regenerated', {
+      actorUserId: userId,
+      targetUserId: userId,
+      meta: { count: codes.length },
+    });
+    return codes;
+  }
+
   private async handleFailedAttempt(userId: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) return;

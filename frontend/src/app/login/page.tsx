@@ -1,7 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
+import TotpVerification from '@/components/TotpVerification';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -9,6 +10,77 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [totpPhase, setTotpPhase] = useState<'none' | 'verify'>('none');
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+
+  const finalizeNavigation = useCallback((token: string) => {
+    let nextDest: string | null = null;
+    let decodedRole = '';
+    try {
+      const url = new URL(window.location.href);
+      const candidate = url.searchParams.get('next');
+      if (candidate && /^\//.test(candidate) && !/^\/api\b/.test(candidate)) {
+        nextDest = candidate;
+      }
+    } catch {}
+    try {
+      if (token && token.includes('.')) {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          const json = JSON.parse(atob(b64));
+          const rr = (json?.role || '').toLowerCase();
+          const email = (json?.email || json?.user?.email || '').toLowerCase();
+          decodedRole = rr;
+          let norm = (rr === 'instance_owner' || rr === 'owner' || rr === 'admin') ? 'tenant_owner' : rr;
+          const envList = (process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || process.env.DEVELOPER_EMAILS || '')
+            .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+          const whitelist = envList.length ? envList : ['alayatl.tr@gmail.com'];
+          const host = window.location.host;
+          const hostParts = host.split('.');
+          let isSub = false; let apexHost = host;
+          if (hostParts.length >= 3) { const sub = hostParts[0]; if (sub && !['www','app'].includes(sub)) { isSub = true; apexHost = hostParts.slice(-2).join('.'); } }
+          const configuredApex = (process.env.NEXT_PUBLIC_APEX_DOMAIN || '').toLowerCase().replace(/\/$/, '');
+          const isApex = !isSub;
+          if (norm === 'developer') {
+            if (!email || !whitelist.includes(email)) {
+              document.cookie = 'access_token=; Max-Age=0; path=/';
+              document.cookie = 'role=; Max-Age=0; path=/';
+              localStorage.removeItem('token');
+              setError('غير مسموح: بريد غير مُخوَّل (قائمة المطورين)');
+              return;
+            }
+          } else if (isApex) {
+            document.cookie = 'access_token=; Max-Age=0; path=/';
+            document.cookie = 'role=; Max-Age=0; path=/';
+            localStorage.removeItem('token');
+            setError('الدخول عبر النطاق الرئيسي مقصور على المطوّر. استخدم نطاق المتجر (subdomain).');
+            return;
+          }
+          const defaultDest = (() => {
+            if (isSub) {
+              if (norm === 'tenant_owner') return '/admin/dashboard';
+              if (norm === 'distributor') return '/admin/distributor';
+              if (norm === 'user') return '/';
+              if (norm === 'developer') {
+                const apex = configuredApex || apexHost;
+                return `${window.location.protocol}//${apex}/dev`;
+              }
+              return '/';
+            }
+            return '/dev';
+          })();
+          if (nextDest) {
+            if (nextDest.startsWith('/dev') && norm !== 'developer') nextDest = defaultDest;
+            if (isApex && norm !== 'developer') nextDest = defaultDest;
+          } else {
+            nextDest = defaultDest;
+          }
+        }
+      }
+    } catch {}
+    try { router.push(nextDest || '/'); } catch { window.location.href = nextDest || '/'; }
+  }, [router, setError]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,116 +104,32 @@ export default function LoginPage() {
         throw new Error((res.data as any)?.message || 'فشل الدخول');
       }
       
-      const token = (res.data as any).token || (res.data as any).access_token;
+  const token = (res.data as any).token || (res.data as any).access_token;
       
       if (!token) {
         throw new Error('لم يتم استلام رمز الدخول من الخادم');
       }
       
+      // تخزين التوكن المبدئي (قد يكون بانتظار التحقق TOTP)
       try {
         localStorage.setItem('token', token);
         document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
-      } catch (storageError) {
-        console.warn('Failed to store token:', storageError);
-        throw new Error('فشل في حفظ بيانات الدخول');
-      }
+      } catch {}
+      // استخراج الحمولة لمعرفة هل ننتقل مباشرة أو نطلب TOTP
+      let payload: any = null;
       try {
-        if (token && typeof token === 'string' && token.includes('.')) {
-          const parts = token.split('.');
-          if (parts.length === 3 && parts[1] && typeof parts[1] === 'string') {
-            const payloadPart = parts[1];
-            if (!payloadPart || typeof payloadPart !== 'string') return;
-            const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-            const json = JSON.parse(atob(b64));
-            if (json?.role) {
-              document.cookie = `role=${json.role}; Path=/; Max-Age=${60*60*24*7}`;
-            }
-          }
-        }
-      } catch (tokenError) {
-        console.warn('Failed to parse token for role:', tokenError);
+        const part = token.split('.')[1];
+        payload = JSON.parse(atob(part.replace(/-/g,'+').replace(/_/g,'/')));
+        if (payload?.role) document.cookie = `role=${payload.role}; Path=/; Max-Age=${60*60*24*7}`;
+      } catch {}
+
+      const needsTotp = payload && (payload.totpPending === true || (payload.totpVerified === false && payload.setupMode));
+      if (needsTotp) {
+        setPendingToken(token);
+        setTotpPhase('verify');
+        return; // لا نُكمل التوجيه الآن
       }
-      let nextDest: string | null = null;
-      let decodedRole = '';
-      
-      try {
-        const url = new URL(window.location.href);
-        const candidate = url.searchParams.get('next');
-        if (candidate && /^\//.test(candidate) && !/^\/api\b/.test(candidate)) {
-          nextDest = candidate;
-        }
-      } catch (urlError) {
-        console.warn('Failed to parse URL for next parameter:', urlError);
-      }
-      try {
-        if (token && typeof token === 'string' && token.includes('.')) {
-          const parts = token.split('.');
-          if (parts.length === 3 && parts[1] && typeof parts[1] === 'string') {
-            const payloadPart = parts[1];
-            if (!payloadPart || typeof payloadPart !== 'string') return;
-            const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-            const json = JSON.parse(atob(b64));
-            const rr = (json?.role || '').toLowerCase();
-            const email = (json?.email || json?.user?.email || '').toLowerCase();
-            decodedRole = rr;
-        let norm = (rr === 'instance_owner' || rr === 'owner' || rr === 'admin') ? 'tenant_owner' : rr;
-        const envList = (process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || process.env.DEVELOPER_EMAILS || '')
-          .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
-        const whitelist = envList.length ? envList : ['alayatl.tr@gmail.com'];
-        const host = window.location.host;
-        const hostParts = host.split('.');
-        let isSub = false; let apexHost = host;
-        if (hostParts.length >= 3) {
-          const sub = hostParts[0];
-          if (sub && !['www','app'].includes(sub)) { isSub = true; apexHost = hostParts.slice(-2).join('.'); }
-        }
-        const configuredApex = (process.env.NEXT_PUBLIC_APEX_DOMAIN || '').toLowerCase().replace(/\/$/, '');
-        const isApex = !isSub;
-        if (norm === 'developer') {
-          if (!email || !whitelist.includes(email)) {
-            document.cookie = 'access_token=; Max-Age=0; path=/';
-            document.cookie = 'role=; Max-Age=0; path=/';
-            localStorage.removeItem('token');
-            setError('غير مسموح: بريد غير مُخوَّل (قائمة المطورين)');
-            return;
-          }
-        } else if (isApex) {
-          document.cookie = 'access_token=; Max-Age=0; path=/';
-          document.cookie = 'role=; Max-Age=0; path=/';
-          localStorage.removeItem('token');
-          setError('الدخول عبر النطاق الرئيسي مقصور على المطوّر. استخدم نطاق المتجر (subdomain).');
-          return;
-        }
-            // الآن تحديد الوجهة (إذا كانت nextDest موجودة نتحقق من صلاحيتها)
-            const defaultDest = (() => {
-              if (isSub) {
-                if (norm === 'tenant_owner') return '/admin/dashboard';
-                if (norm === 'distributor') return '/admin/distributor';
-                if (norm === 'user') return '/';
-                if (norm === 'developer') {
-                  const apex = configuredApex || apexHost;
-                  return `${window.location.protocol}//${apex}/dev`;
-                }
-                return '/';
-              }
-              return '/dev'; // apex + developer
-            })();
-            // حماية: لو query next تشير إلى /dev لكن المستخدم ليس developer (لم يحدث return أعلاه لأنها ساب دومين) نلغيها
-            if (nextDest) {
-              if (nextDest.startsWith('/dev') && norm !== 'developer') nextDest = defaultDest;
-              if (isApex && norm !== 'developer') nextDest = defaultDest; // should not happen due للمنع
-            } else {
-              nextDest = defaultDest;
-            }
-          }
-        }
-      } catch { nextDest = '/'; }
-      try {
-        await router.push(nextDest || '/');
-      } catch (routerError) {
-        console.warn('Router navigation failed:', routerError);
-        window.location.href = nextDest || '/';
-      }
+      finalizeNavigation(token);
       
     } catch (e: any) {
       console.error('Login error:', e);
@@ -162,7 +150,7 @@ export default function LoginPage() {
 
 
   return (
-    <div className="min-h-screen w-full bg-[var(--bg-main)] flex justify-center">
+  <div className="min-h-screen w-full bg-[var(--bg-main)] flex justify-center relative">
       <div className="w-full max-w-md rounded-none sm:rounded-2xl shadow-2xl overflow-hidden bg-white flex flex-col">
         <div className="relative h-56 sm:h-64">
           <img src="/pages/loginbg.svg" alt="Login Illustration" className="absolute inset-0 h-full w-full object-cover" />
@@ -190,6 +178,20 @@ export default function LoginPage() {
           <p className="text-center text-xs text-gray-600 pt-2">لا تملك حساباً؟ <a href="/register" className="text-sky-600 underline">إنشاء حساب</a></p>
         </form>
       </div>
+      {totpPhase === 'verify' && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-5">
+            <TotpVerification
+              onSuccess={() => {
+                const finalTok = localStorage.getItem('token') || pendingToken || '';
+                setTotpPhase('none');
+                finalizeNavigation(finalTok);
+              }}
+              onCancel={() => { setTotpPhase('none'); setError('تم إلغاء التحقق الثنائي'); }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

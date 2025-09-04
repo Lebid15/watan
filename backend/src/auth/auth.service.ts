@@ -94,14 +94,16 @@ export class AuthService {
       };
     }
     
+    // عندما يكون لدى المستخدم TOTP مفعّل نمنحه توكن "وضع انتظار" يسمح فقط بمسارات التحقق
     const payload = {
       email: user.email,
       sub: user.id,
       role: user.role ?? 'user',
       tenantId: effectiveTenantId,
       totpVerified: false,
-      setupMode: false,
-    };
+      setupMode: true, // السماح لمسار /auth/totp/verify بالعمل
+      totpPending: true,
+    } as any;
 
     return {
       access_token: this.jwtService.sign(payload, { expiresIn: '10m' }),

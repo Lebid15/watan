@@ -9,6 +9,7 @@ export default function Page() {
       <ul className="list-disc pr-5 space-y-2">
         <li><Link href="/orders" className="text-link">طلباتي</Link></li>
         <li><Link href="/wallet" className="text-link">المحفظة</Link></li>
+  <li><Link href="/security" className="text-link">الأمان</Link></li>
         <li><Link href="/user/infoes" className="text-link">تعليمات</Link></li>
       </ul>
     </div>

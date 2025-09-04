@@ -47,6 +47,7 @@ export default function AdminNavbar() {
         { name: 'من نحن', href: '/admin/settings/about' },
         { name: 'تعليمات', href: '/admin/settings/infoes' },
         { name: 'إعادة تعيين كلمة المرور', href: '/admin/settings/password-reset' },
+  { name: 'الأمان', href: '/admin/settings/security' },
       ],
     },
   ];

@@ -110,6 +110,24 @@ export class AuthController {
     return { token: access_token };
   }
 
+  @Post('complete-totp')
+  async completeTotp(@Req() req: any) {
+    const userId = req.user?.sub || req.user?.id;
+    if (!userId) throw new UnauthorizedException('No user in context');
+    if (req.user?.totpVerified !== true) {
+      throw new UnauthorizedException('TOTP not verified');
+    }
+    // إصدار توكن نهائي أطول عمراً (مثلاً 12 ساعة)
+    const finalToken = this.jwt.sign({
+      email: req.user.email,
+      sub: userId,
+      role: req.user.role,
+      tenantId: req.user.tenantId ?? null,
+      totpVerified: true,
+    }, { expiresIn: '12h' });
+    return { token: finalToken };
+  }
+
   // DEBUG ONLY: تفقد حالة الجلسة والكوكي والدومين والـ Tenant المستنتج.
   // لا تترك هذا في الإنتاج طويلًا (يحذف بعد حل المشكلة) لأنه قد يكشف بعض المعلومات الداخلية (الأسماء فقط بدون أسرار).
   @Post('debug-session')

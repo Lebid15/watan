@@ -33,6 +33,7 @@ export default function DevNavbar() {
     ...baseTabs,
     ...(featureBilling ? [{ href: '/dev/billing', label: 'Billing' }] : []),
     ...(featureFilteredProducts ? [{ href: '/dev/filtered-products', label: 'منتجات مُفلترة' }] : []),
+  { href: '/dev/settings', label: 'الإعدادات' },
   ];
 
   return (
