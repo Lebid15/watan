@@ -160,7 +160,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setUser({
         id: String(anyRes.id || ''),
         email: String(anyRes.email || ''),
-  username: String((anyRes as any).username || ''),
+  username: String((anyRes as any).username || (anyRes as any).userName || ''),
         name: String(anyRes.fullName || anyRes.email || 'User'),
         role: String(anyRes.role || (fallback?.role ?? 'user')),
         balance: Number(anyRes.balance ?? 0),

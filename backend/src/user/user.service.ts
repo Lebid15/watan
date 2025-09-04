@@ -294,6 +294,7 @@ export class UserService {
     return {
       id: user.id,
       email: user.email,
+  username: user.username,
       fullName: user.fullName,
       balance: Number(user.balance),
       currencyCode,
