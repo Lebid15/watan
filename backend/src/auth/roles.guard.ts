@@ -14,15 +14,33 @@ export class RolesGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const user = request.user || {};
-    const roleRaw: string | undefined = user.roleFinal || user.role;
-    if (!roleRaw) return false;
-    const roleLower = String(roleRaw).toLowerCase();
+    // نأخذ كلا القيمتين (الأصلية والنهائية) لزيادة التوافق بعد التغييرات الأخيرة
+    const roleOriginal = user.role ? String(user.role).toLowerCase() : undefined;
+    const roleFinal = user.roleFinal ? String(user.roleFinal).toLowerCase() : undefined;
+    if (!roleOriginal && !roleFinal) return false;
+
     const needed = requiredRoles.map(r => String(r).toLowerCase());
 
-    // Allow developer or instance_owner even without tenantId for global-scoped routes like /products/global
-    if (!user.tenantId && ['developer','instance_owner'].includes(roleLower)) {
-      return needed.includes(roleLower);
+    // تطابق مباشر مع أي من الدورين
+    if (roleFinal && needed.includes(roleFinal)) return true;
+    if (roleOriginal && needed.includes(roleOriginal)) return true;
+
+    // توافق خاص: اعتبر tenant_owner مكافئاً لـ admin (للمسارات القديمة التي ما زالت تستخدم ADMIN)
+    if (roleFinal === 'tenant_owner' && needed.includes('admin')) return true;
+    // والعكس (لو مسار يطلب tenant_owner بينما التوكن القديم يحمل admin ولم يحوَّل)
+    if (roleOriginal === 'admin' && needed.includes('tenant_owner')) return true;
+
+    // السماح للمطور/مالك المنصة بالوصول لمسارات عالمية حتى بدون tenantId مثل /products/global
+    const path: string = (context.switchToHttp().getRequest().path || '').toLowerCase();
+    if (path === '/api/products/global' || path.endsWith('/products/global')) {
+      if (['developer','instance_owner','tenant_owner'].includes(roleOriginal || '') || ['developer','instance_owner','tenant_owner'].includes(roleFinal || '')) {
+        // يكفي أن يكون أي منهما ضمن الأدوار المطلوبة أو مكافئ لها
+        if (needed.some(r => ['instance_owner','developer','admin','tenant_owner'].includes(r))) {
+          return true;
+        }
+      }
     }
-    return needed.includes(roleLower);
+
+    return false;
   }
 }
