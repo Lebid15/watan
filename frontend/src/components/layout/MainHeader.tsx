@@ -139,7 +139,10 @@ export default function MainHeader() {
 
         {/* اليمين: اسم المشروع + روابط دورية */}
         <div className="flex items-center gap-4 text-sm select-none">
-          <div className="text-xl font-semibold">Kadro Store</div>
+          {/* عرض اسم المستخدم بدل النص الثابت */}
+          <div className="text-xl font-semibold" title={user?.email || user?.name || ''}>
+            {user?.name || '...'}
+          </div>
           {/* Role aware quick nav */}
           {user?.role === 'tenant_owner' && <nav className="hidden md:flex gap-3">
             <Link className="hover:underline" href="/tenant/products">Products</Link>
