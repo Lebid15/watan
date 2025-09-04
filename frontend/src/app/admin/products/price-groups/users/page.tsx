@@ -26,15 +26,22 @@ export default function LinkUsersPricesPage() {
   const fetchUsers = async (): Promise<User[]> => {
     const res = await api.get<any[]>(API_ROUTES.users.withPriceGroup);
     return res.data
-      .map((u) => ({
-        id: u.id,
-        email: u.email,
-        username: u.username ?? u.userName ?? null,
-        priceGroupId: u.priceGroup?.id ?? null,
-      }))
+      .map((u) => {
+        const rawUsername = u.username ?? u.userName ?? null;
+        // اشتقاق اسم مستخدم من الجزء قبل @ إذا لم يوجد اسم صريح
+        const derived = rawUsername && String(rawUsername).trim().length > 0
+          ? String(rawUsername).trim()
+          : (u.email ? String(u.email).split('@')[0] : null);
+        return {
+          id: u.id,
+            email: u.email, // محفوظ فقط للبحث وعدم العرض
+          username: derived,
+          priceGroupId: u.priceGroup?.id ?? null,
+        } as User;
+      })
       .sort((a, b) => {
-        const an = (a.username || a.email || '').toLowerCase();
-        const bn = (b.username || b.email || '').toLowerCase();
+        const an = (a.username || '').toLowerCase();
+        const bn = (b.username || '').toLowerCase();
         return an.localeCompare(bn, 'ar');
       });
   };
@@ -125,7 +132,7 @@ export default function LinkUsersPricesPage() {
           <tbody>
             {filteredUsers.map((user) => (
               <tr key={user.id} className="hover:bg-bg-surface-alt/60 transition-colors">
-                <td className="px-3 py-2 border-b border-border">{user.username || user.email}</td>
+                <td className="px-3 py-2 border-b border-border">{user.username || '—'}</td>
                 <td className="px-3 py-2 border-b border-border">
                   <select
                     className="min-w-[220px] rounded bg-bg-input border border-border p-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
