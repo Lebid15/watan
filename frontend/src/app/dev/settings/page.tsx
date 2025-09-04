@@ -2,9 +2,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-export const fetchCache = 'force-no-store';
+export const dynamic = 'force-dynamic'; // صفحة ديناميكية بالكامل، لا إعادة توليد ثابتة
 
 function DevSettingsContent() {
   return (
@@ -22,9 +20,6 @@ function DevSettingsContent() {
 }
 
 export default function DevSettingsIndex() {
-  return (
-    <Suspense fallback={null}>
-      <DevSettingsContent />
-    </Suspense>
-  );
+  // لفّ المحتوى بـ Suspense حتى لو لم نستخدم useSearchParams هنا تحسبًا لازدياد التبعيات لاحقًا
+  return <Suspense fallback={null}><DevSettingsContent /></Suspense>;
 }
