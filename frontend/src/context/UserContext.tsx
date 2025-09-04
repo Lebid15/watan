@@ -8,6 +8,7 @@ import { ErrorResponse } from '@/types/common';
 type User = {
   id: string;
   email: string;
+  username?: string; // اسم المستخدم (مميز)
   name: string;
   role: string;
   balance: number;
@@ -73,6 +74,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
             fallback = {
               id: json.sub,
               email: json.email || '',
+              username: json.username || json.user || '',
               name: json.fullName || json.email || 'User',
               role: decodedRole || 'user',
               balance: 0,
@@ -158,6 +160,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setUser({
         id: String(anyRes.id || ''),
         email: String(anyRes.email || ''),
+  username: String((anyRes as any).username || ''),
         name: String(anyRes.fullName || anyRes.email || 'User'),
         role: String(anyRes.role || (fallback?.role ?? 'user')),
         balance: Number(anyRes.balance ?? 0),

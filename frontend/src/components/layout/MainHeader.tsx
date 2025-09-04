@@ -140,8 +140,8 @@ export default function MainHeader() {
         {/* اليمين: اسم المشروع + روابط دورية */}
         <div className="flex items-center gap-4 text-sm select-none">
           {/* عرض اسم المستخدم بدل النص الثابت */}
-          <div className="text-xl font-semibold" title={user?.email || user?.name || ''}>
-            {user?.name || '...'}
+          <div className="text-xl font-semibold" title={user?.email || user?.username || user?.name || ''}>
+            {user?.username || user?.name || '...'}
           </div>
           {/* Role aware quick nav */}
           {user?.role === 'tenant_owner' && <nav className="hidden md:flex gap-3">
