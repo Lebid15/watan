@@ -11,6 +11,22 @@ type FilterMethod = '' | 'manual' | string;
 /* ============== صور موحّدة (من منتجات) ============== */
 const apiHost = API_ROUTES.products.base.replace(/\/api\/products\/?$/, '');
 
+// توحيد منطق بناء رابط الصورة (يحاكي صفحة تفاصيل المنتج)
+function resolveImage(raw?: string | null): string {
+  if (!raw) return '/images/placeholder.png';
+  const s = String(raw).trim();
+  if (!s) return '/images/placeholder.png';
+  // مطلق
+  if (/^https?:\/\//i.test(s)) return s;
+  // مسار يبدأ بـ /uploads أو /images نربطه بأصل الصفحة الحالي (قد يختلف عن apiHost)
+  if (s.startsWith('/')) {
+    if (typeof window !== 'undefined') return `${window.location.origin}${s}`;
+    return `${apiHost}${s}`; // fallback أثناء SSR
+  }
+  // مسار نسبي – افترض أنه على الـ API host
+  return `${apiHost}/${s}`;
+}
+
 function getOrderImageSrc(o: any): string {
   const raw =
     pickImageField(o.package) ??
@@ -23,13 +39,7 @@ function pickImageField(p?: any): string | null {
   return p.image ?? p.imageUrl ?? p.logoUrl ?? p.iconUrl ?? p.icon ?? null;
 }
 
-function buildImageSrc(raw?: string | null): string {
-  if (!raw) return '/images/placeholder.png';
-  const s = String(raw).trim();
-  if (/^https?:\/\//i.test(s)) return s;
-  if (s.startsWith('/')) return `${apiHost}${s}`;
-  return `${apiHost}/${s}`;
-}
+function buildImageSrc(raw?: string | null): string { return resolveImage(raw); }
 
 function getImageSrc(p?: any): string {
   return buildImageSrc(pickImageField(p));
@@ -1084,6 +1094,7 @@ export default function AdminOrdersPage() {
                   <td className="text-center bg-bg-surface border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     <img
                       src={logoSrc}
+                      data-debug-src={logoSrc}
                       alt={o.product?.name || o.package?.name || 'logo'}
                       className="inline-block w-12 h-10 rounded object-contain"
                       onError={(e) => {
