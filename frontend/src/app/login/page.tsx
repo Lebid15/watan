@@ -110,10 +110,10 @@ export default function LoginPage() {
         throw new Error('لم يتم استلام رمز الدخول من الخادم');
       }
       
-      // تخزين التوكن المبدئي (قد يكون بانتظار التحقق TOTP)
+      // لا نضع التوكن في الكوكيز قبل إكمال التحقق الثنائي إن لزم.
+      // نخزّنه مؤقتًا تحت مفتاح مؤقت.
       try {
-        localStorage.setItem('token', token);
-        document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
+        localStorage.setItem('pre_token', token);
       } catch {}
       // استخراج الحمولة لمعرفة هل ننتقل مباشرة أو نطلب TOTP
       let payload: any = null;
@@ -123,12 +123,17 @@ export default function LoginPage() {
         if (payload?.role) document.cookie = `role=${payload.role}; Path=/; Max-Age=${60*60*24*7}`;
       } catch {}
 
-      const needsTotp = payload && (payload.totpPending === true || (payload.totpVerified === false && payload.setupMode));
+      const needsTotp = !!(payload?.totpPending || payload?.requiresTotp);
       if (needsTotp) {
         setPendingToken(token);
         setTotpPhase('verify');
         return; // لا نُكمل التوجيه الآن
       }
+      // لا حاجة لخطوة TOTP: رَفّع التوكن مباشرة
+      try {
+        localStorage.setItem('token', token);
+        document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
+      } catch {}
       finalizeNavigation(token);
       
     } catch (e: any) {
@@ -182,10 +187,11 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-5">
             <TotpVerification
-              onSuccess={() => {
-                const finalTok = localStorage.getItem('token') || pendingToken || '';
+              onSuccess={(finalTok) => {
+                // finalTok هنا هو رمز التحقق المدخل، نحتاج أخذ التوكن النهائي من localStorage بعد ترقية TotpVerification
+                const promoted = localStorage.getItem('token') || pendingToken || '';
                 setTotpPhase('none');
-                finalizeNavigation(finalTok);
+                finalizeNavigation(promoted);
               }}
               onCancel={() => { setTotpPhase('none'); setError('تم إلغاء التحقق الثنائي'); }}
             />

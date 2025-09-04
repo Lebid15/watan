@@ -217,8 +217,9 @@ export function middleware(req: NextRequest) {
     return redirect('/', req);
   }
 
+  // تم إزالة صفحة /user/menu؛ أي طلب /menu يعاد للجذر
   if (path === '/menu') {
-    return redirect('/user/menu', req);
+    return redirect('/', req);
   }
 
   return response ?? NextResponse.next();

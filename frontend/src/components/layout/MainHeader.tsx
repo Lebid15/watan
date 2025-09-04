@@ -108,13 +108,15 @@ export default function MainHeader() {
                   >
                     المفضلة
                   </button>
-                  <button
-                    role="menuitem"
-                    className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
-                    onClick={() => { setOpen(false); router.push('/user/security'); }}
-                  >
-                    الحماية
-                  </button>
+                  {user?.role === 'user' && (
+                    <button
+                      role="menuitem"
+                      className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
+                      onClick={() => { setOpen(false); router.push('/security'); }}
+                    >
+                      الأمان
+                    </button>
+                  )}
 
                   <div className="my-1 border-t border-border" />
 
