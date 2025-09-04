@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
+// NOTE: استبدلنا next/image لأن بعض الروابط المولدة (cloudinary + relative) تُسبب أخطاء 400 مع محرك التحسين.
+// سنستخدم <img> المباشر لتفادي _next/image?url=... 400 Bad Request.
+// import Image from "next/image";
 import { API_ROUTES } from "@/utils/api";
 import { ErrorResponse } from "@/types/common";
 
@@ -98,6 +100,15 @@ export default function AdminProductDetailsPage() {
 
   const apiHost = API_ROUTES.products.base.replace("/api/products", ""); // لعرض الصور النسبية إن وجدت
   const apiBase = `${apiHost}/api`;
+
+  function resolveImageUrl(raw?: string | null): string | undefined {
+    if (!raw) return undefined;
+    const s = String(raw).trim();
+    if (!s) return undefined;
+    if (/^https?:\/\//i.test(s)) return s; // absolute
+    if (s.startsWith('/')) return `${apiHost}${s}`; // root-relative to api host
+    return `${apiHost}/${s}`; // relative path
+  }
 
   const fetchProduct = useCallback(async () => {
     setLoading(true);
@@ -383,13 +394,14 @@ export default function AdminProductDetailsPage() {
       <div className="mb-6">
         {imgSrc ? (
           <div className="relative inline-block">
-            <Image
+            <img
               src={imgSrc}
               alt={product.name}
               width={80}
               height={80}
               className="w-20 h-20 object-cover rounded border border-border shadow"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png'; }}
+              onError={(e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.src = '/images/placeholder.png'; }}
+              loading="lazy"
             />
             <span className={`absolute -top-2 -right-2 ${badgeColor} text-white text-[10px] px-1.5 py-0.5 rounded-full shadow`}>{sourceLabelMap[imageSource]}</span>
           </div>

@@ -29,10 +29,13 @@ export class RolesGuard implements CanActivate {
     if (roleFinal === 'tenant_owner' && needed.includes('admin')) return true;
     // والعكس (لو مسار يطلب tenant_owner بينما التوكن القديم يحمل admin ولم يحوَّل)
     if (roleOriginal === 'admin' && needed.includes('tenant_owner')) return true;
+  // اعتبر tenant_owner مكافئاً لـ instance_owner خلال مرحلة المواءمة
+  if (roleFinal === 'tenant_owner' && needed.includes('instance_owner')) return true;
+  if (roleOriginal === 'instance_owner' && needed.includes('tenant_owner')) return true;
 
     // السماح للمطور/مالك المنصة بالوصول لمسارات عالمية حتى بدون tenantId مثل /products/global
     const path: string = (context.switchToHttp().getRequest().path || '').toLowerCase();
-    if (path === '/api/products/global' || path.endsWith('/products/global')) {
+  if (path === '/api/products/global' || path.endsWith('/products/global') || path.endsWith('/clone-to-tenant')) {
       if (['developer','instance_owner','tenant_owner'].includes(roleOriginal || '') || ['developer','instance_owner','tenant_owner'].includes(roleFinal || '')) {
         // يكفي أن يكون أي منهما ضمن الأدوار المطلوبة أو مكافئ لها
         if (needed.some(r => ['instance_owner','developer','admin','tenant_owner'].includes(r))) {
