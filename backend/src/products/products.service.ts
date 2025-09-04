@@ -621,23 +621,25 @@ export class ProductsService {
       order: { name: 'ASC' } as any,
       take: 800,
     });
-    return rows
-      .map((product: any) => {
-        const mapped = this.mapEffectiveImage(product);
-        // Original logic required publicCode which caused empty list if seed packages lack codes.
-        const activeAll = (product.packages || []).filter((p: any) => p.isActive);
-        const activeWithCode = activeAll.filter((p: any) => p.publicCode != null);
-        return {
-          id: product.id,
-          name: product.name,
-          packagesActiveCount: activeAll.length,
-          packagesActiveWithCode: activeWithCode.length,
-          hasAny: activeAll.length > 0,
-          hasAnyWithCode: activeWithCode.length > 0,
-          imageUrl: mapped.imageUrl || null,
-        };
-      })
-      .filter(p => p.packagesActiveCount > 0); // still hide products with zero active packages
+    const mappedList = rows.map((product: any) => {
+      const mapped = this.mapEffectiveImage(product);
+      // Treat undefined isActive as active (legacy seeds)
+      const activeAll = (product.packages || []).filter((p: any) => p.isActive !== false);
+      const activeWithCode = activeAll.filter((p: any) => p.publicCode != null);
+      return {
+        id: product.id,
+        name: product.name,
+        packagesActiveCount: activeAll.length,
+        packagesActiveWithCode: activeWithCode.length,
+        hasAny: activeAll.length > 0,
+        hasAnyWithCode: activeWithCode.length > 0,
+        imageUrl: mapped.imageUrl || null,
+      };
+    });
+    if (!mappedList.length) {
+      console.warn('[GLOBAL_PRODUCTS] listGlobalProducts returned 0 rows (raw count=', rows.length, ')');
+    }
+    return mappedList;
   }
 
   async findOneWithPackages(tenantId: string, id: string): Promise<any> {
