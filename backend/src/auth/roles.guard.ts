@@ -13,16 +13,16 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    const user = request.user || {};
+    const roleRaw: string | undefined = user.roleFinal || user.role;
+    if (!roleRaw) return false;
+    const roleLower = String(roleRaw).toLowerCase();
+    const needed = requiredRoles.map(r => String(r).toLowerCase());
 
-    if (!user || !user.role) {
-      return false; // إذا كان المستخدم أو الدور مفقودين
+    // Allow developer or instance_owner even without tenantId for global-scoped routes like /products/global
+    if (!user.tenantId && ['developer','instance_owner'].includes(roleLower)) {
+      return needed.includes(roleLower);
     }
-
-  // السماح فقط للمطور بعدم وجود tenantId
-  const roleLower = String(user.role).toLowerCase();
-  if (!user.tenantId && roleLower !== UserRole.DEVELOPER) return false;
-  const needed = requiredRoles.map(r => String(r).toLowerCase());
-  return needed.includes(roleLower);
+    return needed.includes(roleLower);
   }
 }
