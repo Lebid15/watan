@@ -40,12 +40,29 @@ function parseSchemaSql(sql: string): Record<string, DbTable> {
 }
 
 async function run() {
+  // Determine schema snapshot path. Priority:
+  // 1. --db <path>
+  // 2. ./schema_db.sql (cwd)
+  // 3. ./backend/schema_db.sql (when running from repo root)
+  // 4. ../backend/schema_db.sql (when running from backend/ subdir inside mono repo root)
+  // 5. ../schema_db.sql (legacy location at repo root)
   const argIdx = process.argv.indexOf('--db');
-  const schemaPath = argIdx !== -1 ? process.argv[argIdx+1] : path.resolve(process.cwd(), 'schema_db.sql');
-  if (!fs.existsSync(schemaPath)) {
-    console.error('[compare] schema file missing:', schemaPath);
+  let explicit: string | undefined = argIdx !== -1 ? path.resolve(process.cwd(), process.argv[argIdx+1]) : undefined;
+  const candidates: string[] = [];
+  if (explicit) candidates.push(explicit);
+  const cwd = process.cwd();
+  candidates.push(path.resolve(cwd, 'schema_db.sql'));
+  candidates.push(path.resolve(cwd, 'backend', 'schema_db.sql'));
+  candidates.push(path.resolve(cwd, '..', 'backend', 'schema_db.sql'));
+  candidates.push(path.resolve(cwd, '..', 'schema_db.sql'));
+  const schemaPath = candidates.find(p => fs.existsSync(p));
+  if (!schemaPath) {
+    console.error('[compare] schema file missing. Tried:');
+    for (const c of candidates) console.error(' -', c);
+  } else {
+    console.log('[compare] Using schema snapshot:', schemaPath.replace(cwd + path.sep, ''));
   }
-  const dbSql = fs.existsSync(schemaPath) ? fs.readFileSync(schemaPath,'utf8') : '';
+  const dbSql = schemaPath ? fs.readFileSync(schemaPath,'utf8') : '';
   const dbTables = dbSql ? parseSchemaSql(dbSql) : {};
 
   await dataSource.initialize();
