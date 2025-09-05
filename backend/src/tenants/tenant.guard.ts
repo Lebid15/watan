@@ -31,6 +31,9 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/products$/,
   /^\/api\/products\/[0-9a-fA-F-]{10,}$/,
   /^\/api\/docs(\/|$)/,
+  // Public client API OpenAPI (both with and without global prefix) – must be accessible without tenant/auth guards
+  /^\/client\/api\/openapi\.json$/,
+  /^\/api\/client\/api\/openapi\.json$/,
 ];
 
 // Routes that still require auth/roles (handled at controller) but do NOT require a tenant context.
