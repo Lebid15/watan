@@ -16,326 +16,52 @@ jobs:
       RUN_MIGRATIONS: "false"
 
     steps:
-      # 0) تشخيص: تأكد أن المفتاح وصل من GitHub (لا نطبع المحتوى)
-      - name: Check SSH key length (no print)
-        shell: bash
-        env:
-          K: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          echo "SSH key length: ${#K} bytes"
-
-      # 1) تحقق من وجود الأسرار الأساسية وطولها
-      - name: Validate required secrets (early)
-        shell: bash
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          set -e
-          missing=0
-          for v in VPS_HOST VPS_USER; do
-            if [ -z "${!v}" ]; then echo "Missing env $v"; missing=1; fi
-          done
-
-          for v in DATABASE_URL REDIS_URL JWT_SECRET VPS_SSH_KEY; do
-            eval val="\${$v}"
-            if [ -z "$val" ]; then echo "Missing secret $v"; missing=1; fi
-          done
-          if [ $missing -ne 0 ]; then exit 1; fi
-          echo "Lengths -> DB: $(printf %s "${DATABASE_URL}" | wc -c) REDIS: $(printf %s "${REDIS_URL}" | wc -c) JWT: $(printf %s "${JWT_SECRET}" | wc -c) KEY: $(printf %s "${VPS_SSH_KEY}" | wc -c)"
-
-      # 2) Checkout الكود (يدعم submodules عند الحاجة)
-      - name: Checkout repository
+      # 0) Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
+
+      # 1) Setup SSH
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
         with:
-          fetch-depth: 0
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Backend integrity gate (tenant:verify)
-        shell: bash
-        working-directory: ./backend
+      # 2) Push code to server
+      - name: Deploy code to server
         run: |
-          set -euo pipefail
-          echo "[gate] Installing backend deps"
-          npm ci
-          echo "[gate] Building backend"
-          npm run build
-          echo "[gate] Running tenant:verify"
-          npm run tenant:verify
+          ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "\
+            cd $DEPLOY_DIR && \
+            git fetch --all && \
+            git reset --hard origin/main"
 
-      # 3) Sanity git
-      - name: Sanity git
-        shell: bash
+      # 3) Build containers
+      - name: Build containers
         run: |
-          set -euxo pipefail
-          git --version
-          git rev-parse HEAD
-          git status --short || true
+          ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "\
+            cd $DEPLOY_DIR && \
+            docker compose build frontend backend"
 
-      # 4) تحميل مفتاح SSH
-      - name: Start SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
-
-      # 5) إضافة بصمات المضيف (ed25519 + rsa) للدومين والـ IPs قبل أي اتصال SSH
-      - name: Add host key to known_hosts
-        shell: bash
+      # 4) Restart containers
+      - name: Restart containers
         run: |
-          set -euo pipefail
-          if [ -z "${VPS_HOST}" ]; then echo "VPS_HOST is empty" >&2; exit 1; fi
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          # scan domain
-          for t in ed25519 rsa; do
-            echo "[keyscan] type=$t host=$VPS_HOST"
-            ssh-keyscan -T 15 -t "$t" "$VPS_HOST" 2>/dev/null >> ~/.ssh/known_hosts || true
-          done
-          # scan resolved IPs أيضًا (بعض أوامر ssh قد تتصل بالـ IP)
-          if command -v getent >/dev/null 2>&1; then
-            getent hosts "$VPS_HOST" | awk '{print $1}' | while read ip; do
-              for t in ed25519 rsa; do
-                echo "[keyscan] type=$t ip=$ip"
-                ssh-keyscan -T 15 -t "$t" "$ip" 2>/dev/null >> ~/.ssh/known_hosts || true
-              done
-            done
-          fi
-          # تنظيف التكرارات إن وجدت
-          sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-          echo "known_hosts entries: $(wc -l < ~/.ssh/known_hosts)"
+          ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "\
+            cd $DEPLOY_DIR && \
+            docker compose up -d"
 
-      - name: Verify SSH connectivity
-        shell: bash
+      # 5) Wait for backend healthy
+      - name: Wait for backend healthy
         run: |
-          set -euxo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=10 "$VPS_USER@$VPS_HOST" 'echo SSH_OK'
+          ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "\
+            cd $DEPLOY_DIR && \
+            docker compose ps && \
+            i=0; until docker compose ps backend | grep -q '(healthy)'; do \
+              if [ $i -gt 30 ]; then echo 'backend not healthy'; exit 1; fi; \
+              echo 'waiting backend...'; sleep 5; i=$((i+1)); \
+            done"
 
-      - name: Upload project to VPS (tar over SSH)
+      # 6) Verify tenants inside server container
+      - name: Verify tenants on server
         run: |
-          ssh ${VPS_USER}@${VPS_HOST} "mkdir -p ${DEPLOY_DIR}"
-          tar cz --exclude='.git' . | ssh ${VPS_USER}@${VPS_HOST} "tar xz -C ${DEPLOY_DIR}"
-
-      - name: Create .env locally
-        shell: bash
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          PUBLIC_TENANT_BASE_DOMAIN: ${{ secrets.PUBLIC_TENANT_BASE_DOMAIN }}
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
-        run: |
-          set -e
-          PTBD="${PUBLIC_TENANT_BASE_DOMAIN:-syrz1.com}"
-          mkdir -p .deploy_tmp
-          {
-            echo "DATABASE_URL=${DATABASE_URL}"
-            echo "REDIS_URL=${REDIS_URL}"
-            echo "JWT_SECRET=${JWT_SECRET}"
-            echo "PUBLIC_TENANT_BASE_DOMAIN=${PTBD}"
-            echo "AUTO_MIGRATIONS=false"
-            echo "HOST=0.0.0.0"
-            echo "PORT=3000"
-            echo "INITIAL_ROOT_EMAIL=owner@example.com"
-            echo "INITIAL_ROOT_PASSWORD=ChangeMe123!"
-            echo "BOOTSTRAP_ENABLED=true"
-            echo "NEXT_PUBLIC_API_URL=http://api.syrz1.com/api"
-            if [ -n "${CLOUDINARY_CLOUD_NAME}" ]; then echo "CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}"; fi
-            if [ -n "${CLOUDINARY_API_KEY}" ]; then echo "CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}"; fi
-            if [ -n "${CLOUDINARY_API_SECRET}" ]; then echo "CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}"; fi
-            if [ -n "${CLOUDINARY_URL}" ]; then echo "CLOUDINARY_URL=${CLOUDINARY_URL}"; fi
-          } > .deploy_tmp/.env
-          if grep -E '^DATABASE_URL=' .deploy_tmp/.env | grep -Eq '@(localhost|127\.0\.0\.1)(:|/)'; then
-            echo 'Normalizing DATABASE_URL host -> postgres (local rewrite)'
-            sed -i -E "s#(DATABASE_URL=.+://[^@]*@)(localhost|127\.0\.0\.1)(:|/)#\1postgres\3#" .deploy_tmp/.env
-            grep '^DATABASE_URL=' .deploy_tmp/.env
-          fi
-
-      - name: Upload .env to VPS
-        shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          DEPLOY_DIR: /root/watan
-        run: |
-          set -e
-          ssh "$VPS_USER@$VPS_HOST" "mkdir -p \"$DEPLOY_DIR\""
-          scp .deploy_tmp/.env "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/.env"
-          rm -rf .deploy_tmp
-
-      - name: Pre-compose diagnostics
-        run: |
-          set -euxo pipefail
-          ssh ${VPS_USER}@${VPS_HOST} "docker --version || true"
-          ssh ${VPS_USER}@${VPS_HOST} "docker compose version 2>/dev/null || docker-compose --version || true"
-          ssh ${VPS_USER}@${VPS_HOST} "ls -al ${DEPLOY_DIR} || true"
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && head -n 50 docker-compose.yml || sed -n '1,80p' docker-compose.yml"
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && grep -n 'image:' docker-compose.yml || true"
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && (docker compose config --quiet 2>/dev/null || docker-compose config --quiet)" || echo 'compose config had issues'
-
-      - name: Force remove any lingering watan containers
-        run: |
-          set -euxo pipefail
-          # Remove containers that may persist from failed previous runs causing name conflicts
-          ssh ${VPS_USER}@${VPS_HOST} '
-            echo "Existing containers before cleanup:" && docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "^watan-" || true
-            for c in watan-backend watan-frontend watan-worker watan-nginx watan-postgres watan-redis; do
-              if docker ps -a --format "{{.Names}}" | grep -q "^$c$"; then
-                echo "Removing lingering container $c";
-                docker rm -f "$c" || true;
-              fi;
-            done
-            echo "Containers after cleanup:" && docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "^watan-" || echo "No watan-* containers remain"
-          '
-
-      - name: (Optional) Prune old images (non-blocking)
-        continue-on-error: true
-        run: |
-          ssh ${VPS_USER}@${VPS_HOST} 'docker image prune -f >/dev/null 2>&1 || true'
-
-      - name: Docker compose build & up
-        run: |
-          set -euo pipefail
-          # Prefer Docker Compose v2 plugin; fallback to legacy docker-compose only if plugin absent
-          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
-            COMPOSE_CMD="docker compose"
-          elif ssh ${VPS_USER}@${VPS_HOST} "command -v docker-compose >/dev/null 2>&1"; then
-            COMPOSE_CMD="docker-compose"
-          else
-            echo "No docker compose command found" >&2; exit 1
-          fi
-          # Clean previous stack to avoid legacy volume merge bug (KeyError: 'ContainerConfig')
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD down --remove-orphans || true"
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD build --pull --no-cache"
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD up -d"
-
-      - name: Check database connectivity (pre-migrations)
-        shell: bash
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          # Parse host & port from DATABASE_URL (postgres://user:pass@host:port/db?params)
-          raw="$DATABASE_URL"
-          host=$(printf '%s' "$raw" | sed -E 's#^[a-zA-Z0-9]+://[^@]+@([^:/?]+).*#\1#')
-          port=$(printf '%s' "$raw" | sed -E 's#^[a-zA-Z0-9]+://[^@]+@[^:/?]+:([0-9]+).*#\1#')
-          if [ "$port" = "$raw" ] || [ -z "$port" ]; then port=5432; fi
-          echo "DB host: $host port: $port"
-          if [ "$host" = "localhost" ] || [ "$host" = "127.0.0.1" ]; then
-            if grep -qE '^  postgres:' docker-compose.yml; then
-              echo "Localhost detected but internal postgres service exists (docker-compose). Proceeding without external TCP test."
-              exit 0
-            else
-              echo "ERROR: DATABASE_URL points to $host with no internal postgres service defined."
-              exit 1
-            fi
-          fi
-          echo "Testing TCP connectivity to $host:$port from VPS host..."
-          ssh ${VPS_USER}@${VPS_HOST} "bash -c 'timeout 5 bash -c </dev/tcp/$host/$port'" 2>/dev/null && echo "Port reachable" || { echo "Cannot reach $host:$port (firewall/DNS?)."; exit 1; }
-
-      - name: Run backend migrations in container
-        if: ${{ env.RUN_MIGRATIONS == 'true' }}
-        run: |
-          set -euo pipefail
-          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
-            COMPOSE_CMD="docker compose"
-          else
-            COMPOSE_CMD="docker-compose"
-          fi
-          # Exec into backend container and run migrations (dist build already inside image)
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD exec -T backend node dist/data-source.js migration:run || $COMPOSE_CMD exec -T backend npx ts-node src/data-source.ts migration:run"
-
-      - name: Wait for backend health (post-migrations)
-        run: |
-          set -euo pipefail
-          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
-            COMPOSE_CMD="docker compose"
-          else
-            COMPOSE_CMD="docker-compose"
-          fi
-          echo "Waiting for backend health endpoint inside container..."
-          attempts=25
-          sleep_secs=5
-          ok=0
-          for i in $(seq 1 $attempts); do
-            if ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD exec -T backend wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health"; then
-              echo "Backend healthy after $i attempts"; ok=1; break; fi
-            echo "Attempt $i/$attempts: not healthy yet"
-            sleep $sleep_secs
-          done
-          if [ $ok -ne 1 ]; then
-            echo "Backend did not become healthy in time. Showing last logs:"
-            ssh ${VPS_USER}@${VPS_HOST} "docker logs --tail=120 watan-backend" || true
-            exit 1
-          fi
-
-      - name: Tenant integrity verification (remote in-container)
-        run: |
-          set -euo pipefail
-          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
-            COMPOSE_CMD="docker compose"
-          else
-            COMPOSE_CMD="docker-compose"
-          fi
-          echo "[remote] Running tenant:verify inside backend container"
-          # Try dist first (compiled) else fallback to ts-node path
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && \
-            ( $COMPOSE_CMD exec -T backend npm run tenant:verify || \
-              $COMPOSE_CMD exec -T backend npx ts-node src/scripts/verify-tenants.ts )"
-
-      - name: Show containers
-        run: |
-          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && (docker compose ps 2>/dev/null || docker-compose ps)"
-
-      - name: Health check frontend & backend
-        run: |
-          echo '--- Frontend (syrz1.com) ---'
-          ssh ${VPS_USER}@${VPS_HOST} "curl -I -s http://syrz1.com | head -n 15" || true
-          echo
-          echo '--- Backend (api.syrz1.com/api/health) ---'
-          ssh ${VPS_USER}@${VPS_HOST} "curl -i -s http://api.syrz1.com/api/health" || true
-
-      - name: Collect logs (last 30 lines per service)
-        run: |
-          set -e
-          > logs.txt
-          for svc in backend frontend worker nginx; do
-            echo "===== $svc =====" | tee -a logs.txt
-            ssh ${VPS_USER}@${VPS_HOST} "docker logs --tail=30 watan-$svc" 2>&1 | tee -a logs.txt || echo "(failed to fetch $svc logs)" | tee -a logs.txt
-            echo "" >> logs.txt
-          done
-          echo "### Deployment Log Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          sed 's/^/    /' logs.txt >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload raw logs artifact (optional)
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-logs
-          path: logs.txt
-
-      - name: Deployment summary
-        if: always()
-        run: |
-          set -euo pipefail
-          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
-            COMPOSE_CMD="docker compose"
-          else
-            COMPOSE_CMD="docker-compose"
-          fi
-          {
-            echo "## Deployment Summary"
-            echo "Timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-            echo ""
-            echo "### Service States"
-            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD ps" || true
-            echo ""
-            echo "### Backend Health (inside container)"
-            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health" || true
-            echo ""
-            echo "### Pending Migrations?"
-            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend node dist/data-source.js migration:show" || true
-          } >> $GITHUB_STEP_SUMMARY
+          ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "\
+            cd $DEPLOY_DIR && \
+            docker compose exec -T backend node dist/scripts/tenant-verify.js"
