@@ -3,6 +3,8 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { UserRole } from '../auth/user-role.enum';
 import { TenantsService } from './tenants.service';
+import { ProvisionTenantService } from './provision-tenant.service';
+import { ProvisionTenantDto } from './dto/provision-tenant.dto';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { AddDomainDto } from './dto/add-domain.dto';
@@ -14,7 +16,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 // لا نضع "api/" هنا لأننا نستخدم setGlobalPrefix('api') في main.ts
 @Controller('admin/tenants')
 export class TenantsAdminController {
-  constructor(private readonly svc: TenantsService) {}
+  constructor(private readonly svc: TenantsService, private readonly provisionSvc: ProvisionTenantService) {}
 
   // Tenants
   @Get()
@@ -25,6 +27,12 @@ export class TenantsAdminController {
   @Post()
   create(@Body() dto: CreateTenantDto) {
     return this.svc.createTenant(dto);
+  }
+
+  // Formal provisioning endpoint (preferred)
+  @Post('provision')
+  provision(@Body() dto: ProvisionTenantDto) {
+    return this.provisionSvc.provision(dto);
   }
 
   @Get(':id')
