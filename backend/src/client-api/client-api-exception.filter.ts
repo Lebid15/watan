@@ -35,6 +35,22 @@ export class ClientApiExceptionFilter implements ExceptionFilter {
   catch(exception: any, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse();
+    const req = ctx.getRequest();
+    // Hard fallback: if hitting client API route (excluding openapi.json) with no token header at all,
+    // force missing token mapping even if upstream guard didn't throw as expected.
+    try {
+      const p: string = (req?.originalUrl || req?.url || '').toLowerCase();
+      if (p.startsWith('/api/client/api') && !p.includes('openapi.json')) {
+        const hdrs = req?.headers || {};
+        const hasTokenHeader = Object.keys(hdrs).some(h => {
+          const hl = h.toLowerCase();
+          return hl === 'api-token' || hl === 'x-api-token';
+        });
+        if (!hasTokenHeader) {
+          return res.status(401).json({ code: 120, message: 'Api Token is required' });
+        }
+      }
+    } catch { /* ignore */ }
     // Success responses not handled here
     const mapped = mapGeneric(exception);
     // For authentication / authz related codes we now return real HTTP status (401/403) to allow clients to distinguish quickly
