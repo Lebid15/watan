@@ -420,6 +420,59 @@ async function bootstrap() {
     console.warn('[Health] orderUuid check failed:', e?.message);
   }
 
+  // Rescue: ensure client_api_webhook_outbox table & indices exist (to avoid 42P01 in worker if migration not applied yet)
+  try {
+    const [tbl] = await dataSource.query(`SELECT 1 FROM information_schema.tables WHERE table_name='client_api_webhook_outbox'`);
+    if (!tbl) {
+      await dataSource.query(`CREATE TABLE IF NOT EXISTS "client_api_webhook_outbox" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "tenantId" uuid NOT NULL,
+        "userId" uuid NOT NULL,
+        "event_type" varchar(64) NOT NULL,
+        "delivery_url" varchar(600) NOT NULL,
+        "payload_json" ${process.env.TEST_DB_SQLITE === 'true' ? 'text' : 'jsonb'} NOT NULL,
+        "headers_json" ${process.env.TEST_DB_SQLITE === 'true' ? 'text' : 'jsonb'} NULL,
+        "status" varchar(20) NOT NULL DEFAULT 'pending',
+        "attempt_count" int NOT NULL DEFAULT 0,
+        "next_attempt_at" ${process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz'} NULL,
+        "last_error" text NULL,
+        "response_code" int NULL,
+        "created_at" ${process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz'} NOT NULL DEFAULT now(),
+        "updated_at" ${process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz'} NOT NULL DEFAULT now()
+      )`);
+      console.log('🛠 [Rescue] Created client_api_webhook_outbox table');
+    }
+    // Indices (idempotent)
+    await dataSource.query(`CREATE INDEX IF NOT EXISTS "idx_client_webhook_outbox_next" ON "client_api_webhook_outbox" ("status","next_attempt_at")`);
+    await dataSource.query(`CREATE INDEX IF NOT EXISTS "idx_client_webhook_outbox_tenant" ON "client_api_webhook_outbox" ("tenantId")`);
+    await dataSource.query(`CREATE INDEX IF NOT EXISTS "idx_client_webhook_outbox_user" ON "client_api_webhook_outbox" ("userId")`);
+  } catch (e:any) {
+    console.warn('⚠️ [Rescue] webhook outbox ensure failed:', e?.message);
+  }
+
+  // Rescue: ensure client_api_request_logs table & indices (prevents migration/index failures if base table drifted)
+  try {
+    const [logsTbl] = await dataSource.query(`SELECT 1 FROM information_schema.tables WHERE table_name='client_api_request_logs'`);
+    if (!logsTbl) {
+      await dataSource.query(`CREATE TABLE IF NOT EXISTS "client_api_request_logs" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "userId" uuid NOT NULL,
+        "tenantId" uuid NOT NULL,
+        "method" varchar(60) NOT NULL,
+        "path" varchar(200) NOT NULL,
+        "ip" varchar(64),
+        "code" int NOT NULL,
+        "createdAt" ${process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz'} NOT NULL DEFAULT now()
+      )`);
+      console.log('🛠 [Rescue] Created client_api_request_logs table');
+    }
+    await dataSource.query(`CREATE INDEX IF NOT EXISTS "idx_client_api_logs_user" ON "client_api_request_logs" ("userId")`);
+    await dataSource.query(`CREATE INDEX IF NOT EXISTS "idx_client_api_logs_user_created" ON "client_api_request_logs" ("userId","createdAt")`);
+    await dataSource.query(`CREATE INDEX IF NOT EXISTS "idx_client_api_logs_tenant_created" ON "client_api_request_logs" ("tenantId","createdAt")`);
+  } catch (e:any) {
+    console.warn('⚠️ [Rescue] client_api_request_logs ensure failed:', e?.message);
+  }
+
   if ((process.env.BOOTSTRAP_ENABLED || 'true').toLowerCase() === 'true') {
     try {
       const userRepo = dataSource.getRepository(User);
