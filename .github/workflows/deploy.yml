@@ -51,17 +51,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Backend integrity gate (tenant:verify)
-        shell: bash
-        working-directory: ./backend
-        run: |
-          set -euo pipefail
-          echo "[gate] Installing backend deps"
-          npm ci
-          echo "[gate] Building backend"
-          npm run build
-          echo "[gate] Running tenant:verify"
-          npm run tenant:verify
 
       # 3) Sanity git
       - name: Sanity git
@@ -250,6 +239,20 @@ jobs:
             ssh ${VPS_USER}@${VPS_HOST} "docker logs --tail=120 watan-backend" || true
             exit 1
           fi
+
+      - name: Tenant integrity verification (remote in-container)
+        run: |
+          set -euo pipefail
+          if ssh ${VPS_USER}@${VPS_HOST} "docker compose version >/dev/null 2>&1"; then
+            COMPOSE_CMD="docker compose"
+          else
+            COMPOSE_CMD="docker-compose"
+          fi
+          echo "[remote] Running tenant:verify inside backend container"
+          # Try dist first (compiled) else fallback to ts-node path
+          ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && \
+            ( $COMPOSE_CMD exec -T backend npm run tenant:verify || \
+              $COMPOSE_CMD exec -T backend npx ts-node src/scripts/verify-tenants.ts )"
 
       - name: Show containers
         run: |
