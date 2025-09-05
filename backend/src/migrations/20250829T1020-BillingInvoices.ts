@@ -43,7 +43,8 @@ export class BillingInvoices20250829T1020 implements MigrationInterface {
       await addColumn('amountUsd', '"amountUsd" numeric(18,6)');
       await addColumn('fxUsdToTenantAtInvoice', '"fxUsdToTenantAtInvoice" numeric(18,6)');
       await addColumn('displayCurrencyCode', '"displayCurrencyCode" varchar(10)');
-      await addColumn('status', '"status" varchar(8) DEFAULT \"open\"');
+  // Correct default syntax (previously used invalid \"open\" which Postgres treated as identifier)
+  await addColumn('status', '"status" varchar(8) DEFAULT \'open\'');
       await addColumn('issuedAt', '"issuedAt" timestamptz DEFAULT now()');
       await addColumn('dueAt', '"dueAt" timestamptz');
       await addColumn('paidAt', '"paidAt" timestamptz');
