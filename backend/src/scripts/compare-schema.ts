@@ -51,6 +51,46 @@ function parseSchemaSql(sql: string): Record<string, DbTable> {
     }
     tables[table] = tbl;
   }
+  // Post-pass: capture ALTER TABLE ADD COLUMN statements created after initial table creation
+  const addColRegex = /ALTER TABLE ONLY\s+((?:"[^"]+"|[a-zA-Z0-9_]+)\.(?:"[^"]+"|[a-zA-Z0-9_]+))\s+ADD COLUMN\s+((?:IF NOT EXISTS\s+)?"?[a-zA-Z0-9_]+"?\s+[^;]+?);/gms;
+  let a: RegExpExecArray | null;
+  while ((a = addColRegex.exec(sql))) {
+    let fq = a[1];
+    let defLine = a[2].trim().replace(/IF NOT EXISTS\s+/i,'');
+    const table = fq.split('.').pop()!.replace(/"/g,'');
+    const colMatch = /^"?([a-zA-Z0-9_]+)"?\s+(.+);?$/m.exec(defLine);
+    if (!colMatch) continue;
+    const colName = colMatch[1];
+    const def = colMatch[2].trim();
+    const nullable = !/NOT NULL/i.test(def);
+    const defMatch = /DEFAULT\s+([^\s,]+)/i.exec(def);
+    const defaultVal = defMatch ? defMatch[1] : null;
+    const rawType = def
+      .replace(/DEFAULT\s+[^\s,]+/i, '')
+      .replace(/NOT NULL/i, '')
+      .trim();
+    if (!tables[table]) tables[table] = { name: table, columns: {} };
+    if (!tables[table].columns[colName]) {
+      tables[table].columns[colName] = { name: colName, rawType, nullable, default: defaultVal };
+    }
+  }
+  // Apply NOT NULL / DROP NOT NULL alterations
+  const nnRegex = /ALTER TABLE ONLY\s+((?:"[^"]+"|[a-zA-Z0-9_]+)\.(?:"[^"]+"|[a-zA-Z0-9_]+))\s+ALTER COLUMN\s+"?([a-zA-Z0-9_]+)"?\s+SET NOT NULL;/g;
+  while ((a = nnRegex.exec(sql))) {
+    const table = a[1].split('.').pop()!.replace(/"/g,'');
+    const col = a[2];
+    if (tables[table] && tables[table].columns[col]) {
+      tables[table].columns[col].nullable = false;
+    }
+  }
+  const dropNnRegex = /ALTER TABLE ONLY\s+((?:"[^"]+"|[a-zA-Z0-9_]+)\.(?:"[^"]+"|[a-zA-Z0-9_]+))\s+ALTER COLUMN\s+"?([a-zA-Z0-9_]+)"?\s+DROP NOT NULL;/g;
+  while ((a = dropNnRegex.exec(sql))) {
+    const table = a[1].split('.').pop()!.replace(/"/g,'');
+    const col = a[2];
+    if (tables[table] && tables[table].columns[col]) {
+      tables[table].columns[col].nullable = true;
+    }
+  }
   return tables;
 }
 
