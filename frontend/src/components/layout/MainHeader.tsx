@@ -110,6 +110,13 @@ export default function MainHeader() {
                   >
                     المفضلة
                   </button>
+                    <button
+                      role="menuitem"
+                      className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
+                      onClick={() => { setOpen(false); router.push('/user/api-token'); }}
+                    >
+                      API
+                    </button>
                   {isEndUser && (
                     <button
                       role="menuitem"
