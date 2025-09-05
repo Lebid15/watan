@@ -19,6 +19,7 @@ import * as dotenv from 'dotenv';
 })();
 
 import { NestFactory } from '@nestjs/core';
+import { RequestMethod } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -54,8 +55,13 @@ async function bootstrap() {
     console.log('[DEBUG] BOOTSTRAP* keys =', bootstrapKeys);
   } catch {}
 
-  // ✅ /api مرة واحدة فقط
-  app.setGlobalPrefix('api');
+  // ✅ تعيين البادئة /api لكل REST ما عدا ملف OpenAPI العام للعميل كي يعمل أيضاً بدون البادئة
+  // هذا يسمح بالوصول عبر:
+  //   /api/client/api/openapi.json  (النمط الأصلي)
+  //   /client/api/openapi.json      (بدون البادئة – بعد هذا التغيير)
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: 'client/api/openapi.json', method: RequestMethod.GET }],
+  });
 
   // ✅ تفعيل CORS مبكر جدًا (قبل أي middlewares أخرى) مع دعم *.syrz1.com + localhost للتطوير
   const devOrigin = 'http://localhost:3000';
