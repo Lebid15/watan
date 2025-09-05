@@ -1,7 +1,11 @@
 import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { TenantDomain } from './tenant-domain.entity';
 
-@Entity('tenants')
+// NOTE: Physical table in production is currently named "tenant" (singular) due to early bootstrap
+// migrations. To avoid complex renames and breaking existing rescue migrations that reference
+// the singular form, we map the entity explicitly to that table. If later we decide to rename the
+// table to "tenants" we must also adjust every raw SQL reference in migrations (many exist).
+@Entity('tenant')
 export class Tenant {
   @PrimaryGeneratedColumn('uuid')
   id: string;
