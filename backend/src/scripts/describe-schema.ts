@@ -19,7 +19,7 @@ interface EntityDescription {
     isGenerated: boolean;
     length?: string;
     default?: any;
-    enumValues?: any[];
+  enumValues?: any[];
   }>; 
   indexes: Array<{
     name: string;
@@ -42,7 +42,12 @@ async function run() {
   const metas = dataSource.entityMetadatas;
   const result: EntityDescription[] = metas.map(m => ({
     tableName: m.tableName,
-    columns: m.columns.map(c => ({
+    columns: m.columns.map(c => {
+      let enumVals: any[] | undefined = undefined;
+      // TypeORM 0.3.x stores enum info in c.enum? or c.enumName; optional chaining
+      const anyCol: any = c as any;
+      if (Array.isArray(anyCol.enum)) enumVals = anyCol.enum;
+      return ({
       propertyName: c.propertyName,
       databaseName: c.databaseName,
       type: (c.type as any)?.name || c.type,
@@ -51,8 +56,8 @@ async function run() {
       isGenerated: c.isGenerated,
       length: c.length,
       default: typeof c.default === 'function' ? 'FUNC' : c.default,
-      enumValues: c.enumValues || undefined,
-    })),
+      enumValues: enumVals,
+    }); }),
     indexes: m.indices.map(i => ({ name: i.name, columns: i.columns.map(col => col.databaseName), isUnique: i.isUnique })),
     foreignKeys: m.foreignKeys.map(fk => ({
       name: fk.name,
