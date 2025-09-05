@@ -23,6 +23,20 @@ export class BootstrapCriticalTables0000000000001 implements MigrationInterface 
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
 
+    // tenant table (baseline minimal) so that later FKs / seeders referencing tenants can proceed
+    await queryRunner.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='tenant') THEN
+          CREATE TABLE "tenant" (
+            "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            "name" varchar(120) NOT NULL,
+            "createdAt" timestamptz NOT NULL DEFAULT now()
+          );
+        END IF;
+      END$$;
+    `);
+
     // product table (minimal baseline)
     await queryRunner.query(`
       DO $$
@@ -219,6 +233,22 @@ export class BootstrapCriticalTables0000000000001 implements MigrationInterface 
           "createdAt" timestamptz NOT NULL DEFAULT now(),
           CONSTRAINT "PK_billing_invoices_id" PRIMARY KEY ("id")
         );
+      END IF;
+    END$$;`);
+
+    // site_settings baseline including tenantId & key unique (to satisfy later seeding migration expecting tenantId)
+    await queryRunner.query(`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='site_settings') THEN
+        CREATE TABLE "site_settings" (
+          "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+          "tenantId" uuid NULL,
+          "key" varchar(64) NOT NULL,
+          "value" text NULL,
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          "updatedAt" timestamptz NOT NULL DEFAULT now(),
+          CONSTRAINT "PK_site_settings_id" PRIMARY KEY ("id")
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "UQ_site_settings_key_idx" ON "site_settings" ("key");
       END IF;
     END$$;`);
   }
