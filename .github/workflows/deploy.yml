@@ -14,6 +14,7 @@ jobs:
       VPS_USER: ${{ secrets.VPS_USER }}
       DEPLOY_DIR: /root/watan
       RUN_MIGRATIONS: "false"
+
     steps:
       # 0) تشخيص: تأكد أن المفتاح وصل من GitHub (لا نطبع المحتوى)
       - name: Check SSH key length (no print)
@@ -37,7 +38,7 @@ jobs:
           for v in VPS_HOST VPS_USER; do
             if [ -z "${!v}" ]; then echo "Missing env $v"; missing=1; fi
           done
-            
+
           for v in DATABASE_URL REDIS_URL JWT_SECRET VPS_SSH_KEY; do
             eval val="\${$v}"
             if [ -z "$val" ]; then echo "Missing secret $v"; missing=1; fi
@@ -78,21 +79,31 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
 
-      # 5) إضافة بصمات المضيف (ed25519 + rsa) والتحكم في الصلاحيات قبل أي اتصال SSH
+      # 5) إضافة بصمات المضيف (ed25519 + rsa) للدومين والـ IPs قبل أي اتصال SSH
       - name: Add host key to known_hosts
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${VPS_HOST}" ]; then echo "VPS_HOST is empty" >&2; exit 1; fi
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           # scan domain
-          for t in ed25519 rsa; do ssh-keyscan -T 15 -t "$t" "$VPS_HOST" 2>/dev/null >> ~/.ssh/known_hosts || true; done
-          # scan resolved IPs أيضًا (بعض أوامر ssh قد تتصل بالـ IP)
-          getent hosts "$VPS_HOST" | awk '{print $1}' | while read ip; do
-            for t in ed25519 rsa; do ssh-keyscan -T 15 -t "$t" "$ip" 2>/dev/null >> ~/.ssh/known_hosts || true; done
+          for t in ed25519 rsa; do
+            echo "[keyscan] type=$t host=$VPS_HOST"
+            ssh-keyscan -T 15 -t "$t" "$VPS_HOST" 2>/dev/null >> ~/.ssh/known_hosts || true
           done
+          # scan resolved IPs أيضًا (بعض أوامر ssh قد تتصل بالـ IP)
+          if command -v getent >/dev/null 2>&1; then
+            getent hosts "$VPS_HOST" | awk '{print $1}' | while read ip; do
+              for t in ed25519 rsa; do
+                echo "[keyscan] type=$t ip=$ip"
+                ssh-keyscan -T 15 -t "$t" "$ip" 2>/dev/null >> ~/.ssh/known_hosts || true
+              done
+            done
+          fi
+          # تنظيف التكرارات إن وجدت
           sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-
+          echo "known_hosts entries: $(wc -l < ~/.ssh/known_hosts)"
 
       - name: Verify SSH connectivity
         shell: bash
@@ -155,7 +166,6 @@ jobs:
           scp .deploy_tmp/.env "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/.env"
           rm -rf .deploy_tmp
 
-
       - name: Pre-compose diagnostics
         run: |
           set -euxo pipefail
@@ -180,6 +190,7 @@ jobs:
             done
             echo "Containers after cleanup:" && docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep -E "^watan-" || echo "No watan-* containers remain"
           '
+
       - name: (Optional) Prune old images (non-blocking)
         continue-on-error: true
         run: |
@@ -218,7 +229,7 @@ jobs:
               echo "Localhost detected but internal postgres service exists (docker-compose). Proceeding without external TCP test."
               exit 0
             else
-              echo "ERROR: DATABASE_URL points to $host with no internal postgres service defined.";
+              echo "ERROR: DATABASE_URL points to $host with no internal postgres service defined."
               exit 1
             fi
           fi
@@ -252,11 +263,11 @@ jobs:
           for i in $(seq 1 $attempts); do
             if ssh ${VPS_USER}@${VPS_HOST} "cd ${DEPLOY_DIR} && $COMPOSE_CMD exec -T backend wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health"; then
               echo "Backend healthy after $i attempts"; ok=1; break; fi
-            echo "Attempt $i/$attempts: not healthy yet";
-            sleep $sleep_secs;
+            echo "Attempt $i/$attempts: not healthy yet"
+            sleep $sleep_secs
           done
           if [ $ok -ne 1 ]; then
-            echo "Backend did not become healthy in time. Showing last logs:";
+            echo "Backend did not become healthy in time. Showing last logs:"
             ssh ${VPS_USER}@${VPS_HOST} "docker logs --tail=120 watan-backend" || true
             exit 1
           fi
@@ -283,7 +294,8 @@ jobs:
         run: |
           echo '--- Frontend (syrz1.com) ---'
           ssh ${VPS_USER}@${VPS_HOST} "curl -I -s http://syrz1.com | head -n 15" || true
-          echo '\n--- Backend (api.syrz1.com/api/health) ---'
+          echo
+          echo '--- Backend (api.syrz1.com/api/health) ---'
           ssh ${VPS_USER}@${VPS_HOST} "curl -i -s http://api.syrz1.com/api/health" || true
 
       - name: Collect logs (last 30 lines per service)
@@ -315,15 +327,15 @@ jobs:
             COMPOSE_CMD="docker-compose"
           fi
           {
-            echo "## Deployment Summary";
-            echo "Timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ')";
-            echo "";
-            echo "### Service States";
+            echo "## Deployment Summary"
+            echo "Timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            echo ""
+            echo "### Service States"
             ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD ps" || true
-            echo "";
-            echo "### Backend Health (inside container)";
-             ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health || true";
-            echo "";
-            echo "### Pending Migrations?";
-            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend node dist/data-source.js migration:show || true";
+            echo ""
+            echo "### Backend Health (inside container)"
+            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend wget -q -T 5 -O /dev/null http://127.0.0.1:3000/api/health" || true
+            echo ""
+            echo "### Pending Migrations?"
+            ssh ${VPS_USER}@${VPS_HOST} "$COMPOSE_CMD exec -T backend node dist/data-source.js migration:show" || true
           } >> $GITHUB_STEP_SUMMARY
