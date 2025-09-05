@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards, BadRequestException } from '@nestjs/common';
 import { StatsAdminService } from './stats.admin.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -43,7 +43,14 @@ export class StatsAdminController {
   // 📦 إحصائيات الطلبات
   @Get('orders')
   async orders(@Req() req: any) {
-    const tenantId = req.user?.tenantId;
+    let tenantId: string | undefined = req.user?.tenantId || req.tenant?.id;
+    if (!tenantId) {
+      // لا نعيد خطأ داخلي بل خطأ واضح
+      throw new BadRequestException('TENANT_ID_REQUIRED');
+    }
+    if (typeof tenantId !== 'string' || tenantId.trim() === '' || !/^[0-9a-fA-F-]{36}$/.test(tenantId)) {
+      throw new BadRequestException('INVALID_TENANT_ID');
+    }
     return this.statsService.getOrdersStats(tenantId);
   }
 }

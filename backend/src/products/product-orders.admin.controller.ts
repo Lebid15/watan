@@ -196,8 +196,17 @@ export class ProductOrdersAdminController {
   @Header('Cache-Control', 'no-store')
   async list(@Query() query: ListOrdersDto, @Req() req: Request) {
     const user = req.user as any;
-  // تمرير tenantId كوسيط ثانٍ صريح (الخدمة تتوقعه خارج الـ dto)
-  const res = await this.productsService.listOrdersForAdmin(query, user.tenantId);
+    // استرجاع tenantId من المستخدم أو من الـ middleware (req.tenant)
+    let tenantId: string | undefined = user?.tenantId || (req as any)?.tenant?.id;
+    if (!tenantId) {
+      // منع تمرير قيمة فارغة تؤدي لخطأ invalid UUID في الاستعلام
+      throw new BadRequestException('TENANT_ID_REQUIRED');
+    }
+    if (typeof tenantId !== 'string' || tenantId.trim() === '' || !/^[0-9a-fA-F-]{36}$/.test(tenantId)) {
+      throw new BadRequestException('INVALID_TENANT_ID');
+    }
+    // تمرير tenantId كوسيط ثانٍ صريح (الخدمة تتوقعه خارج الـ dto)
+    const res = await this.productsService.listOrdersForAdmin(query, tenantId);
 
     if (res && Array.isArray((res as any).items)) {
       return res;
@@ -211,8 +220,15 @@ export class ProductOrdersAdminController {
   @Get('all')
   async getAllOrders(@Req() req: Request) {
   const user = req.user as any;
-  // تمرير tenantId لتقييد النتائج (كانت سابقاً بدون تمرير فتُعيد جميع التينانتس)
-  const items = await this.productsService.getAllOrders(undefined, user.tenantId);
+    let tenantId: string | undefined = user?.tenantId || (req as any)?.tenant?.id;
+    if (!tenantId) {
+      throw new BadRequestException('TENANT_ID_REQUIRED');
+    }
+    if (typeof tenantId !== 'string' || tenantId.trim() === '' || !/^[0-9a-fA-F-]{36}$/.test(tenantId)) {
+      throw new BadRequestException('INVALID_TENANT_ID');
+    }
+    // تمرير tenantId لتقييد النتائج
+    const items = await this.productsService.getAllOrders(undefined, tenantId);
     return Array.isArray(items) ? items.map((o) => this.toClient(o)) : items;
   }
 
