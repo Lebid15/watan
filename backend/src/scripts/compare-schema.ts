@@ -15,24 +15,39 @@ interface DiffIssue { category: string; table: string; detail: string; }
 
 function parseSchemaSql(sql: string): Record<string, DbTable> {
   const tables: Record<string, DbTable> = {};
-  const createRegex = /CREATE TABLE IF NOT EXISTS\s+"?([a-zA-Z0-9_]+)"?\s*\(([^;]+?)\);/gms;
+  // Support pg_dump variants:
+  // CREATE TABLE public.table_name (
+  // CREATE TABLE ONLY public.table_name (
+  // CREATE TABLE IF NOT EXISTS public.table_name (
+  // Quoted identifiers also possible: CREATE TABLE "public"."MyTable" (
+  const createRegex = /CREATE TABLE\s+(?:IF NOT EXISTS\s+)?(?:ONLY\s+)?((?:"[^"]+"|[a-zA-Z0-9_]+)(?:\.(?:"[^"]+"|[a-zA-Z0-9_]+))?)\s*\(([^;]+?)\);/gms;
   let m: RegExpExecArray | null;
   while ((m = createRegex.exec(sql))) {
-    const table = m[1];
+    let rawName = m[1];
     const body = m[2];
-    const lines = body.split(/,(?=(?:[^()]*\([^()]*\))*[^()]*$)/).map(l => l.trim()); // split top-level commas
+    // Normalize schema-qualified name -> take last segment, strip quotes
+    if (rawName.includes('.')) rawName = rawName.split('.').pop() || rawName;
+    const table = rawName.replace(/"/g, '');
+    const lines = body.split(/,(?=(?:[^()]*\([^()]*\))*[^()]*$)/).map(l => l.trim());
     const tbl: DbTable = { name: table, columns: {}, raw: body };
     for (const line of lines) {
-      if (/^(CONSTRAINT|PRIMARY KEY|UNIQUE|FOREIGN KEY)/i.test(line)) continue;
-      const colMatch = /^"?([a-zA-Z0-9_]+)"?\s+([^,]+)$/m.exec(line);
+      if (!line) continue;
+      if (/^(CONSTRAINT|PRIMARY KEY|UNIQUE|FOREIGN KEY|CHECK|EXCLUDE)/i.test(line)) continue;
+      const colMatch = /^"?([a-zA-Z0-9_]+)"?\s+(.+)$/m.exec(line);
       if (!colMatch) continue;
       const colName = colMatch[1];
-      const def = colMatch[2];
+      const def = colMatch[2].replace(/,$/, '').trim();
+      // Skip pseudo columns or table-level options
+      if (/^(CONSTRAINT|PRIMARY KEY|UNIQUE|FOREIGN KEY)/i.test(def)) continue;
       const nullable = !/NOT NULL/i.test(def);
       let defaultVal: string | null = null;
-      const defMatch = /DEFAULT\s+([^\s]+)/i.exec(def);
+      const defMatch = /DEFAULT\s+([^\s,]+)/i.exec(def);
       if (defMatch) defaultVal = defMatch[1];
-      tbl.columns[colName] = { name: colName, rawType: def.replace(/DEFAULT.+/i,'').trim(), nullable, default: defaultVal };
+      const rawType = def
+        .replace(/DEFAULT\s+[^\s,]+/i, '')
+        .replace(/NOT NULL/i, '')
+        .trim();
+      tbl.columns[colName] = { name: colName, rawType, nullable, default: defaultVal };
     }
     tables[table] = tbl;
   }
@@ -107,6 +122,7 @@ async function run() {
   }
 
   const reportPath = path.resolve(process.cwd(), 'SCHEMA_REPORT.md');
+  console.log(`[compare] Parsed ${Object.keys(dbTables).length} tables from snapshot.`);
   const lines: string[] = [];
   lines.push('# Schema Report');
   lines.push('Generated at: ' + new Date().toISOString());
@@ -135,6 +151,18 @@ async function run() {
     }
   }
   lines.push('\n## Differences');
+  // Deduplicate issues (in case of duplicate entity metadata edge cases)
+  const seen = new Set<string>();
+  const dedup: DiffIssue[] = [];
+  for (const i of issues) {
+    const key = `${i.category}|${i.table}|${i.detail}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedup.push(i);
+  }
+  issues.length = 0;
+  issues.push(...dedup);
+
   if (!issues.length) {
     lines.push(dbSql ? '\nNo differences detected.' : '\n(DB snapshot missing – differences not computed).');
   } else {
