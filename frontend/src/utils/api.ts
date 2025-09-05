@@ -292,49 +292,51 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// ===== Single-flight + Backoff (profile endpoints) =====
-type FlightState = { p: Promise<any>; ts: number };
-const inFlight: Record<string, FlightState> = {};
-interface BackoffInfo { fails: number; nextAllowed: number; }
-const backoff: Record<string, BackoffInfo> = {};
+// ===== Simplified single-run profile fetch (no retry/backoff) =====
+let __profilePromise: Promise<any> | null = null;
+let __profileFailed = false;
+let __profileRedirected = false;
 
-function profileRequest(url: string) {
-  const key = `GET ${url}`;
-  const now = Date.now();
-  const b = backoff[key];
-  if (b && now < b.nextAllowed) {
-    // Delay until nextAllowed then retry (returns one promise)
-    if (inFlight[key]) return inFlight[key].p; // an already scheduled retry
-    const waitMs = b.nextAllowed - now;
-    const p = new Promise((resolve, reject) => {
-      setTimeout(() => {
-        delete inFlight[key];
-        profileRequest(url).then(resolve).catch(reject);
-      }, waitMs);
-    });
-    inFlight[key] = { p, ts: now };
-    return p;
+function handleProfileFailure(err: any) {
+  if (typeof window === 'undefined') return;
+  if (__profileRedirected) return; // avoid multiple redirects
+  const status = err?.response?.status;
+  // Treat auth / not found of profile as invalid session -> logout & redirect
+  if ([401, 403, 404].includes(status)) {
+    try { localStorage.removeItem('token'); } catch {}
+    try { localStorage.removeItem('user'); } catch {}
+    try { localStorage.removeItem('auth'); } catch {}
+    try { document.cookie = 'tenant_host=; Max-Age=0; path=/'; } catch {}
+    __profileRedirected = true;
+    const cause = status === 404 ? 'profile_404' : 'auth';
+    const url = `/login?cause=${cause}`;
+    // Use replace so back button doesn't loop
+    setTimeout(() => { window.location.replace(url); }, 50);
   }
-  if (inFlight[key]) return inFlight[key].p; // single-flight reuse
-  const p = api.get(url)
-    .then(r => {
-      // success resets backoff
-      delete backoff[key];
-      return r;
-    })
+}
+
+function fetchProfileOnce(endpoint: string) {
+  if (__profilePromise) return __profilePromise;
+  __profilePromise = api.get(endpoint)
+    .then(res => res)
     .catch(err => {
-      // update backoff (exponential up to 30s)
-      const info = backoff[key] || { fails: 0, nextAllowed: 0 };
-      info.fails += 1;
-      const base = 500; // 0.5s
-      const delay = Math.min(30000, base * Math.pow(2, info.fails - 1));
-      info.nextAllowed = Date.now() + delay;
-      backoff[key] = info;
-      delete inFlight[key];
+      __profileFailed = true;
+      handleProfileFailure(err);
       throw err;
     });
-  inFlight[key] = { p, ts: now };
-  return p;
+  return __profilePromise;
+}
+
+// Utilities to allow context / callers to explicitly refresh the cached profile
+export function resetProfileCache() {
+  __profilePromise = null;
+  __profileFailed = false;
+  __profileRedirected = false;
+}
+
+export async function forceProfileRefresh(endpoint: string = '/users/profile-with-currency') {
+  resetProfileCache();
+  return fetchProfileOnce(endpoint);
 }
 
 // Convenience high-level methods (avoid scattering relative /api calls)
@@ -342,7 +344,7 @@ export const Api = {
   client: api,
   // baseURL يحتوي /api بالفعل، فلا نضيف /api هنا
   // Prefer simplified profile-with-currency endpoint (lighter joins, robust fallbacks)
-  me: () => profileRequest('/users/profile-with-currency'),
+  me: () => fetchProfileOnce('/users/profile-with-currency'),
   logout: async () => {
     try {
       const res = await api.post('/auth/logout');
@@ -400,8 +402,8 @@ export const Api = {
     pendingDeposits: () => api.get('/admin/pending-deposits-count'),
   },
   users: {
-    profile: () => profileRequest('/users/profile'),
-    profileWithCurrency: () => profileRequest('/users/profile-with-currency'),
+  profile: () => fetchProfileOnce('/users/profile'),
+  profileWithCurrency: () => fetchProfileOnce('/users/profile-with-currency'),
   }
 };
 
@@ -421,8 +423,8 @@ function addTenantHeaders(config: any): any {
 
   // 1) Ø­Ø§ÙˆÙ„ Ø£Ø®Ø° subdomain Ù…Ù† Ø§Ù„ÙƒÙˆÙƒÙŠ (ÙŠÙÙŠØ¯ Ø£Ø«Ù†Ø§Ø¡ SSR Ø£Ùˆ Ù‚Ø¨Ù„ ØªÙˆÙØ± window)
   const tenantCookie = getCookie('tenant_host');
-  if (tenantCookie && !config.headers['X-Tenant-Host']) {
-    config.headers['X-Tenant-Host'] = tenantCookie;
+  if (tenantCookie) {
+    config.headers['X-Tenant-Host'] = tenantCookie; // always set/overwrite from cookie early if present
   }
 
   // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§ØšØ±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
@@ -432,9 +434,7 @@ function addTenantHeaders(config: any): any {
       const sub = currentHost.split('.')[0];
       if (sub && sub !== 'localhost' && sub !== 'www') {
         const tenantHost = `${sub}.localhost`;
-        if (!config.headers['X-Tenant-Host']) {
-          config.headers['X-Tenant-Host'] = tenantHost;
-        }
+  config.headers['X-Tenant-Host'] = tenantHost;
         // Ø®Ø²Ù‘Ù†Ù‡ ÙÙŠ ÙƒÙˆÙƒÙŠ Ù„ÙŠØ³ØªÙÙŠØ¯ Ù…Ù†Ù‡ Ø£ÙŠ Ø·Ù„Ø¨ ÙŠØªÙ… Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ± (SSR) Ø£Ùˆ fetch Ø¨Ø¯ÙˆÙ† window Ù„Ø§Ø­Ù‚Ø§Ù‹
         document.cookie = `tenant_host=${tenantHost}; path=/`;
       }
@@ -445,9 +445,7 @@ function addTenantHeaders(config: any): any {
       if (hostParts.length > 2) {
         const sub = hostParts[0].toLowerCase();
         if (!['www', 'api'].includes(sub)) {
-          if (!config.headers['X-Tenant-Host']) {
-            config.headers['X-Tenant-Host'] = currentHost;
-          }
+          config.headers['X-Tenant-Host'] = currentHost;
           document.cookie = `tenant_host=${currentHost}; path=/`;
         }
       }
@@ -459,8 +457,8 @@ function addTenantHeaders(config: any): any {
     let token: string | null = localStorage.getItem('token');
     if (!token) token = getCookie('access_token');
     if (!token) token = getCookie('auth'); // legacy/httpOnly support
-    if (token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`; // always overwrite to keep fresh token
     }
   }
 

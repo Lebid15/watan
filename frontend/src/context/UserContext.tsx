@@ -1,8 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { clearAuthArtifacts } from '@/utils/authCleanup';
-import api, { API_ROUTES } from '@/utils/api';
+import api, { Api, forceProfileRefresh, resetProfileCache } from '@/utils/api';
 import { ErrorResponse } from '@/types/common';
 
 type User = {
@@ -18,14 +18,14 @@ type User = {
 type UserContextType = {
   user: User | null;
   loading: boolean;
-  refreshUser: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
   logout: () => void;
 };
 
 const UserContext = createContext<UserContextType>({
   user: null,
   loading: true,
-  refreshUser: async () => {},
+  refreshProfile: async () => {},
   logout: () => {},
 });
 
@@ -33,169 +33,87 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshUser = async () => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    // محاولة إضافية: قراءة التوكن من الكوكي إن لم يوجد في localStorage (حالة التحديث المبكر)
-    let effectiveToken = token;
-    if (!effectiveToken && typeof document !== 'undefined') {
-      const ck = document.cookie.split('; ').find(c => c.startsWith('access_token='));
-      if (ck) effectiveToken = decodeURIComponent(ck.split('=')[1] || '');
-    }
-    // تجنّب محاولة الجلب أثناء صفحة تسجيل الدخول عندما لا يوجد توكن
-    const path = typeof window !== 'undefined' ? window.location.pathname : '';
-    // لا نجلب أبداً أثناء التواجد في /login لتفادي أي 401 تشويشية أو سباق قبل إعادة التوجيه
-    if (path === '/login') {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
-  if (!effectiveToken) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
-    // فك التوكن للحصول على معلومات أساسية (تستخدم كـ fallback إن فشل الجلب)
-    let fallback: Partial<User> | null = null;
-    let decodedRole: string | null = null;
+  // Decode basic fallback data from token (for quick painting before profile resolves)
+  const decodeTokenFallback = () => {
+    if (typeof window === 'undefined') return null;
+    const token = localStorage.getItem('token');
+    if (!token || !token.includes('.')) return null;
     try {
-      if (!effectiveToken || typeof effectiveToken !== 'string' || !effectiveToken.includes('.')) {
-      } else {
-        const parts = effectiveToken.split('.');
-        if (parts.length === 3 && parts[1] && typeof parts[1] === 'string') {
-          const payloadPart = parts[1];
-          if (!payloadPart || typeof payloadPart !== 'string') return;
-          const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-          const json = JSON.parse(typeof atob !== 'undefined' ? atob(b64) : Buffer.from(b64, 'base64').toString());
-          if (json?.sub) {
-            decodedRole = (json.role || 'user').toLowerCase();
-            if (decodedRole && ['instance_owner','owner','admin'].includes(decodedRole)) decodedRole = 'tenant_owner';
-            fallback = {
-              id: json.sub,
-              email: json.email || '',
-              username: json.username || json.user || '',
-              name: json.fullName || json.email || 'User',
-              role: decodedRole || 'user',
-              balance: 0,
-              currency: 'USD', // افتراضي للمطور أو أي مستخدم بلا بيانات تفصيلية
-            } as User;
-          }
-        }
-      }
-    } catch {}
+      const payload = token.split('.')[1];
+      if (!payload) return null;
+      const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+      const json = JSON.parse(atob(b64));
+      if (!json?.sub) return null;
+      let role = (json.role || 'user').toLowerCase();
+      if (['instance_owner','owner','admin'].includes(role)) role = 'tenant_owner';
+      return {
+        id: json.sub,
+        email: json.email || '',
+        username: json.username || json.user || '',
+        name: json.fullName || json.email || 'User',
+        role,
+        balance: 0,
+        currency: 'USD'
+      } as User;
+    } catch { return null; }
+  };
 
-    // جديد: في مسارات المطور (/dev) لا نحتاج بيانات tenant ولا رصيد دقيق الآن،
-    // وغالباً ما يسبب الطلب 401 لعدم وجود tenant_host صالح. لذلك نستخدم fallback مباشرةً.
-    if (typeof window !== 'undefined') {
-      const pth = window.location.pathname || '';
-  if (pth.startsWith('/dev') && decodedRole && decodedRole === 'developer') {
-        if (fallback) {
-          setUser(fallback as User);
-          setLoading(false);
-          return; // تخطّي الجلب لتجنّب 401 التشويهي
-        }
-      }
-    }
+  const applyProfileResponse = (data: any) => {
+    if (!data) return;
+    const currency = (data.currencyCode || data.currency || 'USD') as string;
+    setUser({
+      id: String(data.id || ''),
+      email: String(data.email || ''),
+      username: String((data as any).username || (data as any).userName || ''),
+      name: String(data.fullName || data.email || 'User'),
+      role: String(data.role || user?.role || 'user'),
+      balance: Number(data.balance ?? 0),
+      currency,
+    });
+  };
 
-    // إن كنا في /dev ولا يوجد tenant_host (أي لم نحدد تينانت) والمستخدم مطوّر / مالك منصة → استخدم fallback وتخطي الطلب لتجنب 401
-    if (typeof document !== 'undefined') {
-      const noTenantCookie = !document.cookie.split('; ').some(c => c.startsWith('tenant_host='));
-      // وسّعنا الشرط ليشمل /admin كذلك لحالات المالك أو المطوّر بدون اختيار تينانت بعد التحديث
-  if ((path.startsWith('/dev') || path.startsWith('/admin')) && noTenantCookie && decodedRole && decodedRole === 'developer') {
-        if (fallback) {
-          setUser(fallback as User);
-          setLoading(false);
-          return;
-        }
-      }
-    }
-
+  const loadOnce = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    const path = window.location.pathname;
+    if (path === '/login') { setLoading(false); setUser(null); return; }
+    const token = localStorage.getItem('token');
+    if (!token) { setLoading(false); setUser(null); return; }
+    const fallback = decodeTokenFallback();
+    if (fallback) setUser(prev => prev || fallback); // paint fallback only if no existing user
     try {
-      // جلب البيانات الشخصية فقط إذا كان التوكن موجودًا
-      let res;
-      try {
-        res = await api.get<User>(API_ROUTES.users.profileWithCurrency, {
-          headers: { 'Authorization': `Bearer ${effectiveToken}` },
-        });
-      } catch (e: unknown) {
-        // في حالة 404 أو 501 أو مسار غير متاح، جرّب /users/profile كـ fallback (ليس مفيداً لــ 401)
-        const error = e as ErrorResponse;
-        const status = error?.response?.status;
-        if (status && [404, 500, 501].includes(status)) {
-          try {
-            res = await api.get<User>(API_ROUTES.users.profile, {
-              headers: { 'Authorization': `Bearer ${effectiveToken}` },
-            });
-          } catch (e2) {
-            throw error; // احتفظ بالخطأ الأصلي لو فشل fallback
-          }
-        } else if (status === 401) {
-          // إعادة محاولة صامتة بعد 250ms (سباق خلال التحديث) لمرة واحدة فقط
-          try {
-            await new Promise(r => setTimeout(r, 250));
-            const retryTokenLS = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-            let retryToken = retryTokenLS;
-            if (!retryToken && typeof document !== 'undefined') {
-              const ck2 = document.cookie.split('; ').find(c => c.startsWith('access_token='));
-              if (ck2) retryToken = decodeURIComponent(ck2.split('=')[1] || '');
-            }
-            if (retryToken && retryToken !== effectiveToken) {
-              res = await api.get<User>(API_ROUTES.users.profileWithCurrency, {
-                headers: { 'Authorization': `Bearer ${retryToken}` },
-              });
-            } else {
-              throw error;
-            }
-          } catch (retryErr) {
-            throw error; // أعد نفس الخطأ الأول لو فشلت الإعادة
-          }
-        } else {
-          throw error;
-        }
+      const res = await Api.me();
+      applyProfileResponse(res.data);
+    } catch (e) {
+      // Api.me handles redirect on auth issues; just ensure state
+      const err = e as ErrorResponse;
+      if (err?.response?.status && [401,403,404].includes(err.response.status)) {
+        setUser(null);
       }
-      // قد يأتي backend بحقل currencyCode وليس currency، فنطبّق التطبيع
-      const anyRes = res.data as Record<string, unknown>;
-      const currency = anyRes.currencyCode || anyRes.currency || 'USD';
-      setUser({
-        id: String(anyRes.id || ''),
-        email: String(anyRes.email || ''),
-  username: String((anyRes as any).username || (anyRes as any).userName || ''),
-        name: String(anyRes.fullName || anyRes.email || 'User'),
-        role: String(anyRes.role || (fallback?.role ?? 'user')),
-        balance: Number(anyRes.balance ?? 0),
-        currency: String(currency),
-      });
-    } catch (e: unknown) {
-      // عند 401: لا نمسح التوكن أثناء التواجد في مناطق backoffice (/admin أو /dev) حتى لا نطرد المستخدم بسبب 401 عابر
-      const error = e as ErrorResponse;
-      if (error?.response?.status === 401 && typeof window !== 'undefined') {
-        const p = window.location.pathname || '';
-        const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
-        const onAuthPages = p === '/login' || p === '/register';
-        if (!inBackoffice && !onAuthPages) {
-          // فقط في الصفحات العامة نمسح التوكن ونوجه المستخدم لتسجيل الدخول لاحقًا (التحويل يتم في interceptor)
-          localStorage.removeItem('token');
-          document.cookie = 'access_token=; Max-Age=0; path=/';
-          document.cookie = 'role=; Max-Age=0; path=/';
-        } else {
-          // سجل للتشخيص بدون حذف التوكن
-          // tslint:disable-next-line:no-console
-          console.warn('[UserContext] 401 ignored in backoffice to avoid forced logout');
-        }
-      }
-      // استخدم fallback إن وُجد لتقليل الوميض و401 التشويشية
-      if (fallback) setUser(fallback as User); else setUser(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await forceProfileRefresh();
+      applyProfileResponse(res.data);
+    } catch (e) {
+      // ignore, Api handles redirect
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Legacy refresh alias kept for compatibility (tests may mock refreshUser)
+  const refreshUser = () => refreshProfile();
 
   const logout = () => {
+    resetProfileCache();
     setUser(null);
     if (typeof window !== 'undefined') {
       clearAuthArtifacts({ keepTheme: true });
-      // استخدام replace حتى لا يرجع المستخدم للخلف بالتوكن القديم من الـ history
       window.location.replace('/login');
     }
   };
@@ -203,19 +121,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // تأخير بسيط لإتاحة تهيئة الواجهات / الكوكي قبل الجلب الأول لتقليل 401 وقت التحديث
   useEffect(() => {
     let cancelled = false;
-    const run = () => { if (!cancelled) refreshUser(); };
-    // إذا لا يوجد توكن الآن جرّب بعد 150ms (قد يكون التخزين لم يُكتب بعد login redirect)
+    const run = () => { if (!cancelled) loadOnce(); };
     if (typeof window !== 'undefined' && !localStorage.getItem('token')) {
-      const t = setTimeout(run, 150);
+      const t = setTimeout(run, 120);
       return () => { cancelled = true; clearTimeout(t); };
     }
-    // انتظار microtask لضمان تحميل interceptors
     const t = setTimeout(run, 0);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [refreshUser]);
+  }, [loadOnce]);
 
   return (
-    <UserContext.Provider value={{ user, loading, refreshUser, logout }}>
+  <UserContext.Provider value={{ user, loading, refreshProfile, logout }}>
       {children}
     </UserContext.Provider>
   );
