@@ -25,7 +25,8 @@ export class User {
   @Column({ type: 'uuid', nullable: true })
   tenantId: string | null;
 
-  @ManyToOne(() => Tenant, { onDelete: 'CASCADE' })
+  // Align with integrity migration: when tenant deleted, null out tenantId to preserve audit trails
+  @ManyToOne(() => Tenant, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'tenantId' })
   tenant: Tenant;
 

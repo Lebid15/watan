@@ -1,5 +1,5 @@
 // src/auth/auth.service.ts
-import { Injectable, UnauthorizedException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { UserService } from '../user/user.service';
 import * as bcrypt from 'bcrypt';
 import * as argon2 from 'argon2';
@@ -7,13 +7,15 @@ import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { User } from '../user/user.entity';
 import { TotpService } from './totp/totp.service';
+import { DataSource } from 'typeorm';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
-    private readonly totpService: TotpService,
+  private readonly totpService: TotpService,
+  private readonly dataSource: DataSource,
   ) {}
 
   async validateByEmailOrUsername(
@@ -69,11 +71,17 @@ export class AuthService {
 
   async login(user: any, tenantIdFromContext: string | null) {
     const effectiveTenantId: string | null = user.tenantId ?? tenantIdFromContext ?? null;
+    if (effectiveTenantId) {
+      const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [effectiveTenantId]);
+      if (!tenantExists || tenantExists.length === 0) {
+        throw new BadRequestException('TENANT_NOT_FOUND');
+      }
+    }
     
     const totpEnabled = await this.totpService.hasTotpEnabled(user.id);
     
     if (!totpEnabled || user.forceTotpEnroll) {
-      const payload = {
+    const payload = {
         email: user.email,
         sub: user.id,
         role: user.role ?? 'user',
@@ -95,7 +103,7 @@ export class AuthService {
     }
     
     // عندما يكون لدى المستخدم TOTP مفعّل نمنحه توكن "وضع انتظار" يسمح فقط بمسارات التحقق
-    const payload = {
+  const payload = {
       email: user.email,
       sub: user.id,
       role: user.role ?? 'user',
@@ -118,6 +126,12 @@ export class AuthService {
   }
 
   async completeTotpLogin(user: any, tenantId: string | null) {
+    if (tenantId) {
+      const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [tenantId]);
+      if (!tenantExists || tenantExists.length === 0) {
+        throw new BadRequestException('TENANT_NOT_FOUND');
+      }
+    }
     const payload = {
       email: user.email,
       sub: user.id,

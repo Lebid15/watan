@@ -54,6 +54,11 @@ jobs:
       - name: Run TypeScript compilation (non-blocking)
         working-directory: ./backend
         run: npm run build --if-present || true
+      
+      - name: Tenant integrity verification (blocking)
+        working-directory: ./backend
+        run: |
+          npm run tenant:verify
               
       - name: Run backend tests (non-blocking)
         working-directory: ./backend

@@ -12,6 +12,7 @@ export class TenantDomain {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  // Cascade delete domains when tenant removed (intentional)
   @ManyToOne(() => Tenant, (t) => t.domains, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'tenantId' })
   tenant: Tenant;
