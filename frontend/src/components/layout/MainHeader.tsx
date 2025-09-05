@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 import { formatGroupsDots } from '@/utils/format';
+import { HiOutlineUserCircle } from 'react-icons/hi';
 
 function currencySymbol(code?: string) {
   switch ((code || '').toUpperCase()) {

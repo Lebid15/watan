@@ -21,6 +21,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { UserApiTokenRotation } from './user-api-token-rotation.entity';
 import { ClientApiAdminController } from './client-api.admin.controller';
 import { ClientApiWebhookAdminController } from './client-api-webhook.admin.controller';
+import { ClientApiSelfController } from './client-api.self.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([
@@ -35,7 +36,7 @@ import { ClientApiWebhookAdminController } from './client-api-webhook.admin.cont
     ClientApiStatsDaily,
     ClientApiWebhookOutbox,
   ])],
-  controllers: [ClientApiOpenapiPublicController, ClientApiController, ClientApiAdminController, ClientApiWebhookAdminController],
+  controllers: [ClientApiOpenapiPublicController, ClientApiController, ClientApiAdminController, ClientApiWebhookAdminController, ClientApiSelfController],
   providers: [ClientApiAuthGuard, ClientApiService, { provide: APP_INTERCEPTOR, useClass: ClientApiLoggingInterceptor }, ClientApiStatsCron, ClientApiWebhookWorker, ClientApiWebhookEnqueueService],
   exports: [],
 })
