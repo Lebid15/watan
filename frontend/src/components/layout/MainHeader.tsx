@@ -28,11 +28,11 @@ export default function MainHeader() {
   const router = useRouter();
 
   // ⬅️ خذ القيم الموجودة فعلًا في الـ Context
-  const { user, refreshUser, logout } = useUser();
+  const { user, refreshProfile: refreshUser, logout } = useUser();
 
   // حدّث بيانات المستخدم عند تحميل الهيدر (لو فيه توكن)
   useEffect(() => {
-    refreshUser();
+  refreshUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

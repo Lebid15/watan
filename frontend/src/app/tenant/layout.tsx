@@ -5,12 +5,12 @@ import { useUser } from '@/context/UserContext';
 
 // Simple role guard layout for tenant_owner area
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, refreshUser } = useUser();
+  const { user, loading, refreshProfile } = useUser();
   const router = useRouter();
   const pathname = usePathname();
   const [ready,setReady] = useState(false);
 
-  useEffect(()=>{ refreshUser(); },[]); // ensure fresh user
+  useEffect(()=>{ refreshProfile(); },[]); // ensure fresh user
 
   useEffect(()=>{
     if (loading) return;

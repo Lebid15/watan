@@ -58,7 +58,7 @@ export default function ProductDetailsPage() {
 
   const { id } = useParams();
   const router = useRouter();
-  const { user, refreshUser } = useUser();
+  const { user, refreshProfile } = useUser();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [currencyCode, setCurrencyCode] = useState<string | undefined>(undefined);
@@ -117,7 +117,7 @@ export default function ProductDetailsPage() {
     if (!gameId.trim()) return alert('الرجاء إدخال معرف اللعبة');
 
     try {
-      setBuying(true);
+  setBuying(true);
       await api.post(API_ROUTES.orders.base, {
         productId: product.id,
         packageId: selectedPackage.id,
@@ -127,7 +127,7 @@ export default function ProductDetailsPage() {
         extraField: extraField?.trim() ? extraField.trim() : undefined,
       });
       
-      await refreshUser();
+  await refreshProfile();
       router.push('/orders');
       alert(`تم إنشاء الطلب: ${selectedPackage.name} بسعر ${formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: true, symbolBefore: true })}`);
     } catch {

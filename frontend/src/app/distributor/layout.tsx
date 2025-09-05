@@ -4,11 +4,11 @@ import { useUser } from '@/context/UserContext';
 import { useRouter, usePathname } from 'next/navigation';
 
 export default function DistributorLayout({ children }:{children:React.ReactNode}){
-  const { user, loading, refreshUser } = useUser();
+  const { user, loading, refreshProfile } = useUser();
   const router = useRouter();
   const pathname = usePathname();
   const [ready,setReady]=useState(false);
-  useEffect(()=>{refreshUser();},[]);
+  useEffect(()=>{refreshProfile();},[]);
   useEffect(()=>{
     if(loading) return; if(!user){ router.replace(`/login?next=${encodeURIComponent(pathname)}`); return; }
   const raw = (user.role||'').toLowerCase();
