@@ -28,13 +28,30 @@ export class IntegrationsController {
 
   /** استخراج tenantId من الطلب (JWT أو الهيدر الاحتياطي) */
   private getTenantId(req: any): string {
-  const fromUser = req?.user?.tenantId ?? req?.user?.tenant_id;
-  const fromTenant = req?.tenant?.id; // middleware
+    const fromUser = req?.user?.tenantId ?? req?.user?.tenant_id;
+    const fromTenant = req?.tenant?.id; // middleware (يتم ضبطه عبر X-Tenant-Host)
     const fromHeader =
       req?.headers?.['x-tenant-id'] ??
       req?.headers?.['X-Tenant-Id'] ??
       req?.headers?.['x-tenantid'];
-  return String(fromUser ?? fromTenant ?? fromHeader ?? '').trim();
+
+    // نجمع كل المحاولات
+    let tenantId = String(fromUser ?? fromTenant ?? fromHeader ?? '').trim();
+
+    // إذا كانت فارغة نحاول إستنتاج أن السبب أن الواجهة تستدعي api.syrz1.com بدل نفس الساب دومين
+    // في هذه الحالة نُعيد خطأ واضح بدل "invalid input syntax for type uuid: \"\""
+    if (!tenantId) {
+      throw new (require('@nestjs/common').BadRequestException)(
+        'TENANT_ID_REQUIRED',
+      );
+    }
+    if (!/^[0-9a-fA-F-]{36}$/.test(tenantId)) {
+      // منع تمرير قيم مثل undefined / null / الساب دومين كنص
+      throw new (require('@nestjs/common').BadRequestException)(
+        'INVALID_TENANT_ID',
+      );
+    }
+    return tenantId;
   }
 
   @Post()
