@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import AdminNavbar from './AdminNavbar';
 import AdminTopBar from './AdminTopBar';
 import MobileZoomFrame from '@/components/MobileZoomFrame';
-import api from '@/utils/api';
+import api, { API_ROUTES } from '@/utils/api';
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   const DESIGN_WIDTH = 1280;
@@ -19,7 +19,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     let mounted = true;
     (async () => {
       try {
-        const r = await api.get('/users/profile-with-currency').catch((e: any) => e?.response);
+        const r = await api.get(API_ROUTES.users.profileWithCurrency).catch((e: any) => e?.response);
         if (!mounted) return;
         if (!r || r.status === 401) {
           const next = typeof window !== 'undefined' ? window.location.pathname : '/admin/dashboard';

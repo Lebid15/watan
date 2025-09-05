@@ -87,7 +87,7 @@ export default function LinkUsersPricesPage() {
     // نجلب هوية المستخدم الحالي لاستبعاده لاحقاً
     (async () => {
       try {
-        const { data } = await api.get<any>('/users/profile-with-currency');
+        const { data } = await api.get<any>(API_ROUTES.users.profileWithCurrency);
         if (data?.id) setCurrentUserId(String(data.id));
       } catch {}
     })();
