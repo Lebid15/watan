@@ -71,11 +71,12 @@ export class AuthService {
 
   async login(user: any, tenantIdFromContext: string | null) {
     const effectiveTenantId: string | null = user.tenantId ?? tenantIdFromContext ?? null;
-    if (effectiveTenantId) {
-      const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [effectiveTenantId]);
-      if (!tenantExists || tenantExists.length === 0) {
-        throw new BadRequestException('TENANT_NOT_FOUND');
-      }
+    if (!effectiveTenantId) {
+      throw new BadRequestException('TENANT_CONTEXT_REQUIRED');
+    }
+    const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [effectiveTenantId]);
+    if (!tenantExists || tenantExists.length === 0) {
+      throw new BadRequestException('TENANT_NOT_FOUND');
     }
     
     const totpEnabled = await this.totpService.hasTotpEnabled(user.id);
@@ -126,11 +127,12 @@ export class AuthService {
   }
 
   async completeTotpLogin(user: any, tenantId: string | null) {
-    if (tenantId) {
-      const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [tenantId]);
-      if (!tenantExists || tenantExists.length === 0) {
-        throw new BadRequestException('TENANT_NOT_FOUND');
-      }
+    if (!tenantId) {
+      throw new BadRequestException('TENANT_CONTEXT_REQUIRED');
+    }
+    const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [tenantId]);
+    if (!tenantExists || tenantExists.length === 0) {
+      throw new BadRequestException('TENANT_NOT_FOUND');
     }
     const payload = {
       email: user.email,

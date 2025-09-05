@@ -27,6 +27,9 @@ export class UserService {
   ) {}
 
   async createUser(createUserDto: CreateUserDto, tenantId: string): Promise<User> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required for user creation');
+    }
     const { email, password, currencyId, fullName, username, phoneNumber, countryCode } = createUserDto;
 
     const currency = await this.currenciesRepository.findOne({
@@ -45,7 +48,7 @@ export class UserService {
       phoneNumber,
       countryCode,
       currency,
-      tenantId, // ✅ ربط المستخدم بالمستأجر
+  tenantId, // enforced non-null now
     });
 
     return this.usersRepository.save(user);
