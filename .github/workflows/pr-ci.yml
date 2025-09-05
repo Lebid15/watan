@@ -8,26 +8,21 @@ jobs:
   frontend-build:
     name: Frontend TypeScript Build
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-          
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
-        
       - name: Run TypeScript compilation
         working-directory: ./frontend
         run: npm run build
-        
       - name: Run frontend linting (non-blocking)
         working-directory: ./frontend
         run: npm run lint --if-present || true
@@ -45,6 +40,10 @@ jobs:
         ports:
           - 5432:5432
         options: >-
+          --health-cmd "pg_isready -U watan"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
           --health-cmd "pg_isready -U watan" \
           --health-interval 5s \
           --health-timeout 5s \
@@ -53,17 +52,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
-          
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
+      - name: Wait for Postgres
+        env:
+          PGPASSWORD: changeme
 
       - name: Wait for Postgres
         run: |
@@ -78,7 +78,6 @@ jobs:
       - name: Run TypeScript compilation (non-blocking)
         working-directory: ./backend
         run: npm run build --if-present || true
-      
       - name: Tenant integrity verification (blocking)
         working-directory: ./backend
         env:
