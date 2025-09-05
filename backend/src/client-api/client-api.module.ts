@@ -4,6 +4,7 @@ import { User } from '../user/user.entity';
 import { Product } from '../products/product.entity';
 import { ProductPackage } from '../products/product-package.entity';
 import { ProductOrder } from '../products/product-order.entity';
+import { PackagePrice } from '../products/package-price.entity';
 import { ProductApiMetadata } from '../products/product-api-metadata.entity';
 import { ClientApiController } from './client-api.controller';
 import { ClientApiOpenapiPublicController } from './client-api.openapi.controller';
@@ -22,7 +23,18 @@ import { ClientApiAdminController } from './client-api.admin.controller';
 import { ClientApiWebhookAdminController } from './client-api-webhook.admin.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Product, ProductPackage, ProductOrder, ProductApiMetadata, ClientApiRequestLog, UserApiTokenRotation, ClientApiStatsDaily, ClientApiWebhookOutbox])],
+  imports: [TypeOrmModule.forFeature([
+    User,
+    Product,
+    ProductPackage,
+    ProductOrder,
+    PackagePrice,
+    ProductApiMetadata,
+    ClientApiRequestLog,
+    UserApiTokenRotation,
+    ClientApiStatsDaily,
+    ClientApiWebhookOutbox,
+  ])],
   controllers: [ClientApiOpenapiPublicController, ClientApiController, ClientApiAdminController, ClientApiWebhookAdminController],
   providers: [ClientApiAuthGuard, ClientApiService, { provide: APP_INTERCEPTOR, useClass: ClientApiLoggingInterceptor }, ClientApiStatsCron, ClientApiWebhookWorker, ClientApiWebhookEnqueueService],
   exports: [],
