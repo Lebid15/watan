@@ -32,6 +32,32 @@ async function run() {
       }
     }
   }
+
+  // Targeted default checks (strict for currencies.id)
+  type DefaultCheck = { table: string; column: string; expected: RegExp };
+  const defaultChecks: DefaultCheck[] = [
+    { table: 'currencies', column: 'id', expected: /gen_random_uuid\(\)/i },
+    { table: 'tenant', column: 'createdAt', expected: /now\(\)/i },
+    { table: 'tenant', column: 'updatedAt', expected: /now\(\)/i },
+    { table: 'currencies', column: 'createdAt', expected: /now\(\)/i },
+    { table: 'currencies', column: 'updatedAt', expected: /now\(\)/i },
+  ];
+  for (const chk of defaultChecks) {
+    const rows = await dataSource.query(`SELECT column_default FROM information_schema.columns WHERE table_name='${chk.table}' AND column_name='${chk.column}'`);
+    if (rows.length) {
+      const def = rows[0].column_default as string | null;
+      const ok = def && chk.expected.test(def);
+      if (!ok) {
+        const msg = `[verify] Missing/Unexpected default for ${chk.table}.${chk.column}: ${def}`;
+        if (chk.table === 'currencies' && chk.column === 'id') {
+          console.error(msg);
+          process.exit(1);
+        } else {
+          console.warn('[verify][warn] ' + msg);
+        }
+      }
+    }
+  }
   console.log('Schema OK');
   process.exit(0);
 }
