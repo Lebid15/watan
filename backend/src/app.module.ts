@@ -21,6 +21,7 @@ import { AuditModule } from './audit/audit.module';
 import { DistributorPricingModule } from './distributor/distributor-pricing.module';
 import { ExternalApiModule } from './external-api/external-api.module';
 import { BillingModule } from './billing/billing.module';
+import { ClientApiModule } from './client-api/client-api.module';
 
 import { Tenant } from './tenants/tenant.entity';
 import { TenantDomain } from './tenants/tenant-domain.entity';
@@ -136,6 +137,7 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
   DistributorPricingModule,
   ExternalApiModule,
   BillingModule,
+  ClientApiModule,
   ErrorsModule,
   DevToolsModule,
   // Repositories needed directly in AppModule-level controllers (e.g., AdminCountsController)

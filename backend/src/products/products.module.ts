@@ -8,6 +8,7 @@ import { ProductOrdersAdminController } from './product-orders.admin.controller'
 
 import { Product } from './product.entity';
 import { ProductPackage } from './product-package.entity';
+import { ProductApiMetadata } from './product-api-metadata.entity';
 import { PackagePrice } from './package-price.entity';
 import { PriceGroup } from './price-group.entity';
 import { User } from '../user/user.entity';
@@ -33,6 +34,8 @@ import { ProductImageMetricsSnapshot } from './product-image-metrics-snapshot.en
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { ThumbnailService } from './thumbnail.service';
 import { ThumbnailScheduler } from './thumbnail.scheduler';
+import { ClientApiWebhookOutbox } from '../client-api/client-api-webhook-outbox.entity';
+import { ClientApiWebhookEnqueueService } from '../client-api/client-api-webhook.enqueue.service';
 
 @Module({
   imports: [
@@ -41,7 +44,8 @@ import { ThumbnailScheduler } from './thumbnail.scheduler';
       ProductPackage,
       PackagePrice,
       PriceGroup,
-      ProductOrder,
+  ProductOrder,
+  ProductApiMetadata,
       OrderDispatchLog,
 
       User,
@@ -51,6 +55,7 @@ import { ThumbnailScheduler } from './thumbnail.scheduler';
       PackageCost,
   PackageMapping,
   ProductImageMetricsSnapshot,
+  ClientApiWebhookOutbox,
   // Distributor pricing entities (ensure availability for injection in ProductsService)
   DistributorPriceGroup,
   DistributorPackagePrice,
@@ -73,6 +78,7 @@ import { ThumbnailScheduler } from './thumbnail.scheduler';
   ProductImageMetricsScheduler,
   ThumbnailService,
   ThumbnailScheduler,
+  ClientApiWebhookEnqueueService,
   ],
   exports: [
     ProductsService,

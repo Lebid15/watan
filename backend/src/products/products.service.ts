@@ -22,6 +22,7 @@ import { PackageCost } from '../integrations/package-cost.entity';
 import { OrderDispatchLog } from './order-dispatch-log.entity';
 import { AccountingPeriodsService } from '../accounting/accounting-periods.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ClientApiWebhookEnqueueService } from '../client-api/client-api-webhook.enqueue.service';
 
 export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'processing' | 'sent';
 
@@ -39,7 +40,8 @@ export class ProductsService {
     @InjectRepository(Currency) private readonly currenciesRepo: Repository<Currency>,
     private readonly integrations: IntegrationsService,
     private readonly accounting: AccountingPeriodsService,
-    private readonly notifications: NotificationsService,
+  private readonly notifications: NotificationsService,
+  private readonly clientApiWebhookEnqueue: ClientApiWebhookEnqueueService,
   // Repos for auto-dispatch (lazy optional – injected only if entity registered)
   @InjectRepository(PackageRouting) private readonly routingRepo: Repository<PackageRouting>,
   @InjectRepository(PackageMapping) private readonly mappingRepo: Repository<PackageMapping>,
@@ -2057,7 +2059,7 @@ export class ProductsService {
     }
 
     order.status = status as InternalOrderStatus;
-    const saved = await this.ordersRepo.save(order);
+  const saved = await this.ordersRepo.save(order);
     console.log('[SERVICE updateOrderStatus] saved', {
       orderId: saved.id,
       status: saved.status,
@@ -2100,6 +2102,24 @@ export class ProductsService {
       },
     );
 
+    try {
+      if (prevStatus !== status && order.user?.id) {
+        await this.clientApiWebhookEnqueue.enqueueOrderStatus({
+          tenantId: effectiveTenantId,
+            userId: order.user.id,
+            order: {
+              id: saved.id,
+              orderUuid: (saved as any).orderUuid || null,
+              status: saved.status,
+              productId: (saved as any).packageId || null,
+              quantity: saved.quantity,
+              updatedAt: new Date(),
+            },
+        });
+      }
+    } catch (e) {
+      // لا تكسر المنطق الأساسي بسبب فشل enqueue
+    }
     return saved;
   }
 

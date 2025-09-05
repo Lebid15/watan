@@ -118,4 +118,50 @@ export class User {
     nullable: true,
   })
   totpLockedUntil?: Date | null;
+
+  // ===== Client API (Phase1) fields =====
+  // Raw token (40-hex) stored directly Phase1; Phase2 will hash + rotate
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  apiToken?: string | null;
+
+  // Mark token as revoked (forces regeneration)
+  @Column({ type: 'boolean', nullable: true, default: false })
+  apiTokenRevoked?: boolean | null;
+
+  // Allow any IP (overrides allow list)
+  @Column({ type: 'boolean', nullable: true, default: true })
+  apiAllowAllIps?: boolean | null;
+
+  // Explicit allowed IPs (stored JSON array)
+  @Column({
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb',
+    nullable: true,
+    default: process.env.TEST_DB_SQLITE === 'true' ? undefined : () => `'[]'`,
+  })
+  apiAllowIps?: string[] | null;
+
+  // Optional webhook URL (Phase2 usage; stored now for future)
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  apiWebhookUrl?: string | null;
+
+  // Last usage timestamp (updated on successful call)
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
+  apiLastUsedAt?: Date | null;
+
+  // Optional per-minute rate limit (null => unlimited)
+  @Column({ type: 'int', nullable: true })
+  apiRateLimitPerMin?: number | null;
+
+  // ===== Webhook HMAC (foundation) =====
+  @Column({ type: 'boolean', nullable: true, default: false })
+  apiWebhookEnabled?: boolean | null; // enable only if secret + url
+
+  @Column({ type: 'varchar', length: 8, nullable: true, default: 'v1' })
+  apiWebhookSigVersion?: string | null; // current signature version (v1)
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  apiWebhookSecret?: string | null; // plain for now (future: encrypt)
+
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
+  apiWebhookLastRotatedAt?: Date | null;
 }

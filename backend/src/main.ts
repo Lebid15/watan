@@ -118,6 +118,20 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
+  // Export client API subset
+  try {
+    const clientPaths: Record<string, any> = {};
+    for (const [p, schema] of Object.entries(document.paths || {})) {
+      if (p.startsWith('/client/api/')) clientPaths[p] = schema;
+    }
+    const subset = { ...document, paths: clientPaths, tags: [{ name: 'Client API' }] };
+    const outDir = path.join(process.cwd(), 'openapi');
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(path.join(outDir, 'openapi-client.json'), JSON.stringify(subset, null, 2), 'utf8');
+    console.log('📄 Generated openapi/openapi-client.json (paths=%d)', Object.keys(clientPaths).length);
+  } catch (e) {
+    console.warn('Failed to generate client OpenAPI subset', e?.message);
+  }
 
   const port = Number(process.env.PORT) || 3001;
   const host = process.env.HOST || '0.0.0.0';

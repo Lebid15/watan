@@ -33,6 +33,11 @@ export class ProductOrder {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  /** Client-supplied idempotency key (order_uuid). Unique per (tenant,user). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Index('uq_orders_tenant_user_order_uuid', { unique: false }) // composite uniqueness enforced via migration for partial (tenantId,userId,orderUuid)
+  orderUuid?: string | null;
+
   /** ✅ معرّف المستأجر (Tenant) */
   @Column({ type: 'uuid' })
   @Index('idx_orders_tenant')
