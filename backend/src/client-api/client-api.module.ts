@@ -22,6 +22,7 @@ import { UserApiTokenRotation } from './user-api-token-rotation.entity';
 import { ClientApiAdminController } from './client-api.admin.controller';
 import { ClientApiWebhookAdminController } from './client-api-webhook.admin.controller';
 import { ClientApiSelfController } from './client-api.self.controller';
+import { ClientApiMeController } from './client-api.me.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([
@@ -36,7 +37,7 @@ import { ClientApiSelfController } from './client-api.self.controller';
     ClientApiStatsDaily,
     ClientApiWebhookOutbox,
   ])],
-  controllers: [ClientApiOpenapiPublicController, ClientApiController, ClientApiAdminController, ClientApiWebhookAdminController, ClientApiSelfController],
+  controllers: [ClientApiOpenapiPublicController, ClientApiController, ClientApiAdminController, ClientApiWebhookAdminController, ClientApiSelfController, ClientApiMeController],
   providers: [ClientApiAuthGuard, ClientApiService, { provide: APP_INTERCEPTOR, useClass: ClientApiLoggingInterceptor }, ClientApiStatsCron, ClientApiWebhookWorker, ClientApiWebhookEnqueueService],
   exports: [],
 })

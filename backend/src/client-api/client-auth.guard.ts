@@ -11,7 +11,11 @@ export class ClientApiAuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req: any = ctx.switchToHttp().getRequest();
-    const rawHeader = Object.keys(req.headers).find(h => h.toLowerCase() === 'api-token');
+    // Official header: api-token ; Backwards compatibility: x-api-token
+    const rawHeader = Object.keys(req.headers).find(h => {
+      const hl = h.toLowerCase();
+      return hl === 'api-token' || hl === 'x-api-token';
+    });
     const token = rawHeader ? (req.headers as any)[rawHeader] as string : undefined;
     if (!token) throw ErrClientApi.missingToken();
     if (typeof token !== 'string' || token.length !== 40 || !/^[a-f0-9]{40}$/i.test(token)) {

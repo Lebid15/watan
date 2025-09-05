@@ -113,7 +113,7 @@ export default function MainHeader() {
                     <button
                       role="menuitem"
                       className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
-                      onClick={() => { setOpen(false); router.push('/user/api-token'); }}
+                      onClick={() => { setOpen(false); router.push('/account/api'); }}
                     >
                       API
                     </button>
