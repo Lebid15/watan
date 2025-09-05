@@ -136,11 +136,13 @@ async function bootstrap() {
         clientPaths[noPrefix] = schema;
       }
     }
-    const subset = { ...document, paths: clientPaths, tags: [{ name: 'Client API' }], servers: [{ url: '' }] };
-    const outDir = path.join(process.cwd(), 'openapi');
-    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-    fs.writeFileSync(path.join(outDir, 'openapi-client.json'), JSON.stringify(subset, null, 2), 'utf8');
-    console.log('📄 Generated openapi/openapi-client.json (paths=%d)', Object.keys(clientPaths).length);
+  const subset = { ...document, paths: clientPaths, tags: [{ name: 'Client API' }], servers: [{ url: '' }] };
+  const outDir = path.join(process.cwd(), 'openapi');
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  fs.writeFileSync(path.join(outDir, 'openapi-client.json'), JSON.stringify(subset, null, 2), 'utf8');
+  // Internal full spec (includes /api/users/* etc.)
+  fs.writeFileSync(path.join(outDir, 'openapi-internal.json'), JSON.stringify(document, null, 2), 'utf8');
+  console.log('📄 Generated openapi/openapi-client.json (paths=%d) & openapi-internal.json (full paths=%d)', Object.keys(clientPaths).length, Object.keys(document.paths||{}).length);
   } catch (e) {
     console.warn('Failed to generate client OpenAPI subset', e?.message);
   }

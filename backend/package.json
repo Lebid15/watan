@@ -35,7 +35,8 @@
   "schema:verify": "ts-node -r tsconfig-paths/register ./src/scripts/verify-schema.ts",
   "schema:describe": "ts-node -r tsconfig-paths/register ./src/scripts/describe-schema.ts --out entity_schema.json",
   "schema:compare": "ts-node -r tsconfig-paths/register ./src/scripts/compare-schema.ts",
-  "dev:token": "node scripts/request-dev-token.cjs"
+  "dev:token": "node scripts/request-dev-token.cjs",
+  "e2e:smoke": "ts-node -r tsconfig-paths/register ./src/scripts/smoke-profile.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.6",
