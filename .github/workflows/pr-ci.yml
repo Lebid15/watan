@@ -84,6 +84,8 @@ jobs:
           DATABASE_URL: postgres://watan:changeme@127.0.0.1:5432/watan?sslmode=disable
         run: npm run tenant:verify
 
-      - name: Run backend tests (non-blocking)
+      - name: Tenant integrity verification (blocking)
         working-directory: ./backend
-        run: npm test --if-present || true
+        env:
+          DATABASE_URL: postgres://watan:changeme@127.0.0.1:5432/watan?sslmode=disable
+        run: npm run tenant:verify
