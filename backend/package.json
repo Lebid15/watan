@@ -31,6 +31,8 @@
     "metrics:product-images": "ts-node -r tsconfig-paths/register ./src/scripts/product-image-metrics.ts",
     "migrations:guard": "node scripts/check-migrations.cjs",
     "seed:demo": "ts-node -r tsconfig-paths/register ./src/scripts/seed-demo-data.ts",
+  "seed:initial": "ts-node -r tsconfig-paths/register ./src/scripts/seed-initial-platform.ts",
+  "schema:verify": "ts-node -r tsconfig-paths/register ./src/scripts/verify-schema.ts",
     "dev:token": "node scripts/request-dev-token.cjs"
   },
   "dependencies": {
