@@ -25,7 +25,13 @@ async function run() {
   const summary = { issues, counts: { orphanUsers: orphanUsers.length, nullTenantUsers: nullTenantUsers.length, tenantsNoPrimary: tenantsNoPrimary.length, multiPrimary: multiPrimary.length, tenantsNoDomain: tenantsNoDomain.length } };
   console.log(JSON.stringify(summary, null, 2));
   await dataSource.destroy();
-  if (issues.length) process.exit(1);
+  if (issues.length) {
+    const nullUsers = issues.filter(i => i.category === 'null_tenant_user');
+    if (nullUsers.length) {
+      console.error('[VERIFY] null_tenant_user IDs:', nullUsers.map(u => u.userId).join(','));
+    }
+    process.exit(1);
+  }
 }
 
 run().catch(e => { console.error(e); process.exit(2); });
