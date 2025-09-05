@@ -292,12 +292,57 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// ===== Single-flight + Backoff (profile endpoints) =====
+type FlightState = { p: Promise<any>; ts: number };
+const inFlight: Record<string, FlightState> = {};
+interface BackoffInfo { fails: number; nextAllowed: number; }
+const backoff: Record<string, BackoffInfo> = {};
+
+function profileRequest(url: string) {
+  const key = `GET ${url}`;
+  const now = Date.now();
+  const b = backoff[key];
+  if (b && now < b.nextAllowed) {
+    // Delay until nextAllowed then retry (returns one promise)
+    if (inFlight[key]) return inFlight[key].p; // an already scheduled retry
+    const waitMs = b.nextAllowed - now;
+    const p = new Promise((resolve, reject) => {
+      setTimeout(() => {
+        delete inFlight[key];
+        profileRequest(url).then(resolve).catch(reject);
+      }, waitMs);
+    });
+    inFlight[key] = { p, ts: now };
+    return p;
+  }
+  if (inFlight[key]) return inFlight[key].p; // single-flight reuse
+  const p = api.get(url)
+    .then(r => {
+      // success resets backoff
+      delete backoff[key];
+      return r;
+    })
+    .catch(err => {
+      // update backoff (exponential up to 30s)
+      const info = backoff[key] || { fails: 0, nextAllowed: 0 };
+      info.fails += 1;
+      const base = 500; // 0.5s
+      const delay = Math.min(30000, base * Math.pow(2, info.fails - 1));
+      info.nextAllowed = Date.now() + delay;
+      backoff[key] = info;
+      delete inFlight[key];
+      throw err;
+    });
+  inFlight[key] = { p, ts: now };
+  return p;
+}
+
 // Convenience high-level methods (avoid scattering relative /api calls)
 export const Api = {
   client: api,
   // baseURL يحتوي /api بالفعل، فلا نضيف /api هنا
   // Prefer simplified profile-with-currency endpoint (lighter joins, robust fallbacks)
-  me: () => api.get('/users/profile-with-currency'),
+  me: () => profileRequest('/users/profile-with-currency'),
   logout: async () => {
     try {
       const res = await api.post('/auth/logout');
@@ -355,8 +400,8 @@ export const Api = {
     pendingDeposits: () => api.get('/admin/pending-deposits-count'),
   },
   users: {
-    profile: () => api.get('/users/profile'),
-    profileWithCurrency: () => api.get('/users/profile-with-currency'),
+    profile: () => profileRequest('/users/profile'),
+    profileWithCurrency: () => profileRequest('/users/profile-with-currency'),
   }
 };
 
