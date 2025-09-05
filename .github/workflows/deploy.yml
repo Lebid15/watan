@@ -83,17 +83,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${VPS_HOST}" ]; then echo "VPS_HOST is empty" >&2; exit 1; fi
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          # نجمع كلا النوعين (قد يكون السيرفر لا يدعم ed25519 في fallback
-          for t in ed25519 rsa; do
-            echo "[keyscan] type=$t host=$VPS_HOST";
-            ssh-keyscan -T 15 -t "$t" "$VPS_HOST" 2>/dev/null >> ~/.ssh/known_hosts || true;
+          # scan domain
+          for t in ed25519 rsa; do ssh-keyscan -T 15 -t "$t" "$VPS_HOST" 2>/dev/null >> ~/.ssh/known_hosts || true; done
+          # scan resolved IPs أيضًا (بعض أوامر ssh قد تتصل بالـ IP)
+          getent hosts "$VPS_HOST" | awk '{print $1}' | while read ip; do
+            for t in ed25519 rsa; do ssh-keyscan -T 15 -t "$t" "$ip" 2>/dev/null >> ~/.ssh/known_hosts || true; done
           done
-          # تنظيف التكرارات إن وجدت
           sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          echo "known_hosts entries:" $(wc -l < ~/.ssh/known_hosts)
+
 
       - name: Verify SSH connectivity
         shell: bash
