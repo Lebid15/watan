@@ -78,11 +78,22 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
 
-      # 5) إضافة المضيف و اختبار الاتصال
-      - name: Add VPS host to known_hosts
+      # 5) إضافة بصمات المضيف (ed25519 + rsa) والتحكم في الصلاحيات قبل أي اتصال SSH
+      - name: Add host key to known_hosts
+        shell: bash
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          set -euo pipefail
+          if [ -z "${VPS_HOST}" ]; then echo "VPS_HOST is empty" >&2; exit 1; fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # نجمع كلا النوعين (قد يكون السيرفر لا يدعم ed25519 في fallback
+          for t in ed25519 rsa; do
+            echo "[keyscan] type=$t host=$VPS_HOST";
+            ssh-keyscan -T 15 -t "$t" "$VPS_HOST" 2>/dev/null >> ~/.ssh/known_hosts || true;
+          done
+          # تنظيف التكرارات إن وجدت
+          sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          echo "known_hosts entries:" $(wc -l < ~/.ssh/known_hosts)
 
       - name: Verify SSH connectivity
         shell: bash
@@ -142,7 +153,7 @@ jobs:
         run: |
           set -e
           ssh "$VPS_USER@$VPS_HOST" "mkdir -p \"$DEPLOY_DIR\""
-          scp -o StrictHostKeyChecking=no .deploy_tmp/.env "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/.env"
+          scp .deploy_tmp/.env "$VPS_USER@$VPS_HOST:$DEPLOY_DIR/.env"
           rm -rf .deploy_tmp
 
 
