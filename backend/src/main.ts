@@ -145,6 +145,13 @@ async function bootstrap() {
   // ✅ احصل على DataSource قبل الاستماع لتطبيق الهجرات (مهم للإنتاج)
   const dataSource = app.get(DataSource);
   const autoMigrations = (process.env.AUTO_MIGRATIONS ?? 'true').toLowerCase() !== 'false';
+  // Ensure pgcrypto extension for gen_random_uuid() defaults (Postgres)
+  try {
+    await dataSource.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto";');
+    console.log('🧩 pgcrypto extension ensured');
+  } catch (e:any) {
+    console.warn('pgcrypto extension not created (continuing):', e?.message);
+  }
   // --- Preflight structural patch: أضف أعمدة tenantId المفقودة قبل أي استعلامات تعتمدها ---
   try {
     console.log('🧪 [Preflight] Checking tenantId columns existence...');
