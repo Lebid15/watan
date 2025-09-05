@@ -11,18 +11,22 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
+
       - name: Install frontend dependencies
         working-directory: ./frontend
         run: npm ci
+
       - name: Run TypeScript compilation
         working-directory: ./frontend
         run: npm run build
+
       - name: Run frontend linting (non-blocking)
         working-directory: ./frontend
         run: npm run lint --if-present || true
@@ -44,48 +48,42 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-          --health-cmd "pg_isready -U watan" \
-          --health-interval 5s \
-          --health-timeout 5s \
-          --health-retries 10
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
+
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm ci
+
       - name: Wait for Postgres
         env:
           PGPASSWORD: changeme
-
-      - name: Wait for Postgres
         run: |
           for i in {1..30}; do
             pg_isready -h 127.0.0.1 -p 5432 -U watan && echo "postgres up" && break
             echo "waiting for postgres... $i"; sleep 2;
           done
           pg_isready -h 127.0.0.1 -p 5432 -U watan
-        env:
-          PGPASSWORD: changeme
-        
+
       - name: Run TypeScript compilation (non-blocking)
         working-directory: ./backend
         run: npm run build --if-present || true
+
       - name: Tenant integrity verification (blocking)
         working-directory: ./backend
         env:
           DATABASE_URL: postgres://watan:changeme@127.0.0.1:5432/watan?sslmode=disable
         run: npm run tenant:verify
-        run: |
-          npm run tenant:verify
-              
+
       - name: Run backend tests (non-blocking)
         working-directory: ./backend
         run: npm test --if-present || true
