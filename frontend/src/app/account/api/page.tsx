@@ -63,8 +63,8 @@ export default function AccountApiPage(){
   const openapiUrl = baseUrl + '/client/api/openapi.json';
   const swaggerUrl = baseUrl + '/api/docs';
   return <div className="max-w-4xl mx-auto p-6 space-y-6" dir="rtl">
-    <h1 className="text-2xl font-bold">واجهة API</h1>
-    <p className="text-sm text-gray-500">يمكنك توليد توكن للوصول إلى Client API. احتفظ به بسرية؛ يمكن تدويره أو إبطاله في أي وقت.</p>
+  <h1 className="text-2xl font-bold flex items-center gap-4">واجهة API <a href="/client/api/docs" target="_blank" className="btn btn-xs" rel="noreferrer">فتح التوثيق الكامل</a></h1>
+  <p className="text-sm text-gray-500">يمكنك توليد توكن للوصول إلى Client API. احتفظ به بسرية؛ يمكن تدويره أو إبطاله في أي وقت. للتفاصيل والأمثلة الكاملة زر <a href="/client/api/docs" target="_blank" className="text-blue-600 underline" rel="noreferrer">/client/api/docs</a>.</p>
 
     {msg && <div className="text-sm text-green-600">{msg}</div>}
 
