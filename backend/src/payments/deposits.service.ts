@@ -388,9 +388,16 @@ export class DepositsService {
         qb.andWhere('CAST(d.id AS TEXT) ILIKE :qexact', { qexact: qRaw });
       } else {
         const q = `%${qRaw.toLowerCase()}%`;
+        // بعض البيئات قد تفتقد عمود note (تم فقدانه بعد reset)؛ نجرب اكتشافه ديناميكياً
+        const hasNote = this.depositsRepo.metadata.columns.some(c => c.databaseName === 'note');
         qb.andWhere(new Brackets((b) => {
-          b.where('LOWER(COALESCE(d.note, \'\')) LIKE :q', { q })
-           .orWhere('LOWER(COALESCE(u.username, \'\')) LIKE :q', { q })
+          if (hasNote) {
+            b.where('LOWER(COALESCE(d.note, \'\')) LIKE :q', { q });
+          } else {
+            // تجاوز البحث في note إذا غير موجود
+            b.where('1=1');
+          }
+          b.orWhere('LOWER(COALESCE(u.username, \'\')) LIKE :q', { q })
            .orWhere('LOWER(COALESCE(u.email, \'\')) LIKE :q', { q })
            .orWhere('LOWER(COALESCE(m.name, \'\')) LIKE :q', { q });
         }));

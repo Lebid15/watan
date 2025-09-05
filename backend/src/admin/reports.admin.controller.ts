@@ -70,11 +70,16 @@ export class ReportsAdminController {
 
   private getTenantId(req: Request): string {
     const fromUser = (req as any)?.user?.tenantId as string | undefined;
-  const fromTenant = (req as any)?.tenant?.id as string | undefined;
+    const fromTenant = (req as any)?.tenant?.id as string | undefined; // middleware
     const fromHeader = (req.headers['x-tenant-id'] as string | undefined) || undefined;
     const fromQuery = (req.query?.tenantId as string | undefined) || undefined;
-  const tenantId = fromUser || fromTenant || fromHeader || fromQuery;
-    if (!tenantId) throw new BadRequestException('tenantId is required');
+    const tenantId = (fromUser || fromTenant || fromHeader || fromQuery || '').trim();
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (!/^[0-9a-fA-F-]{36}$/.test(tenantId)) {
+      throw new BadRequestException('INVALID_TENANT_ID');
+    }
     return tenantId;
   }
 
