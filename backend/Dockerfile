@@ -1,33 +1,26 @@
 # Multi-stage Dockerfile for NestJS backend
 
-FROM node:20-alpine AS deps
+FROM node:20-alpine AS base
 WORKDIR /app
-# Install ALL dependencies (including dev) required to build
+
+# Install all dependencies (dev + prod) so we can rebuild / run migrations inside the running container without extra steps.
 COPY package*.json ./
 RUN npm ci
 
-FROM node:20-alpine AS build
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Copy source and build once during image build
 COPY . .
 RUN npm run build
 
-# Install only production dependencies in separate stage
-FROM node:20-alpine AS prod-deps
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
-
+# Final stage (reuse same layer so dev tooling remains available for future on-container builds)
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY package*.json ./
-# Copy helper scripts & scripts directory (for build meta script if invoked at runtime)
-COPY create-developer.js ./
-COPY scripts ./scripts
-# Ensure no stale .env baked in
+
+# Copy everything from build stage (includes node_modules, dist, and source for rebuilds)
+COPY --from=base /app /app
+
+# Remove potential cached env file
 RUN rm -f .env || true
+
 EXPOSE 3000
 CMD ["node","dist/main.js"]
