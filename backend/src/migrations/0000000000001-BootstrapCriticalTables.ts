@@ -154,6 +154,73 @@ export class BootstrapCriticalTables0000000000001 implements MigrationInterface 
       END$$;
       CREATE INDEX IF NOT EXISTS "idx_tenant_domain_domain" ON "tenant_domain" ("domain");
     `);
+
+    // --- Payments / Deposits minimal baseline (some later migrations reference these early due to timestamp parsing quirks)
+    // Enums first (idempotent)
+    await queryRunner.query(`DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.typname = 'payment_method_type_enum' AND n.nspname = 'public'
+      ) THEN
+        CREATE TYPE "public"."payment_method_type_enum" AS ENUM ('CASH_BOX','BANK_ACCOUNT','HAND_DELIVERY','USDT','MONEY_TRANSFER');
+      END IF;
+    END$$;`);
+    await queryRunner.query(`DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.typname = 'deposit_status_enum' AND n.nspname = 'public'
+      ) THEN
+        CREATE TYPE "public"."deposit_status_enum" AS ENUM ('pending','approved','rejected');
+      END IF;
+    END$$;`);
+
+    // payment_method table minimal
+    await queryRunner.query(`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='payment_method') THEN
+        CREATE TABLE "payment_method" (
+          "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+          "name" varchar(150) NOT NULL,
+          "type" "public"."payment_method_type_enum" NOT NULL,
+          "isActive" boolean NOT NULL DEFAULT true,
+          "config" jsonb NOT NULL DEFAULT '{}',
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          "updatedAt" timestamptz NOT NULL DEFAULT now(),
+          CONSTRAINT "PK_payment_method_id" PRIMARY KEY ("id")
+        );
+      END IF;
+    END$$;`);
+
+    // deposit table minimal
+    await queryRunner.query(`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='deposit') THEN
+        CREATE TABLE "deposit" (
+          "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+          "user_id" uuid NULL,
+          "method_id" uuid NULL,
+          "originalAmount" numeric(18,6) NULL,
+          "originalCurrency" varchar(10) NULL,
+            "walletCurrency" varchar(10) NULL,
+          "rateUsed" numeric(18,6) NULL,
+          "convertedAmount" numeric(18,6) NULL,
+          "status" "public"."deposit_status_enum" NOT NULL DEFAULT 'pending',
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          CONSTRAINT "PK_deposit_id" PRIMARY KEY ("id")
+        );
+      END IF;
+    END$$;`);
+
+    // billing_invoices baseline (so FK additions won't fail if executed early). Later migration will add missing columns safely.
+    await queryRunner.query(`DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='billing_invoices') THEN
+        CREATE TABLE "billing_invoices" (
+          "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+          "tenantId" uuid NULL,
+          "depositId" uuid NULL,
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          CONSTRAINT "PK_billing_invoices_id" PRIMARY KEY ("id")
+        );
+      END IF;
+    END$$;`);
   }
 
   public async down(_queryRunner: QueryRunner): Promise<void> {
