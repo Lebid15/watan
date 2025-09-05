@@ -14,10 +14,10 @@ export class TenantIntegrity20250905T2215 implements MigrationInterface {
     // Wrap operations defensively
     // users.tenantId FK
     await queryRunner.query(`DO $$
+    DECLARE r RECORD;
     BEGIN
       IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='tenantId') THEN
-        -- drop old FK if exists and differs
-        FOR r IN (SELECT constraint_name FROM information_schema.key_column_usage WHERE table_name='users' AND column_name='tenantId') LOOP
+        FOR r IN SELECT constraint_name FROM information_schema.key_column_usage WHERE table_name='users' AND column_name='tenantId' LOOP
           BEGIN
             EXECUTE format('ALTER TABLE "users" DROP CONSTRAINT %I', r.constraint_name);
           EXCEPTION WHEN others THEN NULL; END;
@@ -30,9 +30,10 @@ export class TenantIntegrity20250905T2215 implements MigrationInterface {
 
     // tenant_domain.tenantId FK cascade
     await queryRunner.query(`DO $$
+    DECLARE r RECORD;
     BEGIN
       IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='tenant_domain' AND column_name='tenantId') THEN
-        FOR r IN (SELECT constraint_name FROM information_schema.key_column_usage WHERE table_name='tenant_domain' AND column_name='tenantId') LOOP
+        FOR r IN SELECT constraint_name FROM information_schema.key_column_usage WHERE table_name='tenant_domain' AND column_name='tenantId' LOOP
           BEGIN
             EXECUTE format('ALTER TABLE "tenant_domain" DROP CONSTRAINT %I', r.constraint_name);
           EXCEPTION WHEN others THEN NULL; END;
