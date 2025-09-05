@@ -23,6 +23,7 @@ import { ClientApiAdminController } from './client-api.admin.controller';
 import { ClientApiWebhookAdminController } from './client-api-webhook.admin.controller';
 import { ClientApiSelfController } from './client-api.self.controller';
 import { ClientApiMeController } from './client-api.me.controller';
+import { ClientApiAccountController } from './client-api-account.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([
@@ -37,7 +38,7 @@ import { ClientApiMeController } from './client-api.me.controller';
     ClientApiStatsDaily,
     ClientApiWebhookOutbox,
   ])],
-  controllers: [ClientApiOpenapiPublicController, ClientApiController, ClientApiAdminController, ClientApiWebhookAdminController, ClientApiSelfController, ClientApiMeController],
+  controllers: [ClientApiOpenapiPublicController, ClientApiController, ClientApiAdminController, ClientApiWebhookAdminController, ClientApiSelfController, ClientApiMeController, ClientApiAccountController],
   providers: [ClientApiAuthGuard, ClientApiService, { provide: APP_INTERCEPTOR, useClass: ClientApiLoggingInterceptor }, ClientApiStatsCron, ClientApiWebhookWorker, ClientApiWebhookEnqueueService],
   exports: [],
 })

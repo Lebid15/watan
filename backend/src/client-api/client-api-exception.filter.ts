@@ -53,6 +53,10 @@ export class ClientApiExceptionFilter implements ExceptionFilter {
     } catch { /* ignore */ }
     // Success responses not handled here
     const mapped = mapGeneric(exception);
+    const reason = (exception?.original?.reason || exception?.reason || exception?.codeNumber === 120 && 'missing_token' || null);
+    if (process.env.NODE_ENV !== 'production' && reason) {
+      try { res.setHeader('X-Debug-Reason', String(reason)); } catch {}
+    }
     // For authentication / authz related codes we now return real HTTP status (401/403) to allow clients to distinguish quickly
     if (mapped.httpStatus) {
       return res.status(mapped.httpStatus).json({ code: mapped.code, message: mapped.message });
