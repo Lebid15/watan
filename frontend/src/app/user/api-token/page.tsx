@@ -45,7 +45,7 @@ export default function UserApiTokenPage(){
       {msg && <div className="text-sm text-green-600">{msg}</div>}
       {info && (
         <div className="space-y-4">
-          <div className="p-4 border rounded bg-white">
+          <div className="p-4 border rounded bg-gray-500">
             <div className="text-sm">الحالة: {info.revoked ? 'مُبطَل' : info.hasToken ? 'فعال' : 'لا يوجد توكن'}</div>
             <div className="text-sm">آخر استخدام: {info.lastUsedAt ? new Date(info.lastUsedAt).toLocaleString() : '—'}</div>
           </div>
