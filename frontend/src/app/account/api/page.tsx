@@ -106,19 +106,7 @@ export default function AccountApiPage(){
     </div>}
 
     <div className="p-4 border rounded bg-gray-50 space-y-2 text-xs leading-relaxed">
-      <h2 className="font-semibold text-sm mb-1">التوثيق و الروابط</h2>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-medium">OpenAPI JSON:</span>
-        <a className="text-blue-600 underline break-all" href={openapiUrl} target="_blank" rel="noreferrer">{openapiUrl}</a>
-        <button onClick={()=>{navigator.clipboard.writeText(openapiUrl); setMsg('نسخ الرابط');}} className="btn btn-ghost btn-xs">نسخ</button>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-medium">Swagger UI:</span>
-        <a className="text-blue-600 underline break-all" href={swaggerUrl} target="_blank" rel="noreferrer">{swaggerUrl}</a>
-        <button onClick={()=>{navigator.clipboard.writeText(swaggerUrl); setMsg('نسخ الرابط');}} className="btn btn-ghost btn-xs">نسخ</button>
-      </div>
-      <div className="pt-2 border-t"/>
-      <div className="font-medium">المسارات الأساسية:</div>
+      <h2 className="font-semibold text-sm mb-1">المسارات الأساسية (مختصر)</h2>
   <code className="block whitespace-pre overflow-auto bg-black/60 p-2 rounded text-[10px] text-green-200">{`GET /client/api/profile
 GET /client/api/products?products_id=...
 GET /client/api/content/{categoryId}

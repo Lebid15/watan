@@ -128,9 +128,15 @@ async function bootstrap() {
   try {
     const clientPaths: Record<string, any> = {};
     for (const [p, schema] of Object.entries(document.paths || {})) {
-      if (p.startsWith('/client/api/')) clientPaths[p] = schema;
+      if (p.startsWith('/client/api/')) {
+        clientPaths[p] = schema; // already without global prefix
+      } else if (p.startsWith('/api/client/api/')) {
+        // strip global prefix for public subset to keep nice paths
+        const noPrefix = p.replace(/^\/api/, '');
+        clientPaths[noPrefix] = schema;
+      }
     }
-    const subset = { ...document, paths: clientPaths, tags: [{ name: 'Client API' }] };
+    const subset = { ...document, paths: clientPaths, tags: [{ name: 'Client API' }], servers: [{ url: '' }] };
     const outDir = path.join(process.cwd(), 'openapi');
     if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
     fs.writeFileSync(path.join(outDir, 'openapi-client.json'), JSON.stringify(subset, null, 2), 'utf8');
