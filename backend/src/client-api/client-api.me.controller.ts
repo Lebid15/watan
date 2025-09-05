@@ -10,7 +10,7 @@ function hexToken(len = 40) { return crypto.randomBytes(Math.ceil(len/2)).toStri
 
 // End-user self endpoints under tenant scope (/api/tenant/client-api/users/me/...)
 @ApiExcludeController()
-@Controller('/api/tenant/client-api/users/me')
+@Controller('tenant/client-api/users/me')
 @UseGuards(JwtAuthGuard)
 export class ClientApiMeController {
   constructor(@InjectRepository(User) private usersRepo: Repository<User>) {}

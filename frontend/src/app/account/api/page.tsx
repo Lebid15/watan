@@ -37,9 +37,9 @@ export default function AccountApiPage(){
     try{
       const r=await fetch('/api/tenant/client-api/users/me/'+kind,{method:'POST'});
       const j=await r.json();
-      if(j.token) setToken(j.token);
-      await load();
-      setMsg(kind==='revoke'?'تم الإبطال':'تم التنفيذ');
+  if(j.token) { setToken(j.token); setMsg('تم الإنشاء – انسخ التوكن الآن'); }
+  else { setMsg(kind==='revoke'?'تم الإبطال':'تم التنفيذ'); }
+  await load();
     }catch{ setMsg('فشل العملية'); }
     finally{ setLoading(false); }
   }
@@ -59,6 +59,9 @@ export default function AccountApiPage(){
 
   function copyToken(){ if(!token) return; navigator.clipboard.writeText(token).then(()=> setMsg('تم النسخ')).catch(()=>{}); }
 
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const openapiUrl = baseUrl + '/client/api/openapi.json';
+  const swaggerUrl = baseUrl + '/api/docs';
   return <div className="max-w-4xl mx-auto p-6 space-y-6" dir="rtl">
     <h1 className="text-2xl font-bold">واجهة API</h1>
     <p className="text-sm text-gray-500">يمكنك توليد توكن للوصول إلى Client API. احتفظ به بسرية؛ يمكن تدويره أو إبطاله في أي وقت.</p>
@@ -104,8 +107,16 @@ export default function AccountApiPage(){
 
     <div className="p-4 border rounded bg-gray-50 space-y-2 text-xs leading-relaxed">
       <h2 className="font-semibold text-sm mb-1">التوثيق و الروابط</h2>
-      <div>OpenAPI JSON: <a className="text-blue-600 underline" href="/client/api/openapi.json" target="_blank">/client/api/openapi.json</a></div>
-      <div>Swagger UI: <a className="text-blue-600 underline" href="/api/docs" target="_blank">/api/docs</a></div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-medium">OpenAPI JSON:</span>
+        <a className="text-blue-600 underline break-all" href={openapiUrl} target="_blank" rel="noreferrer">{openapiUrl}</a>
+        <button onClick={()=>{navigator.clipboard.writeText(openapiUrl); setMsg('نسخ الرابط');}} className="btn btn-ghost btn-xs">نسخ</button>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-medium">Swagger UI:</span>
+        <a className="text-blue-600 underline break-all" href={swaggerUrl} target="_blank" rel="noreferrer">{swaggerUrl}</a>
+        <button onClick={()=>{navigator.clipboard.writeText(swaggerUrl); setMsg('نسخ الرابط');}} className="btn btn-ghost btn-xs">نسخ</button>
+      </div>
       <div className="pt-2 border-t"/>
       <div className="font-medium">المسارات الأساسية:</div>
   <code className="block whitespace-pre overflow-auto bg-black/60 p-2 rounded text-[10px] text-green-200">{`GET /client/api/profile
