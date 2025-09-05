@@ -378,6 +378,24 @@ async function bootstrap() {
   } catch (e: any) {
     console.warn('⚠️ Preflight tenant columns patch failed (يمكن تجاهله إن وُجدت الأعمدة):', e?.message || e);
   }
+
+  // Conditional rescue for orderUuid column & index (idempotency) – can be disabled via DISABLE_ORDERUUID_RESCUE=true
+  if ((process.env.DISABLE_ORDERUUID_RESCUE || '').toLowerCase() !== 'true') {
+    try {
+      const [col] = await dataSource.query(`SELECT 1 FROM information_schema.columns WHERE table_name='product_orders' AND column_name='orderUuid'`);
+      if (!col) {
+        await dataSource.query(`ALTER TABLE "product_orders" ADD COLUMN "orderUuid" varchar(64)`);
+        console.log('🛠 [Rescue] Added product_orders.orderUuid');
+      }
+      // Ensure partial unique index (ignore errors if drifted)
+      await dataSource.query(`CREATE UNIQUE INDEX IF NOT EXISTS "uq_orders_tenant_user_orderUuid" ON "product_orders" ("tenantId","userId","orderUuid") WHERE "orderUuid" IS NOT NULL`);
+      console.log('🛠 [Rescue] Ensured uq_orders_tenant_user_orderUuid');
+    } catch (e:any) {
+      console.warn('⚠️ [Rescue] orderUuid ensure failed:', e?.message);
+    }
+  } else {
+    console.log('⏭ [Rescue] orderUuid rescue disabled by env flag');
+  }
   if (autoMigrations) {
     try {
       const ran = await dataSource.runMigrations();
@@ -391,6 +409,15 @@ async function bootstrap() {
     }
   } else {
     console.log('⏭ Skipping auto migrations (AUTO_MIGRATIONS=false)');
+  }
+
+  // Lightweight health check for orderUuid idempotency infrastructure
+  try {
+    const [col] = await dataSource.query(`SELECT 1 AS c FROM information_schema.columns WHERE table_name='product_orders' AND column_name='orderUuid'`);
+    const [idx] = await dataSource.query(`SELECT 1 AS c FROM pg_indexes WHERE tablename='product_orders' AND indexname='uq_orders_tenant_user_orderUuid'`);
+    console.log('[Health] orderUuid column=%s index=%s (rescue=%s)', col ? 'OK' : 'MISSING', idx ? 'OK' : 'MISSING', (process.env.DISABLE_ORDERUUID_RESCUE || '').toLowerCase() === 'true' ? 'disabled' : 'active');
+  } catch (e:any) {
+    console.warn('[Health] orderUuid check failed:', e?.message);
   }
 
   if ((process.env.BOOTSTRAP_ENABLED || 'true').toLowerCase() === 'true') {
