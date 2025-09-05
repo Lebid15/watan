@@ -84,6 +84,8 @@ jobs:
         env:
           DATABASE_URL: postgres://watan:changeme@127.0.0.1:5432/watan?sslmode=disable
         run: npm run tenant:verify
+        run: |
+          npm run tenant:verify
               
       - name: Run backend tests (non-blocking)
         working-directory: ./backend

@@ -51,6 +51,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Backend integrity gate (tenant:verify)
+        shell: bash
+        working-directory: ./backend
+        run: |
+          set -euo pipefail
+          echo "[gate] Installing backend deps"
+          npm ci
+          echo "[gate] Building backend"
+          npm run build
+          echo "[gate] Running tenant:verify"
+          npm run tenant:verify
 
       # 3) Sanity git
       - name: Sanity git
