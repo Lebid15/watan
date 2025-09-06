@@ -430,7 +430,17 @@ export class ProductsController {
     }
     const capital = parseMoney(capitalStr ?? basePriceStr ?? priceStr);
 
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId || '00000000-0000-0000-0000-000000000000';
+    let tenantId = (req as any).tenant?.id || (req as any).user?.tenantId || '00000000-0000-0000-0000-000000000000';
+    // If product is global (belongs to GLOBAL_ID) allow adding packages globally by developer / instance_owner
+    try {
+      const row = await this.dataSource.query(`SELECT "tenantId" FROM products WHERE id=$1 LIMIT 1`, [productId]);
+      const prodTenant = row?.[0]?.tenantId;
+      if (prodTenant === '00000000-0000-0000-0000-000000000000') {
+        tenantId = prodTenant; // force global context
+      }
+    } catch (e:any) {
+      console.warn('[PKG][CTRL][ADD] failed to verify product tenant', e?.message);
+    }
     let publicCode: number | null = null;
     if (publicCodeRaw != null && String(publicCodeRaw).trim() !== '') {
       const pc = Number(publicCodeRaw);
