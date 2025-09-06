@@ -102,6 +102,18 @@ async function bootstrap() {
     next();
   });
 
+  // 🔁 دعم الوصول إلى مسارات Client API بدون البادئة /api عبر الدومين المركزي
+  // مثال: GET https://api.syrz1.com/client/api/profile (يُعاد كتابته داخليًا إلى /api/client/api/profile)
+  app.use((req: any, _res: any, next: any) => {
+    // نتجنب إعادة الكتابة لو طلب OpenAPI العام (مستثنى أصلاً) أو لو المسار مُعاد بالفعل
+    if (req.url.startsWith('/client/api/') &&
+        !req.url.includes('openapi.json') &&
+        !req.url.startsWith('/api/client/api/')) {
+      req.url = '/api' + req.url; // يطابق المسار الحالي المسجّل بواسطة الـ Controller
+    }
+    next();
+  });
+
   // ✅ تفعيل cookie-parser لقراءة التوكن من الكوكي عند اللزوم
   app.use(cookieParser());
 
