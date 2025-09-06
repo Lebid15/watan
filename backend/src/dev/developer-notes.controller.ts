@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, InternalServerErrorException } from '@nestjs/common';
 import { DeveloperNotesService } from './developer-notes.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -18,6 +18,11 @@ export class DeveloperNotesController {
   @Post()
   @Roles(UserRole.DEVELOPER, UserRole.ADMIN)
   async set(@Body('value') value: string, @Req() req: any) {
-    return this.service.set(value ?? '', req.user?.id || 'unknown');
+    try {
+      return await this.service.set(value ?? '', req.user?.id || 'unknown');
+    } catch (e: any) {
+      // Surface a clearer message (logged in service already)
+      throw new InternalServerErrorException({ message: 'FAILED_SAVE_DEVELOPER_NOTE', detail: e?.message || String(e) });
+    }
   }
 }
