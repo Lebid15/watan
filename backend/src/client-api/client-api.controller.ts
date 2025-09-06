@@ -18,11 +18,16 @@ export class ClientApiController {
   @Get('profile')
   profile(@Req() req: any) {
     const u = req.clientApiUser;
+    // Currency resolution priority:
+    // 1. preferredCurrencyCode (explicit user preference)
+    // 2. linked currency relation code (if any)
+    // 3. fallback default (system-wide) -> 'USD' (can be later externalized)
+    const currencyCode = u.preferredCurrencyCode || u.currency?.code || 'USD';
     return {
       username: u.username,
       email: u.email,
       balance: Number(u.balance),
-      currency: u.preferredCurrencyCode || null,
+      currency: currencyCode,
     };
   }
 

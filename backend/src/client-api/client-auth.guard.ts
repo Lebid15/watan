@@ -24,7 +24,8 @@ export class ClientApiAuthGuard implements CanActivate {
     }
     let user: any;
     try {
-      user = await this.usersRepo.findOne({ where: { apiToken: token } as any });
+      // Load currency relation so profile can expose currency code
+      user = await this.usersRepo.findOne({ where: { apiToken: token } as any, relations: ['currency'] });
     } catch (e) {
       throw new ClientApiError(121, 'Token error', { reason: 'lookup_failed' });
     }
