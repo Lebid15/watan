@@ -54,7 +54,7 @@ export default function DevAdminNotePage() {
       ) : (
         <>
           <textarea
-            className="w-full min-h-[40vh] p-3 border border-border rounded bg-bg-input focus:outline-none"
+            className="w-full min-h-[40vh] p-3 border border-border rounded bg-bg-input text-[var(--color-text-primary)] focus:outline-none"
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
             maxLength={5000}
