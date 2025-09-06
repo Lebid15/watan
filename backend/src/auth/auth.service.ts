@@ -39,6 +39,15 @@ export class AuthService {
       console.log('[AUTH] lookup as OWNER (tenantId IS NULL) -> found?', !!user);
     }
 
+    // محاولة أخيرة: إذا لم يتم العثور وكان الإدخال يبدو بريدًا إلكترونيًا وفي النظام بريد فريد (نادر)
+    if (!user && /@/.test(emailOrUsername) && !tenantId) {
+      const unique = await this.userService.findUniqueByEmailAnyTenant(emailOrUsername, ['priceGroup']);
+      if (unique) {
+        console.log('[AUTH] fallback unique email across tenants matched user', unique.id, 'tenantId=', unique.tenantId);
+        user = unique;
+      }
+    }
+
     if (!user) {
       console.warn('[AUTH] login failed: user not found for identifier=', emailOrUsername, 'tenantIdCtx=', tenantId);
       return null;

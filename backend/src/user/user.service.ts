@@ -112,6 +112,14 @@ export class UserService {
     });
   }
 
+  // محاولة للعثور على مستخدم ببريد فريد عبر جميع التينانتات (يُستخدم كحل أخير عند فقدان السياق)
+  async findUniqueByEmailAnyTenant(email: string, relations: string[] = []): Promise<User | null> {
+    if (!email) return null;
+    const rows = await this.usersRepository.find({ where: { email } as any, take: 2, relations });
+    if (rows.length === 1) return rows[0]; // فريد
+    return null; // إما غير موجود أو مكرر -> غير آمن للتمييز
+  }
+
   async findAllUsers(where: FindOptionsWhere<User> = {}, tenantId: string): Promise<User[]> {
     return this.usersRepository.find({
       where: { ...where, tenantId },
