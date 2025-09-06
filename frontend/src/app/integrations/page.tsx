@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
 import { useToast } from '@/context/ToastContext';
+import EnableToggleButton from '@/components/EnableToggleButton';
 
 type ProviderKind = 'barakat' | 'apstore' | 'znet' | 'internal';
 
@@ -20,7 +21,7 @@ type IntegrationRow = {
 
 export default function AdminIntegrationsPage() {
   const router = useRouter();
-  const { success, error: toastError, info } = useToast();
+  const { success, error: toastError, info, show } = useToast();
 
   const [items, setItems] = useState<IntegrationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,13 +115,15 @@ export default function AdminIntegrationsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('هل أنت متأكد من الحذف؟')) return;
+    show('تحذير: سيتم حذف التكامل نهائياً', 'error');
+    if (!confirm('هل أنت متأكد من الحذف؟ لا يمكن التراجع.')) return;
     setDeleting(id);
     try {
       await api.delete(API_ROUTES.admin.integrations.byId(id));
       setItems((prev) => prev.filter((x) => x.id !== id));
+      info('تم الحذف');
     } catch {
-      // تجاهل
+      toastError('فشل الحذف');
     } finally {
       setDeleting(null);
     }
@@ -256,13 +259,11 @@ export default function AdminIntegrationsPage() {
                 <td className="border border-border px-3 py-2 uppercase">{it.provider}</td>
                 <td className="border border-border px-3 py-2">{it.baseUrl || '—'}</td>
                 <td className="border border-border px-3 py-2">
-                  <button
-                    onClick={() => handleToggle(it)}
-                    disabled={toggling === it.id}
-                    className={`px-3 py-1 rounded text-xs font-medium border transition ${it.enabled ? 'bg-green-600/10 text-green-600 border-green-600/40' : 'bg-gray-500/10 text-gray-500 border-gray-400/30'} ${toggling === it.id ? 'opacity-60' : ''}`}
-                  >
-                    {toggling === it.id ? '...' : (it.enabled ? 'Enabled' : 'Disabled')}
-                  </button>
+                  <EnableToggleButton
+                    enabled={it.enabled}
+                    loading={toggling === it.id}
+                    onToggle={() => handleToggle(it)}
+                  />
                 </td>
                 <td className="border border-border px-3 py-2">
                   {it.enabled === false ? '—' : (balances[it.id] !== undefined

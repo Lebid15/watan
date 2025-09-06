@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
 import { ErrorResponse } from '@/types/common';
 import { useToast } from '@/context/ToastContext';
+import EnableToggleButton from '@/components/EnableToggleButton';
 
 type ProviderKind = 'barakat' | 'apstore' | 'znet' | 'internal';
 
@@ -151,13 +152,12 @@ export default function EditIntegrationPage() {
     <div className="p-4 md:p-6 text-text-primary">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-semibold">تعديل مزود: {item.name}</h1>
-        <button
-          onClick={toggleEnabled}
-          disabled={toggling}
-          className={`px-4 py-2 rounded text-sm font-medium border transition ${item.enabled ? 'bg-green-600/10 text-green-600 border-green-600/40' : 'bg-gray-500/10 text-gray-500 border-gray-400/30'} ${toggling ? 'opacity-60' : ''}`}
-        >
-          {toggling ? '...' : item.enabled ? 'Enabled' : 'Disabled'}
-        </button>
+        <EnableToggleButton
+          enabled={item.enabled !== false}
+          loading={toggling}
+          onToggle={toggleEnabled}
+          size="md"
+        />
       </div>
 
       {/* حالة الرصيد */}
