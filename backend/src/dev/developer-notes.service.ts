@@ -23,10 +23,15 @@ export class DeveloperNotesService {
     if (this.cache && now - this.cache.ts < this.ttlMs) {
       return { value: this.cache.value, updatedAt: this.cache.updatedAt };
     }
-    const row = await this.repo.findOne({ where: { singleton: true } });
-    const shaped = this.shape(row);
-    this.cache = { ...shaped, ts: now };
-    return shaped;
+    try {
+      const row = await this.repo.findOne({ where: { singleton: true } });
+      const shaped = this.shape(row);
+      this.cache = { ...shaped, ts: now };
+      return shaped;
+    } catch (e) {
+      this.logger.error('Failed to load latest developer note', e as any);
+      return { value: '', updatedAt: null };
+    }
   }
 
   async set(value: string, actorId: string): Promise<NoteDto> {
@@ -37,7 +42,12 @@ export class DeveloperNotesService {
     } else {
       row.value = trimmed;
     }
-    row = await this.repo.save(row);
+    try {
+      row = await this.repo.save(row);
+    } catch (e) {
+      this.logger.error('Failed to save developer note', e as any);
+      throw e;
+    }
     this.cache = { value: row.value, updatedAt: row.updatedAt.toISOString(), ts: Date.now() };
     this.logger.log(`Developer note updated by user=${actorId} len=${trimmed.length}`);
     return this.shape(row);
