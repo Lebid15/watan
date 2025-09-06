@@ -1,10 +1,10 @@
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 
 export class CreateIntegrationDto {
   @IsString() name!: string;
 
-  @IsIn(['barakat', 'apstore', 'znet'])
-  provider!: 'barakat' | 'apstore' | 'znet';
+  @IsIn(['barakat', 'apstore', 'znet', 'internal'])
+  provider!: 'barakat' | 'apstore' | 'znet' | 'internal';
 
   // Barakat/Apstore
   @IsOptional() @IsString()
@@ -19,4 +19,8 @@ export class CreateIntegrationDto {
 
   @IsOptional() @IsString()
   sifre?: string;
+
+  // internal + جميع المزودين: زر تفعيل/تعطيل
+  @IsOptional() @IsBoolean()
+  enabled?: boolean;
 }

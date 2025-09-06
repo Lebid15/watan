@@ -147,15 +147,27 @@ export class IntegrationsService {
   }
 
   private driverOf(cfg: Integration) {
-    switch (cfg.provider) {
-      case 'barakat':
-      case 'apstore':
-        return this.barakat;
-      case 'znet':
-        return this.znet;
-      default:
-        throw new Error(`Provider not implemented: ${cfg.provider}`);
-    }
+      if (cfg.enabled === false) {
+        // Disabled provider: throw a soft error to be caught upstream or short-circuit
+        throw new Error('INTEGRATION_DISABLED');
+      }
+      switch (cfg.provider) {
+        case 'barakat':
+        case 'apstore':
+          return this.barakat;
+        case 'znet':
+          return this.znet;
+        case 'internal':
+          // Resolve InternalProvider via module injection container (added as provider)
+          const ip: any = (this as any).internalProvider || (this as any).internal || null;
+          if (ip) return ip;
+          // Fallback: dynamic require to avoid DI mismatch if necessary
+          const { InternalProvider } = require('./providers/internal.provider');
+          (this as any).internalProvider = new InternalProvider();
+          return (this as any).internalProvider;
+        default:
+          throw new Error(`Provider not implemented: ${cfg.provider}`);
+      }
   }
 
   async testConnection(id: string, tenantId: string | null) {

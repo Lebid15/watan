@@ -1,4 +1,4 @@
-export type ProviderKind = 'barakat' | 'apstore' | 'znet';
+export type ProviderKind = 'barakat' | 'apstore' | 'znet' | 'internal';
 
 export interface IntegrationConfig {
   id: string;            // in-memory id (uuid string)

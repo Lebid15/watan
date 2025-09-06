@@ -9,6 +9,7 @@ import { PackageMapping } from './package-mapping.entity';
 
 import { BarakatProvider } from './providers/barakat.provider';
 import { ZnetProvider } from './providers/znet.provider';
+import { InternalProvider } from './providers/internal.provider';
 
 import { Product } from '../products/product.entity';
 import { ProductPackage } from '../products/product-package.entity';
@@ -36,7 +37,7 @@ import { CodeItem } from '../codes/entities/code-item.entity';
     ]),
   ],
   controllers: [IntegrationsController],
-  providers: [IntegrationsService, BarakatProvider, ZnetProvider],
+  providers: [IntegrationsService, BarakatProvider, ZnetProvider, InternalProvider],
   exports: [IntegrationsService],
 })
 export class IntegrationsModule {}

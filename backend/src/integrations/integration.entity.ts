@@ -6,7 +6,7 @@ import {
   Index,
 } from 'typeorm';
 
-export type ProviderKind = 'barakat' | 'apstore' | 'znet';
+export type ProviderKind = 'barakat' | 'apstore' | 'znet' | 'internal';
 export type IntegrationScope = 'dev' | 'tenant';
 
 @Entity('integrations')
@@ -44,6 +44,10 @@ export class Integration {
 
   @Column({ type: 'varchar', length: 120, nullable: true })
   sifre?: string | null;
+
+  // تفعيل/تعطيل سريع للتكامل (يوقف جميع الاستدعاءات عند false)
+  @Column({ type: 'boolean', default: true })
+  enabled!: boolean;
 
   @CreateDateColumn()
   createdAt!: Date;
