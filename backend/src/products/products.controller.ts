@@ -23,6 +23,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Express, Request } from 'express';
 import { ProductsService } from './products.service';
+import { DataSource } from 'typeorm';
 import { UpdatePackageCodeDto } from './dto/update-package-code.dto';
 import { Product } from './product.entity';
 import { ProductPackage } from './product-package.entity';
@@ -49,7 +50,7 @@ function getCloud() {
 
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(private readonly productsService: ProductsService, private readonly dataSource: DataSource) {}
 
 
   @Get('price-groups')
@@ -141,7 +142,30 @@ export class ProductsController {
   @Post()
   async create(@Req() req: Request, @Body() body: Partial<Product>): Promise<Product> {
     // إنشاء منتج للمستأجر فقط (بدون fallback عالمي). يجب أن يكون هناك tenantId.
-    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    let tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    // 🔁 Fallback: السماح للمطور / instance_owner بتمرير X-Tenant-Host لتحديد المستأجر أثناء العمل على الدومين الجذري (www / api)
+    if (!tenantId) {
+      const role = ((req as any).user?.roleFinal || (req as any).user?.role || '').toLowerCase();
+      if (['developer', 'instance_owner'].includes(role)) {
+        const rawHost = (req.headers['x-tenant-host'] || req.headers['X-Tenant-Host']) as string | undefined;
+        if (rawHost) {
+          const host = rawHost.toLowerCase().trim();
+          try {
+            const row = await this.dataSource.query(`SELECT "tenantId" FROM tenant_domain WHERE lower(domain) = $1 LIMIT 1`, [host]);
+            const resolved = row?.[0]?.tenantId;
+            if (resolved) {
+              tenantId = resolved;
+              (req as any).tenant = { id: tenantId };
+              console.log('[PRODUCTS][CREATE] resolved tenant from X-Tenant-Host header host=%s tenantId=%s', host, tenantId);
+            } else {
+              console.warn('[PRODUCTS][CREATE] X-Tenant-Host not found in tenant_domain host=%s', host);
+            }
+          } catch (e: any) {
+            console.warn('[PRODUCTS][CREATE] failed lookup tenant_domain for host', host, e?.message);
+          }
+        }
+      }
+    }
     if (!tenantId) throw new BadRequestException('tenantId مفقود لإنشاء منتج مستأجر');
     console.log('[PRODUCTS] create tenant product tenantId=', tenantId, 'body=', body);
     const AUTO_DEFAULT_BASE = 'منتج جديد';
