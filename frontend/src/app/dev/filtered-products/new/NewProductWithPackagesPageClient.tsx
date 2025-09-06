@@ -1,7 +1,7 @@
 "use client";
 export const dynamic='force-dynamic';
 export const fetchCache='force-no-store';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import api from '@/utils/api';
 import { useRouter } from 'next/navigation';
 interface NewPkg { id: string; name: string; publicCode: string; isActive: boolean; }
@@ -14,7 +14,10 @@ export default function NewProductWithPackagesPageClient(){
   const [error,setError]=useState<string|null>(null);
   const [hint,setHint]=useState<string|null>(null);
   const router = useRouter();
-  function addPkg(){ setPkgs(p=>[...p,{ id: Math.random().toString(36).slice(2), name:"", publicCode:"", isActive:true }]); }
+  const pkgCounter = useRef(0);
+  // Ensure consistent IDs (avoid Math.random hydration drift)
+  function stableId(){ pkgCounter.current += 1; return 'pkg-' + pkgCounter.current.toString(36); }
+  function addPkg(){ setPkgs(p=>[...p,{ id: stableId(), name:"", publicCode:"", isActive:true }]); }
   function updatePkg(id:string, patch: Partial<NewPkg>){ setPkgs(p=> p.map(k=> k.id===id? { ...k, ...patch }: k)); }
   function removePkg(id:string){ setPkgs(p=> p.filter(k=> k.id!==id)); }
   async function submit(){

@@ -939,18 +939,19 @@ export class ProductsService {
     } catch {}
     if (!data.name || !data.name.trim()) throw new ConflictException('اسم الباقة مطلوب');
 
-    let product = await this.productsRepo.findOne({
-      where: { id: productId, tenantId } as any,
-      relations: ['packages'],
-    });
+    const GLOBAL_ID = '00000000-0000-0000-0000-000000000000';
+    let product = await this.productsRepo.findOne({ where: { id: productId, tenantId } as any, relations: ['packages'] });
     if (!product) {
-      // محاولة بديلة: إن كان المستخدم مطوّرًا، اسمح له بالوصول لمنتج "مصدر" حتى لو لم يطابق tenantId
-      const alt = await this.productsRepo.findOne({ where: { id: productId } as any, relations: ['packages'] });
-      // المنتج يجب أن يكون ضمن نفس المستأجر الآن بعد إزالة منطق المصدر/الاستنساخ
-      console.warn('[PKG][CREATE][NF] product not found for tenant', {
-        productId: productId?.slice(0,8), tenantId: tenantId?.slice(0,8), role: ctx?.finalRole,
-      });
-      throw new NotFoundException('المنتج غير موجود في هذا المستأجر');
+      // Fallback: if product is global and caller is developer/instance_owner allow it
+      const anyProduct = await this.productsRepo.findOne({ where: { id: productId } as any, relations: ['packages'] });
+      if (anyProduct && anyProduct.tenantId === GLOBAL_ID && ['developer','instance_owner'].includes((ctx?.finalRole||'').toLowerCase())) {
+        product = anyProduct; // treat as global context
+        tenantId = GLOBAL_ID; // override tenant scope
+        console.log('[PKG][CREATE][GLOBAL] attaching package to global product', { productId: product.id });
+      } else {
+        console.warn('[PKG][CREATE][NF] product not found for tenant', { productId: productId?.slice(0,8), tenantId: tenantId?.slice(0,8), role: ctx?.finalRole });
+        throw new NotFoundException('المنتج غير موجود في هذا المستأجر');
+      }
     }
 
   // Catalog linking removed: no catalogLinkCode validation required.

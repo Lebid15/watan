@@ -64,6 +64,8 @@ function DevLayoutInner({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-zinc-50 text-gray-950" style={{ minWidth: DESIGN_WIDTH, overflowX: 'auto' }}>
       <DevNavbar />
       <GlobalErrorHooks />
+  {/* onRecoverableError logger for hydration diagnostics */}
+  <HydrationDebug />
       <main className="mx-auto max-w-6xl p-4">
         <DevErrorBoundary>{children}</DevErrorBoundary>
       </main>
@@ -86,4 +88,23 @@ export default function DevLayout({ children }: { children: React.ReactNode }) {
       <DevLayoutInner>{children}</DevLayoutInner>
     </Suspense>
   );
+}
+
+function HydrationDebug() {
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // Avoid overriding if already set
+    if (!(window as any).__HYDRATION_DEBUG_SET__) {
+      (window as any).__HYDRATION_DEBUG_SET__ = true;
+      // React 18 exposes onRecoverableError global hook (set on window)
+      (window as any).onRecoverableError = (err: any, info: any) => {
+        try {
+          // Shallow info extraction; info may contain componentStack
+          // eslint-disable-next-line no-console
+          console.warn('[HydrationMismatch]', err?.message, info);
+        } catch {}
+      };
+    }
+  }, []);
+  return null;
 }
