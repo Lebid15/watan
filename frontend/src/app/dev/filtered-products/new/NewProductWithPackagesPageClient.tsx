@@ -22,7 +22,16 @@ export default function NewProductWithPackagesPageClient(){
     setSaving(true); setError(null); setHint(null);
     try {
       console.log('[NEW PRODUCT] creating with name=', name.trim());
-  const prodRes = await api.post('/products', { name: name.trim() });
+      // Decide whether to hit global or tenant endpoint.
+      // If running on apex (www.syrz1.com or root) treat as global product.
+      let createUrl = '/products';
+      if (typeof window !== 'undefined') {
+        const host = window.location.host.toLowerCase();
+        if (/^(www\.)?syrz1\.com$/i.test(host) || host.split('.').length === 2) {
+          createUrl = '/products/global';
+        }
+      }
+      const prodRes = await api.post(createUrl, { name: name.trim() });
       console.log('[NEW PRODUCT] created id=', prodRes.data?.id);
       const productId = prodRes.data.id;
       if(file){
