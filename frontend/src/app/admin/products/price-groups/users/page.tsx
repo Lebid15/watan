@@ -14,6 +14,7 @@ interface User {
   email: string; // محفوظ للبحث وعدم العرض
   username?: string | null; // الاسم الحقيقي (من /admin/users)
   priceGroupId?: string | null;
+  role?: string | null; // لتمكين الاستثناء حسب الدور
 }
 
 export default function LinkUsersPricesPage() {
@@ -47,7 +48,8 @@ export default function LinkUsersPricesPage() {
       const rawUsername: string | null = (u.username ?? u.userName ?? '').trim() || null;
       const username = rawUsername || null; // لا نشتق من البريد هنا؛ نريد الاسم الحقيقي فقط
       const priceGroupId = groupMap.get(id)?.priceGroupId ?? null;
-      result.push({ id, email, username, priceGroupId });
+      const role = (u.roleFinal || u.role || null) ? String(u.roleFinal || u.role).toLowerCase() : null;
+      result.push({ id, email, username, priceGroupId, role });
     }
 
     // قد يوجد مستخدمون لديهم priceGroup لكن غير موجودين في baseArr (نضيفهم احتياطياً)
@@ -56,12 +58,8 @@ export default function LinkUsersPricesPage() {
       if (!result.find(r => r.id === id)) {
         const email: string = u.email;
         const rawUsername: string | null = (u.username ?? u.userName ?? '').trim() || null;
-        result.push({
-          id,
-          email,
-          username: rawUsername || null,
-          priceGroupId: u.priceGroup?.id ?? null,
-        });
+  const role = (u.roleFinal || u.role || null) ? String(u.roleFinal || u.role).toLowerCase() : null;
+  result.push({ id, email, username: rawUsername || null, priceGroupId: u.priceGroup?.id ?? null, role });
       }
     }
 
@@ -130,7 +128,19 @@ export default function LinkUsersPricesPage() {
   const filteredUsers = (!searchLower ? users : users.filter(u =>
     (u.username || '').toLowerCase().includes(searchLower) ||
     (u.email || '').toLowerCase().includes(searchLower)
-  )).filter(u => !currentUserId || u.id !== currentUserId); // استثناء المستخدم الحالي
+  ))
+    // استثناء المستخدم الحالي
+    .filter(u => !currentUserId || u.id !== currentUserId)
+    // استثناء أدوار النظام: المطور + مالك التينانت (instance_owner) + أي حساب مثال/ديمو
+    .filter(u => {
+      const role = (u.role || '').toLowerCase();
+      if (role === 'developer' || role === 'instance_owner') return false;
+      const uname = (u.username || '').toLowerCase();
+      const email = (u.email || '').toLowerCase();
+      // heuristics for example/demo accounts
+      if (uname.includes('example') || uname.includes('demo') || email.includes('example') || email.includes('demo')) return false;
+      return true;
+    });
 
   return (
     <div className="p-4 min-h-screen bg-bg-base text-text-primary">

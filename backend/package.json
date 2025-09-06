@@ -38,7 +38,8 @@
   "dev:token": "node scripts/request-dev-token.cjs",
   "e2e:smoke": "ts-node -r tsconfig-paths/register ./src/scripts/smoke-profile.ts",
   "tenant:verify": "ts-node -r tsconfig-paths/register ./src/scripts/verify-tenants.ts",
-  "users:null": "ts-node -r tsconfig-paths/register ./src/scripts/list-null-users.ts"
+  "users:null": "ts-node -r tsconfig-paths/register ./src/scripts/list-null-users.ts",
+  "mapping:verify": "ts-node -r tsconfig-paths/register ./src/scripts/verify-package-mappings.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.6",
