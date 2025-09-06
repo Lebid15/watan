@@ -1,5 +1,5 @@
 // src/products/products.service.ts
-import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException, UnprocessableEntityException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Brackets } from 'typeorm';
 import { Product } from './product.entity';
@@ -550,68 +550,111 @@ export class ProductsService {
 
   // ===== ✅ استنساخ منتج عالمي (الحاوية العامة) إلى تينانت مستهدف =====
   async cloneGlobalProductToTenant(globalProductId: string, targetTenantId: string): Promise<Product> {
-    const GLOBAL_ID = this.DEV_TENANT_ID; // نفس المعرف المستخدم كحاوية عالمية
-    // احضار المنتج العالمي مع باقاته
-    const source = await this.productsRepo.findOne({
-      where: { id: globalProductId, tenantId: GLOBAL_ID } as any,
-      relations: ['packages'],
-    });
-    if (!source) throw new NotFoundException('المنتج العالمي غير موجود');
+    const GLOBAL_ID = this.DEV_TENANT_ID;
+    if (!targetTenantId) throw new BadRequestException('لا يمكن تحديد التينانت الهدف');
 
-    // فلترة الباقات الصالحة (نشطة ولها publicCode)
+    const source = await this.productsRepo.findOne({ where: { id: globalProductId, tenantId: GLOBAL_ID } as any, relations: ['packages'] });
+    if (!source) throw new NotFoundException('GLOBAL_PRODUCT_NOT_FOUND');
+
+    // منع إعادة الاستنساخ
+    const already = await this.productsRepo.findOne({ where: { tenantId: targetTenantId, sourceGlobalProductId: source.id } as any });
+    if (already) throw new ConflictException('ALREADY_CLONED');
+
     const validPkgs = (source.packages || []).filter((p: any) => p.isActive && p.publicCode != null);
-    if (validPkgs.length === 0) {
-      throw new UnprocessableEntityException('لا توجد باقات نشطة ذات publicCode لنسخها');
+    if (validPkgs.length === 0) throw new UnprocessableEntityException('NO_ACTIVE_PACKAGES');
+
+    // كشف أكواد مكررة داخل المصدر نفسه (سيؤدي لفشل فوري في الثانية)
+    const pcodes = validPkgs.map((p: any) => p.publicCode);
+    const dupSet = new Set<string>();
+    const seen = new Set<string>();
+    for (const c of pcodes) { if (seen.has(c)) dupSet.add(c); else seen.add(c); }
+    if (dupSet.size) {
+      console.warn('[CLONE][PACKAGE][SOURCE_DUPLICATES]', { duplicates: Array.from(dupSet) });
+      throw new ConflictException('SOURCE_DUPLICATE_PACKAGE_CODES');
     }
 
-    // معالجة تعارض الاسم داخل التينانت المستهدف
-    const baseName = source.name?.trim() || 'منتج';
-    let candidate = baseName;
-    const MAX_TRIES = 12;
-    for (let i = 0; i < MAX_TRIES; i++) {
-      const exists = await this.productsRepo.findOne({ where: { tenantId: targetTenantId, name: candidate } as any });
-      if (!exists) break;
-      const suffix = i + 2; // يبدأ من -2
-      candidate = `${baseName}-${suffix}`;
-      if (i === MAX_TRIES - 1) {
-        throw new ConflictException('تعذر إيجاد اسم متاح بعد محاولات متعددة');
+    // فحص تعارضات حالية في التينانت الهدف
+    if (pcodes.length) {
+      const existing = await this.packagesRepo.find({ where: { tenantId: targetTenantId, publicCode: In(pcodes) } as any, select: ['id','publicCode'] as any });
+      if (existing.length) {
+        console.warn('[CLONE][PACKAGE][PRECONFLICT]', { count: existing.length, codes: existing.map(e => e.publicCode) });
+        throw new ConflictException('PACKAGE_CONFLICT');
       }
     }
 
-    // إنشاء المنتج الجديد
-  const newProduct = new Product();
-  newProduct.tenantId = targetTenantId;
-  newProduct.name = candidate;
-  newProduct.description = source.description || undefined;
-  // حفظ مرجع المنتج العالمي الأصلي
-  (newProduct as any).sourceGlobalProductId = source.id;
-  (newProduct as any).customImageUrl = (source as any).customImageUrl || undefined;
-  (newProduct as any).customAltText = (source as any).customAltText || undefined;
-  (newProduct as any).thumbSmallUrl = (source as any).thumbSmallUrl || undefined;
-  (newProduct as any).thumbMediumUrl = (source as any).thumbMediumUrl || undefined;
-  (newProduct as any).thumbLargeUrl = (source as any).thumbLargeUrl || undefined;
-  newProduct.isActive = true;
-  const savedProduct = await this.productsRepo.save(newProduct);
-
-    // نسخ الباقات
-    const clones: ProductPackage[] = [];
-    for (const pkg of validPkgs) {
-  const clone = new ProductPackage();
-  clone.tenantId = targetTenantId;
-  clone.publicCode = pkg.publicCode;
-  clone.name = pkg.name;
-  clone.description = pkg.description || undefined;
-  clone.imageUrl = pkg.imageUrl || undefined;
-  clone.basePrice = (pkg.basePrice ?? pkg.capital ?? 0) as any;
-  clone.capital = (pkg.capital ?? pkg.basePrice ?? 0) as any;
-  clone.providerName = pkg.providerName || undefined;
-  clone.isActive = true;
-  clone.product = savedProduct;
-  const savedClone = await this.packagesRepo.save(clone);
-      clones.push(savedClone);
+    // توليد اسم المنتج الجديد مع محاولة فض تعارض الأسماء
+    const baseName = source.name?.trim() || 'منتج';
+    let candidate = baseName;
+    for (let i = 0; i < 12; i++) {
+      const exists = await this.productsRepo.findOne({ where: { tenantId: targetTenantId, name: candidate } as any });
+      if (!exists) break;
+      candidate = `${baseName}-${i + 2}`;
+      if (i === 11) throw new ConflictException('PRODUCT_NAME_CONFLICT');
     }
-    (savedProduct as any).packages = clones;
-    return savedProduct;
+
+    try {
+      return await this.productsRepo.manager.transaction(async (trx) => {
+        const prodRepo = trx.getRepository(Product);
+        const pkgRepo = trx.getRepository(ProductPackage);
+
+        const newProduct = new Product();
+        newProduct.tenantId = targetTenantId;
+        newProduct.name = candidate;
+        newProduct.description = source.description || undefined;
+        (newProduct as any).sourceGlobalProductId = source.id;
+        (newProduct as any).customImageUrl = (source as any).customImageUrl || undefined;
+        (newProduct as any).customAltText = (source as any).customAltText || undefined;
+        (newProduct as any).thumbSmallUrl = (source as any).thumbSmallUrl || undefined;
+        (newProduct as any).thumbMediumUrl = (source as any).thumbMediumUrl || undefined;
+        (newProduct as any).thumbLargeUrl = (source as any).thumbLargeUrl || undefined;
+        newProduct.isActive = true;
+
+        let savedProduct: Product;
+        try {
+          savedProduct = await prodRepo.save(newProduct);
+        } catch (e: any) {
+          console.error('[CLONE][PRODUCT][ERROR]', { msg: e?.message, code: e?.code, detail: e?.detail });
+          if (e?.code === '23505') throw new ConflictException('PRODUCT_NAME_CONFLICT');
+          throw new InternalServerErrorException('CLONE_PRODUCT_FAILED');
+        }
+
+        const clones: ProductPackage[] = [];
+        for (const pkg of validPkgs) {
+          const clone = new ProductPackage();
+          clone.tenantId = targetTenantId;
+          clone.publicCode = pkg.publicCode;
+          clone.name = pkg.name;
+          clone.description = pkg.description || undefined;
+          clone.imageUrl = pkg.imageUrl || undefined;
+            clone.basePrice = (pkg.basePrice ?? pkg.capital ?? 0) as any;
+          clone.capital = (pkg.capital ?? pkg.basePrice ?? 0) as any;
+          clone.providerName = pkg.providerName || undefined;
+          clone.isActive = true;
+          clone.product = savedProduct;
+          try {
+            const savedClone = await pkgRepo.save(clone);
+            clones.push(savedClone);
+          } catch (e: any) {
+            const code = e?.code;
+            const detail: string | undefined = e?.detail;
+            console.error('[CLONE][PACKAGE][ERROR]', { pkgId: pkg.id, msg: e?.message, code, detail });
+            if (code === '23505' || (detail && detail.includes('ux_product_packages_public_code'))) {
+              throw new ConflictException('PACKAGE_CONFLICT');
+            }
+            throw new InternalServerErrorException('CLONE_PACKAGE_FAILED');
+          }
+        }
+        (savedProduct as any).packages = clones;
+        return savedProduct;
+      });
+    } catch (err) {
+      if (err instanceof ConflictException || err instanceof BadRequestException || err instanceof NotFoundException || err instanceof UnprocessableEntityException) {
+        throw err; // تم تصنيف الخطأ بشكل صحيح
+      }
+      // أي خطأ آخر نعيده كفشل داخلي
+      console.error('[CLONE][FATAL]', err instanceof Error ? err.message : err);
+      throw new InternalServerErrorException('CLONE_FAILED');
+    }
   }
 
   // ===== ✅ قائمة المنتجات العالمية مع عدد الباقات النشطة ذات publicCode =====

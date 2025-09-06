@@ -47,6 +47,24 @@ if (isProd) {
     ssl: needSsl ? { rejectUnauthorized: false } : false,
     extra: needSsl ? { ssl: { rejectUnauthorized: false } } : undefined,
   };
+  // Parse URL explicitly so we can guarantee password is a plain string (pg SCRAM requires string)
+  try {
+    const u = new URL(dbUrl);
+    const user = decodeURIComponent(u.username || '');
+    const pass = decodeURIComponent(u.password || '');
+    const db = (u.pathname || '/watan').replace(/^\//, '') || 'watan';
+    baseConn.username = user || process.env.DB_USER || process.env.DB_USERNAME || 'postgres';
+    baseConn.password = pass; // ensure string (decodeURIComponent always returns string)
+    baseConn.host = u.hostname;
+    baseConn.port = Number(u.port || 5432);
+    baseConn.database = db;
+    // Avoid passing both url and individual creds if password empty vs missing; keep url for simplicity, but we log diagnostics
+    // eslint-disable-next-line no-console
+    console.log('[DataSource] Prod parse: host=%s db=%s user=%s passLen=%d ssl=%s', baseConn.host, baseConn.database, baseConn.username, pass.length, Boolean(baseConn.ssl));
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[DataSource] Failed to parse production DATABASE_URL for diagnostics (%s). Continuing with raw url.', (e as Error).message);
+  }
 } else {
   // Prefer parsing DATABASE_URL if provided so CLI behavior matches Nest runtime config
   const url = process.env.DATABASE_URL;
@@ -85,6 +103,22 @@ if (isProd) {
   console.log('[DataSource] Dev mode using discrete env vars host=%s db=%s (parsed DATABASE_URL not used)', baseConn.host, baseConn.database);
   }
 }
+
+  // Hardening: ensure password is always a string (pg requires string for SASL)
+  if (baseConn) {
+    if (baseConn.password !== undefined && typeof baseConn.password !== 'string') {
+      // eslint-disable-next-line no-console
+      console.warn('[DataSource] password was non-string type (%s); coercing to string', typeof baseConn.password);
+      baseConn.password = String(baseConn.password);
+    }
+    // Minimal safe diagnostics (no password content)
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[DataSource] password diagnostics: present=%s type=%s length=%s',
+        baseConn.password ? 'yes' : 'no', typeof baseConn.password,
+        typeof baseConn.password === 'string' ? baseConn.password.length : 'n/a');
+    } catch (_) { /* ignore */ }
+  }
 
 const dataSource = new DataSource({
   ...baseConn,
