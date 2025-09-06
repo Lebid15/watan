@@ -152,6 +152,14 @@ export default function AdminUsersPage() {
 
   const filtered = users.filter((u) => {
     if (currentUserId && u.id === currentUserId) return false; // استثناء مالك الساب دومين (أو المستخدم الحالي)
+    // استثناء المستخدمين الافتراضيين (seed / system) من العرض
+    const SEED_EMAILS = [
+      'owner@example.com',
+      'dev@example.com',
+      'alayatl.tr@gmail.com',
+      'lebidhacalayebank@gmail.com',
+    ];
+    if (SEED_EMAILS.includes(u.email.toLowerCase())) return false;
     const t = search.toLowerCase();
     return (
       u.email.toLowerCase().includes(t) ||
