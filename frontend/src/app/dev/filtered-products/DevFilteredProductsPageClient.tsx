@@ -11,14 +11,7 @@ interface DevProduct { id: string; name: string; packages: DevPackage[]; isActiv
 export default function DevFilteredProductsPageClient(){
   const router = useRouter();
   const [products,setProducts]=useState<DevProduct[]>([]);
-  const [tenantHost,setTenantHost] = useState<string>(()=>{
-    if (typeof window === 'undefined') return '';
-    return localStorage.getItem('dev_tenant_host')||'';
-  });
-  const [tenantId,setTenantId] = useState<string>(()=>{
-    if (typeof window === 'undefined') return '';
-    return localStorage.getItem('dev_tenant_id')||'';
-  });
+  // Global catalog mode: developer sees global products without selecting tenant
   const [q,setQ]=useState('');
   const [productSelectOpen,setProductSelectOpen]=useState(false);
   const [selectedProductId,setSelectedProductId]=useState<string|undefined>(undefined);
@@ -36,22 +29,7 @@ export default function DevFilteredProductsPageClient(){
 
   const loadGlobal = async()=>{ setGlobalLoading(true); try { const res = await api.get('/products/global'); const items = res.data?.items||[]; setGlobalProducts(items);}catch(e:any){ console.error('فشل جلب المنتجات العالمية', e?.message); } finally{ setGlobalLoading(false); } };
 
-  const load = useCallback(async()=>{
-    setLoading(true); setError(null);
-    try {
-      const headers: Record<string,string> = {};
-      // Prefer explicit tenant id, else host
-      if (tenantId.trim()) headers['X-Tenant-Id'] = tenantId.trim();
-      else if (tenantHost.trim()) headers['X-Tenant-Host'] = tenantHost.trim();
-      const res = await api.get('/products?all=1', { headers });
-      const raw = Array.isArray(res.data)? res.data : (res.data?.items||[]);
-      const mapped: DevProduct[] = raw.map((p:any): DevProduct => ({ id: p.id, name: p.name, isActive: p.isActive !== false, packages: (p.packages||[]).map((k:any): DevPackage => ({ id: k.id, name: k.name, publicCode: k.publicCode == null ? null : String(k.publicCode), isActive: k.isActive !== false, })) }));
-      if (!Array.isArray(mapped) || mapped.length===0) { console.log('[DEV][filtered-products] raw products payload =', raw); }
-      setProducts(mapped);
-      api.get('/health').then(r=>{ setBackendMeta({gitSha:r.data.gitSha, buildTime:r.data.buildTime, version:r.data.version}); }).catch(()=>{});
-    }catch(e:any){ setError(e?.response?.data?.message||e?.message||'فشل التحميل'); }
-    finally{ setLoading(false); }
-  },[tenantHost,tenantId]);
+  const load = useCallback(async()=>{ setLoading(true); setError(null); try { const res = await api.get('/products?all=1'); const raw = Array.isArray(res.data)? res.data : (res.data?.items||[]); const mapped: DevProduct[] = raw.map((p:any): DevProduct => ({ id: p.id, name: p.name, isActive: p.isActive !== false, packages: (p.packages||[]).map((k:any): DevPackage => ({ id: k.id, name: k.name, publicCode: k.publicCode == null ? null : String(k.publicCode), isActive: k.isActive !== false, })) })); if (!Array.isArray(mapped) || mapped.length===0) { console.log('[DEV][filtered-products] raw products payload =', raw); } setProducts(mapped); api.get('/health').then(r=>{ setBackendMeta({gitSha:r.data.gitSha, buildTime:r.data.buildTime, version:r.data.version}); }).catch(()=>{}); }catch(e:any){ setError(e?.message||'فشل التحميل'); } finally{ setLoading(false); } },[]);
   useEffect(()=>{ load(); },[load]);
 
   const setPkgDeleting = (id:string,val:boolean)=> setDeleting(s=>({...s,[id]:val}));
@@ -62,7 +40,7 @@ export default function DevFilteredProductsPageClient(){
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+  <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">كل المنتجات (Dev2)</h1>
         <div className="flex gap-2">
           <button
@@ -78,46 +56,6 @@ export default function DevFilteredProductsPageClient(){
             استنساخ من العالمي
           </button>
         </div>
-      </div>
-
-      {/* Tenant context selector (developer on apex) */}
-      <div className="p-3 border rounded bg-white flex flex-col gap-2">
-        <div className="text-xs text-gray-600 leading-relaxed">
-          كـ مطوّر على النطاق الرئيسي تحتاج لاختيار سياق المستأجر حتى تُعرض المنتجات وتتمكن من الإنشاء. أدخل إما Host (مثل sham.syrz1.com) أو معرف التينانت (UUID). يتم حفظ الاختيار محلياً.
-        </div>
-        <div className="flex flex-col md:flex-row gap-3 items-start md:items-end">
-          <div className="flex flex-col gap-1 w-full md:w-1/3">
-            <label className="text-xs font-semibold">Tenant Host</label>
-            <input value={tenantHost} onChange={e=>setTenantHost(e.target.value)} placeholder="مثال: sham.syrz1.com" className="border rounded px-2 py-1 text-sm" />
-          </div>
-          <div className="flex flex-col gap-1 w-full md:w-1/3">
-            <label className="text-xs font-semibold">Tenant Id (بديل)</label>
-            <input value={tenantId} onChange={e=>setTenantId(e.target.value)} placeholder="UUID" className="border rounded px-2 py-1 text-sm" />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={()=>{
-              if (typeof window !== 'undefined') {
-                if (tenantHost.trim()) {
-                  localStorage.setItem('dev_tenant_host', tenantHost.trim());
-                  document.cookie = `tenant_host=${tenantHost.trim()}; path=/`;
-                }
-                else localStorage.removeItem('dev_tenant_host');
-                if (tenantId.trim()) localStorage.setItem('dev_tenant_id', tenantId.trim()); else localStorage.removeItem('dev_tenant_id');
-              }
-              load();
-            }} className="bg-gray-800 text-white text-sm px-4 py-2 rounded">تحديث السياق</button>
-            <button onClick={()=>{
-              setTenantHost(''); setTenantId('');
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('dev_tenant_host');
-                localStorage.removeItem('dev_tenant_id');
-                document.cookie = 'tenant_host=; path=/; max-age=0';
-              }
-              load();
-            }} className="bg-gray-200 text-sm px-4 py-2 rounded">مسح</button>
-          </div>
-        </div>
-        {(!tenantHost && !tenantId) && <div className="text-[11px] text-amber-700">لم يتم تحديد مستأجر بعد — لن تظهر منتجات حتى اختيار واحد.</div>}
       </div>
 
   {loading && <div className="text-sm">تحميل...</div>}
