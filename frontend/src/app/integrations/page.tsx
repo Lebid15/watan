@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
 
-type ProviderKind = 'barakat' | 'apstore' | 'znet';
+type ProviderKind = 'barakat' | 'apstore' | 'znet' | 'internal';
 
 type IntegrationRow = {
   id: string;
@@ -14,6 +14,7 @@ type IntegrationRow = {
   apiToken?: string;
   kod?: string;
   sifre?: string;
+  enabled?: boolean;
 };
 
 export default function AdminIntegrationsPage() {
@@ -36,6 +37,7 @@ export default function AdminIntegrationsPage() {
     apiToken: string;
     kod: string;
     sifre: string;
+    enabled: boolean;
   }>({
     name: '',
     provider: 'barakat',
@@ -43,6 +45,7 @@ export default function AdminIntegrationsPage() {
     apiToken: '',
     kod: '',
     sifre: '',
+    enabled: true,
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -77,7 +80,7 @@ export default function AdminIntegrationsPage() {
   // جلب الرصيد لكل تكامل تلقائيًا بعد تحميل القائمة
   useEffect(() => {
     if (items.length > 0) {
-      items.forEach((it) => handleRefreshBalance(it.id));
+      items.forEach((it) => it.enabled !== false && handleRefreshBalance(it.id));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length]);
@@ -137,9 +140,10 @@ export default function AdminIntegrationsPage() {
         name: form.name.trim(),
         provider: form.provider,
         baseUrl: form.baseUrl || undefined,
+        enabled: form.enabled,
       };
 
-      if (form.provider === 'barakat' || form.provider === 'apstore') {
+      if (form.provider === 'barakat' || form.provider === 'apstore' || form.provider === 'internal') {
         payload.apiToken = form.apiToken || undefined;
       } else if (form.provider === 'znet') {
         payload.kod = form.kod || undefined;
@@ -155,6 +159,7 @@ export default function AdminIntegrationsPage() {
         apiToken: '',
         kod: '',
         sifre: '',
+        enabled: true,
       });
       await load();
     } catch (e: any) {
@@ -169,6 +174,8 @@ export default function AdminIntegrationsPage() {
   const placeholderForBaseUrl =
     form.provider === 'znet'
       ? 'http://bayi.siteadressinstead.com'
+      : form.provider === 'internal'
+      ? 'ahmad.syrz1.com'
       : 'https://api.x-stor.net';
 
   return (
@@ -201,12 +208,13 @@ export default function AdminIntegrationsPage() {
       )}
 
       <div className="overflow-auto border border-border rounded-lg bg-bg-surface">
-        <table className="min-w-[800px] w-full text-sm table">
+        <table className="min-w-[900px] w-full text-sm table">
           <thead className="bg-bg-surface-alt">
             <tr>
               <th className="px-3 py-2 font-medium border border-border text-right">الإسم</th>
               <th className="px-3 py-2 font-medium border border-border text-right">النوع</th>
               <th className="px-3 py-2 font-medium border border-border text-right">الرابط</th>
+              <th className="px-3 py-2 font-medium border border-border text-right">الحالة</th>
               <th className="px-3 py-2 font-medium border border-border text-right">الرصيد</th>
               <th className="px-3 py-2 font-medium border border-border text-right">العمليات</th>
             </tr>
@@ -215,7 +223,7 @@ export default function AdminIntegrationsPage() {
             {items.length === 0 && !loading && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-3 py-6 text-center text-text-secondary"
                 >
                   لا يوجد جهات تم الربط معها بعد
@@ -232,15 +240,28 @@ export default function AdminIntegrationsPage() {
                 <td className="border border-border px-3 py-2 uppercase">{it.provider}</td>
                 <td className="border border-border px-3 py-2">{it.baseUrl || '—'}</td>
                 <td className="border border-border px-3 py-2">
-                  {balances[it.id] !== undefined
+                  <button
+                    onClick={async () => {
+                      try {
+                        await api.put(API_ROUTES.admin.integrations.byId(it.id), { enabled: !it.enabled });
+                        setItems(prev => prev.map(p => p.id === it.id ? { ...p, enabled: !it.enabled } : p));
+                      } catch {}
+                    }}
+                    className={`px-3 py-1 rounded text-xs font-medium border transition ${it.enabled ? 'bg-green-600/10 text-green-600 border-green-600/40' : 'bg-gray-500/10 text-gray-500 border-gray-400/30'}`}
+                  >
+                    {it.enabled ? 'Enabled' : 'Disabled'}
+                  </button>
+                </td>
+                <td className="border border-border px-3 py-2">
+                  {it.enabled === false ? '—' : (balances[it.id] !== undefined
                     ? (balances[it.id] ?? '—')
-                    : <span className="text-text-secondary">—</span>}
+                    : <span className="text-text-secondary">—</span>)}
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => handleTest(it.id)}
-                      disabled={testing === it.id}
+                      disabled={testing === it.id || it.enabled === false}
                       className="btn btn-secondary disabled:opacity-50"
                     >
                       {testing === it.id ? 'يختبر..' : 'اختبار'}
@@ -248,7 +269,7 @@ export default function AdminIntegrationsPage() {
 
                     <button
                       onClick={() => handleRefreshBalance(it.id)}
-                      disabled={refreshing === it.id}
+                      disabled={refreshing === it.id || it.enabled === false}
                       className="btn btn-primary disabled:opacity-50"
                     >
                       {refreshing === it.id ? 'يتم التحديث..' : 'تحديث'}
@@ -256,7 +277,8 @@ export default function AdminIntegrationsPage() {
 
                     <button
                       onClick={() => goPackages(it.id)}
-                      className="btn bg-success text-text-inverse hover:brightness-110"
+                      disabled={it.enabled === false}
+                      className="btn bg-success text-text-inverse hover:brightness-110 disabled:opacity-40"
                     >
                       ربط
                     </button>
@@ -282,7 +304,7 @@ export default function AdminIntegrationsPage() {
 
             {loading && (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-text-secondary">
+                <td colSpan={6} className="px-3 py-6 text-center text-text-secondary">
                   يحمل...
                 </td>
               </tr>
@@ -328,6 +350,7 @@ export default function AdminIntegrationsPage() {
                   <option value="barakat">barakat</option>
                   <option value="apstore">apstore</option>
                   <option value="znet">znet</option>
+                  <option value="internal">internal</option>
                 </select>
               </div>
 
@@ -341,7 +364,7 @@ export default function AdminIntegrationsPage() {
                 />
               </div>
 
-              {(form.provider === 'barakat' || form.provider === 'apstore') && (
+              {(form.provider === 'barakat' || form.provider === 'apstore' || form.provider === 'internal') && (
                 <div>
                   <label className="block text-sm mb-1">API Token</label>
                   <input
@@ -375,6 +398,16 @@ export default function AdminIntegrationsPage() {
                   </div>
                 </>
               )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <label className="text-sm">Enabled</label>
+                <input
+                  type="checkbox"
+                  checked={form.enabled}
+                  onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+                  className="h-4 w-4"
+                />
+              </div>
             </div>
 
             <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
