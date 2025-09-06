@@ -1,69 +1,94 @@
-'use client';
-import { useState } from 'react';
+"use client";
+import { useEffect, useState } from 'react';
 import api from '@/utils/api';
 
-// صفحة إرسال ملاحظة تُعرض في كل لوحات /admin (مكان التنبيه الحالي) عبر تخزينها مؤقتًا ثم يمكن لاحقاً دعمها من الباك إند
-// ملاحظة: حالياً سنحاكي العملية بتخزين القيمة في localStorage تحت المفتاح adminGlobalAlert
-// ويجب أن يقرأها layoutClient لاحقاً (سنعدل هناك) بدل النص الثابت.
+interface NoteResp { value: string; updatedAt: string | null }
 
 export default function DevAdminNotePage() {
-  const [note, setNote] = useState('');
+  const [current, setCurrent] = useState('');
+  const [latest, setLatest] = useState<NoteResp>({ value: '', updatedAt: null });
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState('');
+  const [error, setError] = useState('');
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFeedback('');
+  async function fetchLatest() {
     try {
-      setSaving(true);
-      const trimmed = note.trim();
-      if (!trimmed) { setFeedback('أدخل ملاحظة أولاً'); return; }
+      const r = await api.get<NoteResp>('/dev/notes/latest');
+      setLatest(r.data);
+      if (!current) setCurrent(r.data.value || '');
+    } catch {
+      // ignore
+    }
+  }
 
-      // محاولة استدعاء API مستقبلي (معلق حالياً)
-      // await api.post('/admin/global-alert', { message: trimmed });
+  useEffect(() => {
+    (async () => {
+      await fetchLatest();
+      setLoading(false);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      try {
-        localStorage.setItem('adminGlobalAlert', trimmed);
-        // أطلق حدثاً مخصصاً لتحديث اللوحات المفتوحة بدون إعادة تحميل
-        window.dispatchEvent(new Event('adminGlobalAlertUpdated'));
-      } catch {}
-      setFeedback('تم حفظ الملاحظة (محلياً حالياً).');
-    } catch (err: any) {
-      setFeedback(err?.response?.data?.message || 'فشل حفظ الملاحظة');
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      const r = await api.post<NoteResp>('/dev/notes', { value: current });
+      setSavedAt(new Date().toLocaleString('ar-EG'));
+      setLatest(r.data);
+    } catch {
+      setError('فشل الحفظ');
     } finally {
       setSaving(false);
     }
-  };
-
-  const clearNote = () => {
-    try {
-      localStorage.removeItem('adminGlobalAlert');
-      window.dispatchEvent(new Event('adminGlobalAlertUpdated'));
-    } catch {}
-    setNote('');
-    setFeedback('تم حذف الملاحظة.');
-  };
+  }
 
   return (
-    <div className="p-6 max-w-xl" dir="rtl">
-      <h1 className="text-2xl font-bold mb-4">إرسال ملاحظة</h1>
-      <p className="text-sm text-text-secondary mb-4">ستظهر هذه الملاحظة أعلى صفحات /admin لكل الساب دومينز النشطة (استبدالاً للتنبيه الثابت). حالياً يتم التخزين محلياً فقط.</p>
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="block mb-1 text-sm">نص الملاحظة</label>
+    <div className="p-6" dir="rtl">
+      <h1 className="text-2xl font-bold mb-4">ملاحظة عامة (Global Developer Note)</h1>
+      <p className="text-text-secondary text-sm mb-4">هذه الملاحظة تظهر لكل المتاجر (التينانت) إن كانت غير فارغة.</p>
+      {error && <div className="mb-3 text-danger text-sm">{error}</div>}
+      {loading ? (
+        <div>جارٍ التحميل…</div>
+      ) : (
+        <>
           <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="input w-full min-h-[120px]"
-            placeholder="مثال: سيتم إجراء صيانة مجدولة الساعة 3 صباحاً..."
+            className="w-full min-h-[40vh] p-3 border border-border rounded bg-bg-input focus:outline-none"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            maxLength={5000}
+            placeholder="اكتب ملاحظة عامة تظهر للمستأجرين..."
           />
-        </div>
-        {feedback && <div className="text-xs text-text-secondary">{feedback}</div>}
-        <div className="flex gap-3">
-          <button type="submit" disabled={saving} className="btn btn-primary disabled:opacity-60">{saving ? 'يحفظ...' : 'حفظ'}</button>
-          <button type="button" onClick={clearNote} className="btn btn-secondary">مسح</button>
-        </div>
-      </form>
+          <div className="flex items-center justify-between mt-2 text-xs text-text-secondary">
+            <span>{current.length}/5000</span>
+            {savedAt && <span>آخر حفظ محلي: {savedAt}</span>}
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="px-4 py-2 rounded bg-primary text-primary-contrast disabled:opacity-50"
+            >{saving ? 'جارٍ الحفظ…' : 'حفظ'}</button>
+            <button
+              onClick={() => setCurrent(latest.value || '')}
+              disabled={saving}
+              className="px-4 py-2 rounded bg-bg-surface-alt border border-border"
+            >استرجاع آخر محفوظ</button>
+          </div>
+          <div className="mt-6 text-sm">
+            <div className="font-semibold mb-1">آخر ملاحظة محفوظة (من الخادم):</div>
+            {latest.value ? (
+              <div className="rounded border border-border bg-bg-surface p-3 whitespace-pre-wrap break-words">
+                {latest.value}
+                <div className="mt-2 text-[11px] text-text-secondary">آخر تحديث: {latest.updatedAt ? new Date(latest.updatedAt).toLocaleString('ar-EG') : '—'}</div>
+              </div>
+            ) : (
+              <div className="text-text-secondary">لا توجد ملاحظة محفوظة بعد.</div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

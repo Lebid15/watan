@@ -41,6 +41,9 @@ import { DevToolsModule } from './dev/dev-tools.module';
 import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './dev/all-exceptions.filter';
 import { SchemaGuardService } from './infrastructure/schema/schema-guard.service';
+import { DeveloperNote } from './dev/developer-note.entity';
+import { DeveloperNotesService } from './dev/developer-notes.service';
+import { DeveloperNotesController } from './dev/developer-notes.controller';
 
 @Module({
   imports: [
@@ -142,10 +145,10 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
   DevToolsModule,
   // Repositories needed directly in AppModule-level controllers (e.g., AdminCountsController)
   // Include ProductOrder + Deposit so their repositories can be injected.
-  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot, ProductOrder, Deposit]),
+  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot, ProductOrder, Deposit, DeveloperNote]),
   ],
   // DebugAuthController is registered inside AuthModule (avoid double registration here)
-  controllers: [HealthController, MetricsController, AdminCountsController],
+  controllers: [HealthController, MetricsController, AdminCountsController, DeveloperNotesController],
   providers: [
   { provide: APP_GUARD, useClass: TenantGuard },
   { provide: APP_GUARD, useClass: FinalRolesGuard },
@@ -158,6 +161,7 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
   RateLimiterRegistry,
     RateLimitGuard,
   SchemaGuardService,
+  DeveloperNotesService,
   ],
 })
 export class AppModule implements NestModule {
