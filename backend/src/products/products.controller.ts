@@ -147,21 +147,31 @@ export class ProductsController {
     if (!tenantId) {
       const role = ((req as any).user?.roleFinal || (req as any).user?.role || '').toLowerCase();
       if (['developer', 'instance_owner'].includes(role)) {
-        const rawHost = (req.headers['x-tenant-host'] || req.headers['X-Tenant-Host']) as string | undefined;
-        if (rawHost) {
-          const host = rawHost.toLowerCase().trim();
-          try {
-            const row = await this.dataSource.query(`SELECT "tenantId" FROM tenant_domain WHERE lower(domain) = $1 LIMIT 1`, [host]);
-            const resolved = row?.[0]?.tenantId;
-            if (resolved) {
-              tenantId = resolved;
-              (req as any).tenant = { id: tenantId };
-              console.log('[PRODUCTS][CREATE] resolved tenant from X-Tenant-Host header host=%s tenantId=%s', host, tenantId);
-            } else {
-              console.warn('[PRODUCTS][CREATE] X-Tenant-Host not found in tenant_domain host=%s', host);
+        // Priority 1: explicit X-Tenant-Id header or query param
+        const rawTenantId = (req.headers['x-tenant-id'] as string) || (req.query?.tenantId as string) || undefined;
+        if (rawTenantId && /^[0-9a-fA-F-]{32,36}$/.test(rawTenantId)) {
+          tenantId = rawTenantId;
+          (req as any).tenant = { id: tenantId };
+          console.log('[PRODUCTS][CREATE] resolved tenant from X-Tenant-Id header/query tenantId=%s', tenantId);
+        }
+        // Priority 2: domain host header or query param
+        if (!tenantId) {
+          const rawHost = (req.headers['x-tenant-host'] as string) || (req.query?.tenantHost as string) || undefined;
+          if (rawHost) {
+            const host = rawHost.toLowerCase().trim();
+            try {
+              const row = await this.dataSource.query(`SELECT "tenantId" FROM tenant_domain WHERE lower(domain) = $1 LIMIT 1`, [host]);
+              const resolved = row?.[0]?.tenantId;
+              if (resolved) {
+                tenantId = resolved;
+                (req as any).tenant = { id: tenantId };
+                console.log('[PRODUCTS][CREATE] resolved tenant from host=%s tenantId=%s', host, tenantId);
+              } else {
+                console.warn('[PRODUCTS][CREATE] host not found in tenant_domain host=%s', host);
+              }
+            } catch (e: any) {
+              console.warn('[PRODUCTS][CREATE] failed lookup tenant_domain for host', host, e?.message);
             }
-          } catch (e: any) {
-            console.warn('[PRODUCTS][CREATE] failed lookup tenant_domain for host', host, e?.message);
           }
         }
       }
