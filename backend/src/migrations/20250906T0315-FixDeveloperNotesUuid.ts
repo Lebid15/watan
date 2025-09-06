@@ -10,6 +10,7 @@ export class FixDeveloperNotesUuid20250906T0315 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE EXTENSION IF NOT EXISTS pgcrypto;
+      CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='developer_notes') THEN
           CREATE TABLE developer_notes (
@@ -21,13 +22,26 @@ export class FixDeveloperNotesUuid20250906T0315 implements MigrationInterface {
           );
         END IF;
       END $$;
-      -- Adjust default if it was created without extension previously
       DO $$ BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM information_schema.columns 
           WHERE table_name='developer_notes' AND column_name='id' AND column_default LIKE '%gen_random_uuid%'
         ) THEN
           ALTER TABLE developer_notes ALTER COLUMN id SET DEFAULT gen_random_uuid();
+        END IF;
+      END $$;
+      -- Ensure update trigger exists
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid WHERE c.relname='developer_notes' AND t.tgname='trg_developer_notes_updated_at'
+        ) THEN
+          CREATE OR REPLACE FUNCTION set_updated_at_dev_notes() RETURNS trigger AS $$
+          BEGIN
+            NEW.updated_at = now();
+            RETURN NEW;
+          END; $$ LANGUAGE plpgsql;
+          CREATE TRIGGER trg_developer_notes_updated_at BEFORE UPDATE ON developer_notes
+            FOR EACH ROW EXECUTE FUNCTION set_updated_at_dev_notes();
         END IF;
       END $$;
     `);

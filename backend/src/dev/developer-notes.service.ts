@@ -36,7 +36,12 @@ export class DeveloperNotesService {
 
   async set(value: string, actorId: string): Promise<NoteDto> {
     const trimmed = (value || '').slice(0, this.maxLen).trim();
-    let row = await this.repo.findOne({ where: { singleton: true } });
+    let row: DeveloperNote | null = null;
+    try {
+      row = await this.repo.findOne({ where: { singleton: true } });
+    } catch (e) {
+      this.logger.error('Failed initial fetch of developer note (table may not exist yet)', e as any);
+    }
     if (!row) {
       row = this.repo.create({ value: trimmed, singleton: true });
     } else {
