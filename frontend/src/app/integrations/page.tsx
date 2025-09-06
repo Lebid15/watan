@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
+import { useToast } from '@/context/ToastContext';
 
 type ProviderKind = 'barakat' | 'apstore' | 'znet' | 'internal';
 
@@ -19,6 +20,7 @@ type IntegrationRow = {
 
 export default function AdminIntegrationsPage() {
   const router = useRouter();
+  const { success, error: toastError, info } = useToast();
 
   const [items, setItems] = useState<IntegrationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +29,7 @@ export default function AdminIntegrationsPage() {
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [balances, setBalances] = useState<Record<string, number | null>>({});
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
 
   // modal state
   const [openAdd, setOpenAdd] = useState(false);
@@ -120,6 +123,19 @@ export default function AdminIntegrationsPage() {
       // تجاهل
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleToggle = async (row: IntegrationRow) => {
+    setToggling(row.id);
+    try {
+      await api.put(API_ROUTES.admin.integrations.byId(row.id), { enabled: !row.enabled });
+      setItems(prev => prev.map(p => p.id === row.id ? { ...p, enabled: !row.enabled } : p));
+      if (row.enabled) info('تم التعطيل'); else success('تم التفعيل');
+    } catch (e: any) {
+      toastError('فشل تغيير الحالة');
+    } finally {
+      setToggling(null);
     }
   };
 
@@ -241,15 +257,11 @@ export default function AdminIntegrationsPage() {
                 <td className="border border-border px-3 py-2">{it.baseUrl || '—'}</td>
                 <td className="border border-border px-3 py-2">
                   <button
-                    onClick={async () => {
-                      try {
-                        await api.put(API_ROUTES.admin.integrations.byId(it.id), { enabled: !it.enabled });
-                        setItems(prev => prev.map(p => p.id === it.id ? { ...p, enabled: !it.enabled } : p));
-                      } catch {}
-                    }}
-                    className={`px-3 py-1 rounded text-xs font-medium border transition ${it.enabled ? 'bg-green-600/10 text-green-600 border-green-600/40' : 'bg-gray-500/10 text-gray-500 border-gray-400/30'}`}
+                    onClick={() => handleToggle(it)}
+                    disabled={toggling === it.id}
+                    className={`px-3 py-1 rounded text-xs font-medium border transition ${it.enabled ? 'bg-green-600/10 text-green-600 border-green-600/40' : 'bg-gray-500/10 text-gray-500 border-gray-400/30'} ${toggling === it.id ? 'opacity-60' : ''}`}
                   >
-                    {it.enabled ? 'Enabled' : 'Disabled'}
+                    {toggling === it.id ? '...' : (it.enabled ? 'Enabled' : 'Disabled')}
                   </button>
                 </td>
                 <td className="border border-border px-3 py-2">

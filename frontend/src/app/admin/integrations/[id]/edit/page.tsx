@@ -22,7 +22,7 @@ type Integration = {
 export default function EditIntegrationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { show } = useToast();
+  const { success, error: toastError, info } = useToast();
 
   const [item, setItem] = useState<Integration | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,13 +62,15 @@ export default function EditIntegrationPage() {
     } catch (e: any) {
       const code = e?.response?.data?.code;
       if (code === 'INTEGRATION_DISABLED') {
-        show('هذا التكامل معطل');
+        info('التكامل معطل');
+      } else {
+        info('تعذر جلب الرصيد');
       }
       setBalance(null);
     } finally {
       setLoadingBalance(false);
     }
-  }, [show]);
+  }, [info]);
 
   // جلب الرصيد تلقائياً عند تحميل البيانات (إن لم يكن معطل)
   useEffect(() => {
@@ -114,12 +116,12 @@ export default function EditIntegrationPage() {
         payload.sifre = item.sifre || undefined;
       }
       await api.put(API_ROUTES.admin.integrations.byId(String(item.id)), payload);
-      show('تم الحفظ');
+      success('تم الحفظ');
       router.push('/admin/products/api-settings');
     } catch (e: unknown) {
-      const error = e as ErrorResponse;
-      setError(error?.response?.data?.message || error?.message || 'فشل حفظ التعديلات');
-      show('فشل الحفظ');
+      const err = e as ErrorResponse;
+      setError(err?.response?.data?.message || err?.message || 'فشل حفظ التعديلات');
+      toastError('فشل الحفظ');
     } finally {
       setSaving(false);
     }
@@ -133,9 +135,9 @@ export default function EditIntegrationPage() {
       await api.put(API_ROUTES.admin.integrations.byId(String(item.id)), { enabled: next });
       setItem((prev) => (prev ? { ...prev, enabled: next } : prev));
       if (!next) setBalance(null);
-      show(next ? 'تم التفعيل' : 'تم التعطيل');
+      if (next) success('تم التفعيل'); else info('تم التعطيل');
     } catch (e: any) {
-      show('فشل تغيير الحالة');
+      toastError('فشل تغيير الحالة');
     } finally {
       setToggling(false);
     }
@@ -151,8 +153,8 @@ export default function EditIntegrationPage() {
         <h1 className="text-2xl font-semibold">تعديل مزود: {item.name}</h1>
         <button
           onClick={toggleEnabled}
-            disabled={toggling}
-          className={`px-4 py-2 rounded text-sm font-medium border transition ${item.enabled ? 'bg-green-600/10 text-green-600 border-green-600/40' : 'bg-gray-500/10 text-gray-500 border-gray-400/30'}`}
+          disabled={toggling}
+          className={`px-4 py-2 rounded text-sm font-medium border transition ${item.enabled ? 'bg-green-600/10 text-green-600 border-green-600/40' : 'bg-gray-500/10 text-gray-500 border-gray-400/30'} ${toggling ? 'opacity-60' : ''}`}
         >
           {toggling ? '...' : item.enabled ? 'Enabled' : 'Disabled'}
         </button>
