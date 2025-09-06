@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
 import { ErrorResponse } from '@/types/common';
+import { useToast } from '@/context/ToastContext';
 
-type ProviderKind = 'barakat' | 'apstore' | 'znet';
+type ProviderKind = 'barakat' | 'apstore' | 'znet' | 'internal';
 
 type Integration = {
   id: string;
@@ -15,11 +16,13 @@ type Integration = {
   apiToken?: string;
   kod?: string;
   sifre?: string;
+  enabled?: boolean;
 };
 
 export default function EditIntegrationPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { show } = useToast();
 
   const [item, setItem] = useState<Integration | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +30,7 @@ export default function EditIntegrationPage() {
   const [error, setError] = useState('');
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   // جلب بيانات المزود
   useEffect(() => {
@@ -47,7 +51,7 @@ export default function EditIntegrationPage() {
   }, [id]);
 
   // دالة جلب الرصيد
-  const fetchBalance = async (provider: ProviderKind, creds: Record<string, string>, integId: string) => {
+  const fetchBalance = useCallback(async (provider: ProviderKind, creds: Record<string, string>, integId: string) => {
     setLoadingBalance(true);
     try {
       const { data } = await api.post<{ balance: string }>(
@@ -55,18 +59,22 @@ export default function EditIntegrationPage() {
         { provider, ...creds }
       );
       setBalance(data.balance);
-    } catch {
+    } catch (e: any) {
+      const code = e?.response?.data?.code;
+      if (code === 'INTEGRATION_DISABLED') {
+        show('هذا التكامل معطل');
+      }
       setBalance(null);
     } finally {
       setLoadingBalance(false);
     }
-  };
+  }, [show]);
 
-  // جلب الرصيد تلقائياً عند تحميل البيانات
+  // جلب الرصيد تلقائياً عند تحميل البيانات (إن لم يكن معطل)
   useEffect(() => {
-    if (!item) return;
+    if (!item || item.enabled === false) return;
 
-    if (item.provider === 'barakat' || item.provider === 'apstore') {
+    if (item.provider === 'barakat' || item.provider === 'apstore' || item.provider === 'internal') {
       if (item.apiToken) {
         fetchBalance(
           item.provider,
@@ -97,20 +105,39 @@ export default function EditIntegrationPage() {
         name: item.name?.trim(),
         provider: item.provider,
         baseUrl: item.baseUrl || undefined,
+        enabled: item.enabled,
       };
-      if (item.provider === 'barakat' || item.provider === 'apstore') {
+      if (item.provider === 'barakat' || item.provider === 'apstore' || item.provider === 'internal') {
         payload.apiToken = item.apiToken || undefined;
       } else if (item.provider === 'znet') {
         payload.kod = item.kod || undefined;
         payload.sifre = item.sifre || undefined;
       }
       await api.put(API_ROUTES.admin.integrations.byId(String(item.id)), payload);
+      show('تم الحفظ');
       router.push('/admin/products/api-settings');
     } catch (e: unknown) {
       const error = e as ErrorResponse;
       setError(error?.response?.data?.message || error?.message || 'فشل حفظ التعديلات');
+      show('فشل الحفظ');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleEnabled = async () => {
+    if (!item) return;
+    setToggling(true);
+    try {
+      const next = !item.enabled;
+      await api.put(API_ROUTES.admin.integrations.byId(String(item.id)), { enabled: next });
+      setItem((prev) => (prev ? { ...prev, enabled: next } : prev));
+      if (!next) setBalance(null);
+      show(next ? 'تم التفعيل' : 'تم التعطيل');
+    } catch (e: any) {
+      show('فشل تغيير الحالة');
+    } finally {
+      setToggling(false);
     }
   };
 
@@ -120,10 +147,21 @@ export default function EditIntegrationPage() {
 
   return (
     <div className="p-4 md:p-6 text-text-primary">
-      <h1 className="text-2xl font-semibold mb-4">تعديل مزود: {item.name}</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-semibold">تعديل مزود: {item.name}</h1>
+        <button
+          onClick={toggleEnabled}
+            disabled={toggling}
+          className={`px-4 py-2 rounded text-sm font-medium border transition ${item.enabled ? 'bg-green-600/10 text-green-600 border-green-600/40' : 'bg-gray-500/10 text-gray-500 border-gray-400/30'}`}
+        >
+          {toggling ? '...' : item.enabled ? 'Enabled' : 'Disabled'}
+        </button>
+      </div>
 
       {/* حالة الرصيد */}
-      {loadingBalance ? (
+      {item.enabled === false ? (
+        <div className="mb-4 card text-text-secondary">التكامل معطل</div>
+      ) : loadingBalance ? (
         <div className="mb-4 card border border-accent/40 text-accent">
           جارِ جلب الرصيد…
         </div>
@@ -158,6 +196,7 @@ export default function EditIntegrationPage() {
             <option value="barakat">barakat</option>
             <option value="apstore">apstore</option>
             <option value="znet">znet</option>
+            <option value="internal">internal</option>
           </select>
         </div>
 
@@ -170,12 +209,14 @@ export default function EditIntegrationPage() {
             placeholder={
               item.provider === 'znet'
                 ? 'http://bayi.siteadressinstead.com'
+                : item.provider === 'internal'
+                ? 'ahmad.syrz1.com'
                 : 'https://api.x-store.net'
             }
           />
         </div>
 
-        {(item.provider === 'barakat' || item.provider === 'apstore') && (
+        {(item.provider === 'barakat' || item.provider === 'apstore' || item.provider === 'internal') && (
           <div className="md:col-span-2">
             <label className="block text-sm mb-1 text-text-secondary">API Token</label>
             <input
@@ -209,6 +250,16 @@ export default function EditIntegrationPage() {
             </div>
           </>
         )}
+
+        <div className="md:col-span-2 flex items-center gap-2 pt-2">
+          <label className="text-sm">مفعل؟</label>
+          <input
+            type="checkbox"
+            checked={item.enabled !== false}
+            onChange={(e) => onChange({ enabled: e.target.checked })}
+          />
+          <span className="text-xs text-text-secondary">(لن يتم تنفيذ أي عمليات عندما يكون معطل)</span>
+        </div>
       </div>
 
       <div className="mt-4 flex gap-2">
