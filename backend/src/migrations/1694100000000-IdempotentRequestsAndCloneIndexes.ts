@@ -22,8 +22,13 @@ export class IdempotentRequestsAndCloneIndexes1694100000000 implements Migration
     }));
 
     // unique partial index for (tenant_id, source_global_product_id)
-  // Table name is singular 'product' in existing schema
-  await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "uq_product_clone_once" ON product (tenant_id, source_global_product_id) WHERE source_global_product_id IS NOT NULL`);
+    // Ensure column source_global_product_id exists (legacy DBs may miss it if earlier migration skipped)
+    const hasCol = await queryRunner.query(`SELECT 1 FROM information_schema.columns WHERE table_name='product' AND column_name='source_global_product_id' LIMIT 1`);
+    if (!hasCol.length) {
+      await queryRunner.query(`ALTER TABLE product ADD COLUMN source_global_product_id uuid NULL`);
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_product_source_global ON product (source_global_product_id)`);
+    }
+    await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "uq_product_clone_once" ON product (tenant_id, source_global_product_id) WHERE source_global_product_id IS NOT NULL`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
