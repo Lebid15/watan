@@ -22,7 +22,7 @@ export default function MuhSheetPage() {
 
   const load = useCallback(async ()=>{
     setLoading(true);
-    try { const d = await api<SheetData>('/muhammed/sheet'); setData(d); } catch(e:any){ setToast({msg:'فشل التحميل', type:'err'});} finally { setLoading(false);}  
+    try { const d = await api<SheetData>('/api/muhammed/sheet'); setData(d); } catch(e:any){ setToast({msg:'فشل التحميل', type:'err'});} finally { setLoading(false);}  
   },[]);
 
   useEffect(()=>{ load(); },[load]);
@@ -32,12 +32,12 @@ export default function MuhSheetPage() {
   async function saveParty(id:string, patch:Partial<PartyRow>) {
     setSavingField(id+Object.keys(patch).join(','));
     try {
-      const body: any = {};
+  const body: any = {};
       if (patch.name!==undefined) body.name = patch.name;
       if (patch.debt_try!==undefined) body.debt_try = patch.debt_try;
       if (patch.debt_usd!==undefined) body.debt_usd = patch.debt_usd;
       if (patch.note!==undefined) body.note = patch.note;
-  const updated = await api<any>(`/muhammed/party/${id}`, { method:'PATCH', body: JSON.stringify(body) });
+  const updated = await api<any>(`/api/muhammed/party/${id}`, { method:'PATCH', body: JSON.stringify(body) });
   setData(d => d ? { ...d, parties: d.parties.map(p=> p.id===id ? { ...p, name: updated.name ?? p.name, debt_try: +updated.debt_try, debt_usd: +updated.debt_usd, note: updated.note } : p ) } : d);
       flash('تم الحفظ');
     } catch(e){ flash('خطأ', 'err'); }
@@ -46,21 +46,30 @@ export default function MuhSheetPage() {
 
   async function saveRate(rate: number){
     setSavingField('rate');
-    try { await api('/muhammed/rate',{ method:'PATCH', body: JSON.stringify({ rate })}); await load(); flash('تم تحديث السعر'); } catch(e){ flash('خطأ', 'err'); } finally { setSavingField(null);}  
+  try { await api('/api/muhammed/rate',{ method:'PATCH', body: JSON.stringify({ rate })}); await load(); flash('تم تحديث السعر'); } catch(e){ flash('خطأ', 'err'); } finally { setSavingField(null);}  
   }
 
   async function addParty(){
     if (!newName.trim()) return;
     setAdding(true);
-    try { await api('/muhammed/party',{ method:'POST', body: JSON.stringify({ name: newName.trim() })}); setShowDialog(false); setNewName(''); await load(); flash('أضيفت جهة'); } catch(e){ flash('خطأ','err'); } finally { setAdding(false);}  
+  try { await api('/api/muhammed/party',{ method:'POST', body: JSON.stringify({ name: newName.trim() })}); setShowDialog(false); setNewName(''); await load(); flash('أضيفت جهة'); } catch(e){ flash('خطأ','err'); } finally { setAdding(false);}  
   }
 
   async function createExport(){
-    try { await api('/muhammed/export',{ method:'POST'}); await load(); flash('تم التصدير'); } catch(e){ flash('خطأ','err'); }
+  try { await api('/api/muhammed/export',{ method:'POST'}); await load(); flash('تم التصدير'); } catch(e){ flash('خطأ','err'); }
   }
 
   if (loading) return <div className="py-10 text-center text-gray-500">جار التحميل...</div>;
-  if (!data) return <div className="text-center text-red-500">لا بيانات</div>;
+  // إذا فشل التحميل تماماً (خطأ حقيقي) ولم تصل أي بيانات
+  if (!data && !loading) {
+    return <div className="space-y-4">
+      {toast && <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded shadow text-sm ${toast.type==='ok'?'bg-green-600 text-white':'bg-red-600 text-white'}`}>{toast.msg}</div>}
+      <div className="text-center text-red-500">تعذر تحميل البيانات</div>
+      <div className="text-center"><button onClick={load} className="rounded bg-blue-600 text-white px-4 py-2 text-sm">إعادة المحاولة</button></div>
+    </div>;
+  }
+
+  if (!data) return null; // safeguards (should have returned earlier if null)
 
   return (
     <div className="space-y-4">
@@ -69,7 +78,7 @@ export default function MuhSheetPage() {
       <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-700">كل 1 دولار =</label>
-          <input defaultValue={data.rate} onBlur={e=>{ const v= parseFloat(e.target.value)||0; if(v>0) saveRate(v); }} className="w-28 rounded border px-2 py-1 text-sm focus:outline-none focus:ring" type="number" step="0.0001"/>
+          <input defaultValue={data?.rate ?? 0} onBlur={e=>{ const v= parseFloat(e.target.value)||0; if(v>0) saveRate(v); }} className="w-28 rounded border px-2 py-1 text-sm focus:outline-none focus:ring" type="number" step="0.0001"/>
           {savingField==='rate' && <span className="text-xs text-gray-500">حفظ...</span>}
         </div>
         <button onClick={()=>setShowDialog(true)} className="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 shadow">إضافة جهة جديدة</button>
@@ -87,6 +96,11 @@ export default function MuhSheetPage() {
             </tr>
           </thead>
           <tbody>
+            {data.parties.length===0 && (
+              <tr>
+                <td colSpan={5} className="p-6 text-center text-sm text-gray-500">لا توجد جهات بعد</td>
+              </tr>
+            )}
             {data.parties.map(p=>{
               const posTry = p.debt_try>0; const posUsd = p.debt_usd>0;
               return (
@@ -120,9 +134,9 @@ export default function MuhSheetPage() {
       </div>
 
       <div className="rounded border p-4 bg-white flex flex-col gap-2 text-sm">
-        <div>المجموع الكلي بالدولار: <span className="font-mono font-semibold">{data.sums.total_usd.toFixed(4)}</span> <button onClick={createExport} className="ml-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1">تصدير</button></div>
-        <div>آخر تصدير: <span className="font-mono">{data.lastExport ? (+data.lastExport.total_usd_at_export).toFixed(4) : '—'}</span></div>
-        <div>الربح: <span className={`font-mono ${ (data.profit||0) >=0 ? 'text-green-600':'text-red-600'}`}>{data.profit!=null? data.profit.toFixed(4):'—'}</span></div>
+  <div>المجموع الكلي بالدولار: <span className="font-mono font-semibold">{data.sums.total_usd.toFixed(4)}</span> <button onClick={createExport} className="ml-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1">تصدير</button></div>
+  <div>آخر تصدير: <span className="font-mono">{data.lastExport ? (+data.lastExport.total_usd_at_export).toFixed(4) : '—'}</span></div>
+  <div>الربح: <span className={`font-mono ${(data.profit||0) >=0 ? 'text-green-600':'text-red-600'}`}>{data.profit!=null? data.profit.toFixed(4):'—'}</span></div>
       </div>
 
       {showDialog && (
