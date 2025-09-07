@@ -119,19 +119,24 @@ export default function MuhSheetPage() {
               const posTry = p.debt_try>0; const posUsd = p.debt_usd>0;
               return (
                 <tr key={p.id} className="border-t border-slate-700 hover:bg-slate-700/40 transition-colors">
-                  <td className="p-2 align-top">
-                    <EditableText innerRef={el=>{ nameRefs.current[p.id]=el; }} value={p.name} onSave={val=> saveParty(p.id,{ name: val })} />
+                  <td className="p-1 align-top">
+                    <EditableText
+                      innerRef={el=>{ nameRefs.current[p.id]=el; }}
+                      value={p.name}
+                      onSave={val=> saveParty(p.id,{ name: val })}
+                      className="bg-orange-600 text-white border-orange-500 focus:bg-orange-500 placeholder-white"
+                    />
                   </td>
-                  <td className={`p-2 align-top font-mono ${posTry?'text-red-600':''}`}>
+                  <td className={`p-1 align-top font-mono ${posTry?'text-red-600':''}`}>
                     <EditableNumber value={p.debt_try} onSave={val=> saveParty(p.id,{ debt_try: val })} />
                   </td>
-                  <td className={`p-2 align-top font-mono ${posUsd?'text-red-600':''}`}>
+                  <td className={`p-1 align-top font-mono ${posUsd?'text-red-600':''}`}>
                     <EditableNumber value={p.debt_usd} onSave={val=> saveParty(p.id,{ debt_usd: val })} />
                   </td>
-                  <td className="p-2 align-top w-60">
+                  <td className="p-1 align-top w-60">
                     <EditableTextarea value={p.note||''} onSave={val=> saveParty(p.id,{ note: val })} />
                   </td>
-                  <td className="p-2 text-[10px] text-gray-500 whitespace-nowrap align-top">
+                  <td className="p-1 text-[10px] text-gray-500 whitespace-nowrap align-top">
                     <div className="flex gap-2 items-center justify-center">
                       <button onClick={()=> nameRefs.current[p.id]?.focus()} className="px-2 py-[3px] rounded border border-slate-600 bg-slate-900 hover:bg-slate-700 text-[10px] text-slate-200">تحرير</button>
                       <button disabled={deletingId===p.id} onClick={()=>deleteParty(p.id)} className="px-2 py-[3px] rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-[10px]">حذف</button>
@@ -179,9 +184,9 @@ export default function MuhSheetPage() {
   );
 }
 
-function EditableText({ value, onSave, innerRef }:{ value:string; onSave:(v:string)=>void; innerRef?:(el:HTMLInputElement|null)=>void }){
+function EditableText({ value, onSave, innerRef, className='' }:{ value:string; onSave:(v:string)=>void; innerRef?:(el:HTMLInputElement|null)=>void; className?:string }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
-  return <input ref={innerRef} value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val.trim()||value); }} className={`w-full rounded border px-2 py-[4px] text-[11px] text-black focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-white'}`} />;
+  return <input ref={innerRef} value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val.trim()||value); }} className={`w-full rounded border px-2 py-[4px] text-[11px] focus:outline-none focus:ring focus:ring-blue-500 ${focus?'':''} ${className||'bg-white text-black'}`} />;
 }
 function EditableNumber({ value, onSave }:{ value:number; onSave:(v:number)=>void }){
   const [val,setVal]=useState(String(value)); const [focus,setFocus]=useState(false);
@@ -189,5 +194,5 @@ function EditableNumber({ value, onSave }:{ value:number; onSave:(v:number)=>voi
 }
 function EditableTextarea({ value, onSave }:{ value:string; onSave:(v:string)=>void }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
-  return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={2} className={`w-full resize-none rounded border px-2 py-[4px] text-[11px] text-black focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-white'}`} />;
+  return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={1} className={`w-full resize-none rounded border px-2 py-[4px] h-[30px] text-[11px] text-black focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-white'}`} />;
 }
