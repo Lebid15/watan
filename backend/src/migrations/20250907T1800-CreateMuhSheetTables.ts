@@ -9,7 +9,7 @@ export class CreateMuhSheetTables20250907T1800 implements MigrationInterface {
       await queryRunner.createTable(new Table({
         name: 'muh_parties',
         columns: [
-          { name: 'id', type: 'uuid', isPrimary: true, generationStrategy: 'uuid', default: 'uuid_generate_v4()' },
+          { name: 'id', type: 'uuid', isPrimary: true, generationStrategy: 'uuid', default: 'gen_random_uuid()' },
           { name: 'name', type: 'varchar', length: '160' },
           { name: 'debt_try', type: 'numeric', precision: 14, scale: 2, default: '0' },
           { name: 'debt_usd', type: 'numeric', precision: 14, scale: 2, default: '0' },
@@ -36,7 +36,7 @@ export class CreateMuhSheetTables20250907T1800 implements MigrationInterface {
       await queryRunner.createTable(new Table({
         name: 'muh_exports',
         columns: [
-          { name: 'id', type: 'uuid', isPrimary: true, generationStrategy: 'uuid', default: 'uuid_generate_v4()' },
+          { name: 'id', type: 'uuid', isPrimary: true, generationStrategy: 'uuid', default: 'gen_random_uuid()' },
           { name: 'total_usd_at_export', type: 'numeric', precision: 18, scale: 4 },
           { name: 'usd_to_try_at_export', type: 'numeric', precision: 14, scale: 4 },
           { name: 'created_at', type: 'timestamptz', default: "timezone('utc', now())" },
