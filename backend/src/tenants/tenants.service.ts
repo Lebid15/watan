@@ -99,8 +99,9 @@ export class TenantsService {
     // 3) احفظ المتجر
     const savedTenant = await this.tenants.save(t);
 
-    // 4) أنشئ نطاق افتراضي: code.localhost
-    const defaultDomain = `${dto.code}.localhost`;
+  // 4) أنشئ نطاق افتراضي ديناميكي: code.<baseDomain>
+  const baseDomain = (process.env.PUBLIC_TENANT_BASE_DOMAIN || 'localhost').toLowerCase();
+  const defaultDomain = `${dto.code}.${baseDomain}`;
     const domainEntity: TenantDomain = this.domains.create({
       tenantId: savedTenant.id,
       domain: defaultDomain,

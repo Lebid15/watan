@@ -27,17 +27,46 @@ export class TenantContextMiddleware implements NestMiddleware {
 
   let tenant: Tenant | null = null;
     if (host) {
-      const domain = await this.domains.findOne({ where: { domain: host } });
+      let domain = await this.domains.findOne({ where: { domain: host } });
       if (domain) {
         tenant = await this.tenants.findOne({ where: { id: domain.tenantId } });
         if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'matched domain', host, 'tenantId', domain.tenantId);
       } else {
-        // Fallback: handle www.syrz1.com by redirecting to sham.syrz1.com logic
-        if (host === 'www.syrz1.com') {
-          const fallbackDomain = await this.domains.findOne({ where: { domain: 'sham.syrz1.com' } });
-          if (fallbackDomain) {
-            tenant = await this.tenants.findOne({ where: { id: fallbackDomain.tenantId } });
-            if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'fallback domain match', 'www.syrz1.com -> sham.syrz1.com', 'tenantId', fallbackDomain.tenantId);
+        const base = (process.env.PUBLIC_TENANT_BASE_DOMAIN || 'localhost').toLowerCase();
+        const parts = host.split('.');
+        // Attempt auto-bind: <code>.<baseDomain>
+        if (parts.length >= 2 && host.endsWith('.' + base)) {
+          const code = parts[0];
+          // Look up tenant by code
+          const possibleTenant = await this.tenants.findOne({ where: { code } });
+          if (possibleTenant) {
+            // Auto-create domain row (idempotent race-safe via check + save)
+            const newDomain = this.domains.create({
+              tenantId: possibleTenant.id,
+              domain: host,
+              type: 'subdomain',
+              isPrimary: true,
+              isVerified: true,
+            } as Partial<TenantDomain>) as TenantDomain;
+            try {
+              await this.domains.save(newDomain);
+              domain = newDomain;
+              tenant = possibleTenant;
+              if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'auto-bound domain', host, 'tenantId', possibleTenant.id);
+              // Ensure only one primary per tenant
+              await this.domains.createQueryBuilder()
+                .update(TenantDomain)
+                .set({ isPrimary: false as any })
+                .where('tenantId = :tid AND domain != :d AND isPrimary = true', { tid: possibleTenant.id, d: host })
+                .execute();
+            } catch (e: any) {
+              if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'auto-bind race or error', e?.message);
+              // Another request might have created it; attempt fetch again
+              const raced = await this.domains.findOne({ where: { domain: host } });
+              if (raced) {
+                tenant = await this.tenants.findOne({ where: { id: raced.tenantId } });
+              }
+            }
           }
         }
         if (!tenant && debugEnabled('tenantCtx')) debugLog('tenantCtx', 'no domain match', host);
