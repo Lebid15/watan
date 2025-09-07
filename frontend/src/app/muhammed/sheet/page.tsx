@@ -103,43 +103,36 @@ export default function MuhSheetPage() {
         <table className="min-w-full text-[11px] rtl:text-right">
       <thead className="bg-slate-700/60 text-slate-200">
             <tr>
-              <th className="p-2 font-medium">#</th>
               <th className="p-2 font-medium">الجهة</th>
               <th className="p-2 font-medium">دين (TRY)</th>
               <th className="p-2 font-medium">دين (USD)</th>
               <th className="p-2 font-medium">ملاحظة</th>
               <th className="p-2 font-medium text-center">إجراءات</th>
+              <th className="p-2 font-medium text-center">#</th>
             </tr>
           </thead>
           <tbody>
             {data.parties.length===0 && (
               <tr>
-                <td colSpan={5} className="p-4 text-center text-[11px] text-gray-500">لا توجد جهات بعد</td>
+                <td colSpan={6} className="p-4 text-center text-[11px] text-gray-500">لا توجد جهات بعد</td>
               </tr>
             )}
             {data.parties.map(p=>{
-              const posTry = p.debt_try>0; const posUsd = p.debt_usd>0;
+              const negTry = p.debt_try<0; const negUsd = p.debt_usd<0;
               return (
                 <tr key={p.id} className="border-t border-slate-700 hover:bg-slate-700/40 transition-colors">
-                  <td className="p-1 align-top text-center w-10">
-                    <OrderEditor value={p.display_order ?? ''} onSave={(val)=>{
-                      if(val==='') return saveParty(p.id,{ display_order: null });
-                      const num = typeof val === 'number' ? val : parseInt(String(val),10);
-                      if(!isNaN(num)) saveParty(p.id,{ display_order: num });
-                    }} />
-                  </td>
-                  <td className="p-1 align-top">
+                  <td className="p-1 align-top whitespace-nowrap">
                     <EditableText
                       innerRef={el=>{ nameRefs.current[p.id]=el; }}
                       value={p.name}
                       onSave={val=> saveParty(p.id,{ name: val })}
-                      className="bg-orange-600 text-white border-orange-500 focus:bg-orange-500 placeholder-white"
+                      className="bg-orange-700 text-white border-orange-600 focus:bg-orange-600 placeholder-white"
                     />
                   </td>
-                  <td className={`p-1 align-top font-mono ${posTry?'text-red-600':''}`}>
+                  <td className={`p-1 align-top font-mono ${negTry?'text-red-500':'text-slate-100'}`}> 
                     <EditableNumber value={p.debt_try} onSave={val=> saveParty(p.id,{ debt_try: val })} />
                   </td>
-                  <td className={`p-1 align-top font-mono ${posUsd?'text-red-600':''}`}>
+                  <td className={`p-1 align-top font-mono ${negUsd?'text-red-500':'text-slate-100'}`}> 
                     <EditableNumber value={p.debt_usd} onSave={val=> saveParty(p.id,{ debt_usd: val })} />
                   </td>
                   <td className="p-1 align-top w-60">
@@ -155,17 +148,24 @@ export default function MuhSheetPage() {
                       {deletingId===p.id && <span className="text-red-600">جاري...</span>}
                     </div>
                   </td>
+                  <td className="p-1 align-top text-center w-10">
+                    <OrderEditor value={p.display_order ?? ''} onSave={(val)=>{
+                      if(val==='') return saveParty(p.id,{ display_order: null });
+                      const num = typeof val === 'number' ? val : parseInt(String(val),10);
+                      if(!isNaN(num)) saveParty(p.id,{ display_order: num });
+                    }} />
+                  </td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot className="bg-slate-900/60 text-[11px] font-medium text-slate-200">
             <tr>
-              <td className="p-2"></td>
               <td className="p-2">المجاميع</td>
               <td className="p-2 font-mono">{data.sums.debt_try.toFixed(2)}</td>
               <td className="p-2 font-mono">{data.sums.debt_usd.toFixed(2)}</td>
               <td className="p-2" colSpan={2}></td>
+              <td className="p-2"></td>
             </tr>
           </tfoot>
         </table>
