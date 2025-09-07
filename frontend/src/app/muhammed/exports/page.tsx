@@ -28,25 +28,25 @@ export default function MuhExportsPage(){
   useEffect(()=>{ load(); },[load]);
 
   return (
-  <div className="space-y-4 text-slate-100">
+  <div className="space-y-3 text-slate-100 text-[12px]">
       {toast && <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded shadow text-sm ${toast.type==='ok'?'bg-green-600 text-white':'bg-red-600 text-white'}`}>{toast.msg}</div>}
 
-      <div className="flex flex-col md:flex-row gap-3 md:items-end">
-        <div className="flex flex-col text-sm">
+      <div className="flex flex-col md:flex-row gap-2 md:items-end">
+        <div className="flex flex-col text-[11px]">
           <label className="text-slate-300 mb-1">من تاريخ</label>
-          <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="rounded border border-slate-600 bg-slate-900 text-slate-100 px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-indigo-500" />
+          <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="rounded border border-slate-600 bg-slate-900 text-slate-100 px-2 py-[4px] text-[11px] focus:outline-none focus:ring focus:ring-indigo-500" />
         </div>
-        <div className="flex flex-col text-sm">
+        <div className="flex flex-col text-[11px]">
           <label className="text-slate-300 mb-1">إلى تاريخ</label>
-            <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="rounded border border-slate-600 bg-slate-900 text-slate-100 px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-indigo-500" />
+            <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="rounded border border-slate-600 bg-slate-900 text-slate-100 px-2 py-[4px] text-[11px] focus:outline-none focus:ring focus:ring-indigo-500" />
         </div>
-        <button onClick={load} className="h-9 px-4 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-sm shadow">تصفية</button>
-        <button onClick={()=>{ setFrom(''); setTo(''); setTimeout(load,0); }} className="h-9 px-4 rounded border border-slate-600 text-sm bg-slate-900 hover:bg-slate-700 text-slate-200">إعادة ضبط</button>
+        <button onClick={load} className="h-8 px-3 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] shadow">تصفية</button>
+        <button onClick={()=>{ setFrom(''); setTo(''); setTimeout(load,0); }} className="h-8 px-3 rounded border border-slate-600 text-[11px] bg-slate-900 hover:bg-slate-700 text-slate-200">إعادة ضبط</button>
       </div>
 
       {loading ? <div className="py-8 text-center text-slate-400">جار التحميل...</div> : (
         <div className="overflow-x-auto rounded border border-slate-700 bg-slate-800 shadow-sm">
-          <table className="min-w-full text-sm rtl:text-right">
+          <table className="min-w-full text-[11px] rtl:text-right">
             <thead className="bg-slate-700/60 text-slate-200">
               <tr>
                 <th className="p-2 font-medium">التاريخ</th>
