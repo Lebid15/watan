@@ -79,25 +79,31 @@ export class AuthService {
   }
 
   async login(user: any, tenantIdFromContext: string | null) {
+    const roleLower = (user.role || '').toLowerCase();
+    const isGlobalRole = roleLower === 'developer' || roleLower === 'instance_owner';
     const effectiveTenantId: string | null = user.tenantId ?? tenantIdFromContext ?? null;
-    if (!effectiveTenantId) {
+    // السماح للأدوار العالمية بتسجيل الدخول بدون سياق مستأجر (token عالمي)؛ المستخدمون العاديون ما زالوا بحاجة لسياق
+    if (!effectiveTenantId && !isGlobalRole) {
       throw new BadRequestException('TENANT_CONTEXT_REQUIRED');
     }
-    const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [effectiveTenantId]);
-    if (!tenantExists || tenantExists.length === 0) {
-      throw new BadRequestException('TENANT_NOT_FOUND');
+    if (effectiveTenantId) {
+      const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [effectiveTenantId]);
+      if (!tenantExists || tenantExists.length === 0) {
+        throw new BadRequestException('TENANT_NOT_FOUND');
+      }
     }
     
-    const totpEnabled = await this.totpService.hasTotpEnabled(user.id);
+  const totpEnabled = await this.totpService.hasTotpEnabled(user.id);
     
     if (!totpEnabled || user.forceTotpEnroll) {
     const payload = {
         email: user.email,
         sub: user.id,
         role: user.role ?? 'user',
-        tenantId: effectiveTenantId,
+  tenantId: effectiveTenantId, // قد يكون null للأدوار العالمية
         setupMode: true,
         totpVerified: false,
+  globalScope: isGlobalRole && !effectiveTenantId ? true : undefined,
       };
       
       return {
@@ -117,10 +123,11 @@ export class AuthService {
       email: user.email,
       sub: user.id,
       role: user.role ?? 'user',
-      tenantId: effectiveTenantId,
+  tenantId: effectiveTenantId, // قد يكون null
       totpVerified: false,
       setupMode: true, // السماح لمسار /auth/totp/verify بالعمل
       totpPending: true,
+  globalScope: isGlobalRole && !effectiveTenantId ? true : undefined,
     } as any;
 
     return {
@@ -136,12 +143,16 @@ export class AuthService {
   }
 
   async completeTotpLogin(user: any, tenantId: string | null) {
-    if (!tenantId) {
+    const roleLower = (user.role || '').toLowerCase();
+    const isGlobalRole = roleLower === 'developer' || roleLower === 'instance_owner';
+    if (!tenantId && !isGlobalRole) {
       throw new BadRequestException('TENANT_CONTEXT_REQUIRED');
     }
-    const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [tenantId]);
-    if (!tenantExists || tenantExists.length === 0) {
-      throw new BadRequestException('TENANT_NOT_FOUND');
+    if (tenantId) {
+      const tenantExists = await this.dataSource.query('SELECT 1 FROM tenant WHERE id = $1 LIMIT 1', [tenantId]);
+      if (!tenantExists || tenantExists.length === 0) {
+        throw new BadRequestException('TENANT_NOT_FOUND');
+      }
     }
     const payload = {
       email: user.email,
@@ -150,6 +161,7 @@ export class AuthService {
       tenantId,
       totpVerified: true,
       setupMode: false,
+      globalScope: isGlobalRole && !tenantId ? true : undefined,
     };
 
     return {
