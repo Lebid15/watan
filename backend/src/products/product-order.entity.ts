@@ -38,6 +38,10 @@ export class ProductOrder {
   @Index('uq_orders_tenant_user_order_uuid', { unique: false }) // composite uniqueness enforced via migration for partial (tenantId,userId,orderUuid)
   orderUuid?: string | null;
 
+  /** مصدر إنشاء الطلب (لوحة التحكم أو واجهة العميل) */
+  @Column({ type: 'varchar', length: 20, default: 'panel' })
+  origin: 'panel' | 'client_api';
+
   /** ✅ معرّف المستأجر (Tenant) */
   @Column({ type: 'uuid' })
   @Index('idx_orders_tenant')

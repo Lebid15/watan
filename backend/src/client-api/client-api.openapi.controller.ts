@@ -171,14 +171,14 @@ details{border:1px solid #334155;background:#0f1d33;padding:10px 14px;border-rad
 </section>
 
 <section id="order">
- <h2>New Order <span class="tag">POST /client/api/newOrder/{productId}/params</span></h2>
+ <h2>New Order <span class="tag">POST /client/api/newOrder/{packageId}/params</span></h2>
  <p>إنشاء طلب جديد لمنتج. <strong>هام:</strong> استخدم <code>order_uuid</code> (UUIDv4) فريد لكل محاولة جديدة. إذا أرسلت نفس <code>order_uuid</code> مرة أخرى سيُعاد نفس الطلب السابق بدون إنشاء مزدوج (Idempotency).</p>
  <h3>الأهمية (Idempotent Requests)</h3>
  <p>منع التكرار يحمي رصيد العميل من الخصم المزدوج. أعد نفس الطلب خلال انقطاع الشبكة بنفس <code>order_uuid</code> لتحصل على نفس البيانات.</p>
  <h3>البارامترات (Query Parameters)</h3>
  <table class="table-small">
   <tr><th>اسم</th><th>الوصف</th><th>مطلوب</th></tr>
-  <tr><td class="nowrap">{productId}</td><td>معرف المنتج من <code>products.id</code></td><td>نعم (في المسار)</td></tr>
+  <tr><td class="nowrap">{packageId}</td><td>معرف الباقة (كان productId سابقاً)</td><td>نعم (في المسار)</td></tr>
   <tr><td>qty</td><td>الكمية (حسب <code>qty_values</code> للمنتج)</td><td>نعم غالباً</td></tr>
   <tr><td>order_uuid</td><td>معرف UUIDv4 فريد لمنع التكرار</td><td>نعم</td></tr>
   <tr><td>playerId / user_identifier / ...</td><td>حقول تعريف اللاعب/المستخدم (قد تختلف حسب المنتج)</td><td>حسب نوع المنتج</td></tr>
@@ -190,19 +190,20 @@ details{border:1px solid #334155;background:#0f1d33;padding:10px 14px;border-rad
  "https://api.syrz1.com/client/api/newOrder/364/params?qty=1&playerId=test&order_uuid=ecbdd545-e616-4aee-8770-7eefa977bcd"</pre>
  <details open><summary>مثال استجابة</summary>
  <pre>{
-  "status": "OK",
-  "data": {
-    "order_id": "ID_9fffb0d849a45215",
-    "status": "accept",
-    "price": 1.26048,
-    "data": { "playerId": "test" },
-    "replay_api": [ { "replay": ["erg3eg"] } ]
-  }
+  "id": "uuid",
+  "order_uuid": "ecbdd545-e616-4aee-8770-7eefa977bcd",
+  "origin": "client_api",
+  "status": "wait",
+  "quantity": 1,
+  "price_usd": 0.877,
+  "unit_price_usd": 0.877,
+  "created_at": "2025-09-07T10:00:00.000Z",
+  "reused": false
 }</pre>
  </details>
  <h3>قِيَم الحالة المحتملة</h3>
  <ul><li><code>accept</code> → تم التنفيذ / مقبول</li><li><code>wait</code> → قيد المعالجة</li><li><code>reject</code> → مرفوض</li></ul>
- <p><strong>About replay_api:</strong> قد تكون <code>null</code> أو تحتوي مصفوفة ردود من مزود الخدمة.</p>
+ <p>الحقل <code>reused</code> يصبح <code>true</code> عند استعمال نفس <code>order_uuid</code> لطلب سبق إنشاؤه (لا خصم إضافي).</p>
 </section>
 
 <section id="check">

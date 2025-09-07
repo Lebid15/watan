@@ -98,30 +98,37 @@ export class ProductOrdersController {
       quantity: number;
       userIdentifier?: string;
       extraField?: string;
+      orderUuid?: string | null;
     },
     @Req() req: Request,
   ) {
     const user = req.user as any;
 
-    const order = await this.productsService.createOrder({
-      ...body,
-      userId: user.id, // 🔒 من الـ JWT
-      // tenantId ليس مطلوبًا هنا الآن لأن السيرفس يقتطع من user لاحقًا عند الحاجة
+    const unified = await this.productsService.createOrder({
+      productId: body.productId,
+      packageId: body.packageId,
+      quantity: body.quantity,
+      userId: user.id,
+      userIdentifier: body.userIdentifier,
+      extraField: body.extraField,
+      orderUuid: body.orderUuid || null,
+      origin: 'panel',
     });
 
     return {
-      id: order.id,
-      status: order.status,
-      // السعر بالدولار (داخلي)
-      priceUSD: order.priceUSD,
-      unitPriceUSD: order.unitPriceUSD,
-      // السعر المعروض بعملة المستخدم
-      display: order.display,
-      createdAt: order.createdAt,
-      product: { name: order.product?.name ?? '' },
-      package: { name: order.package?.name ?? '' },
-      userIdentifier: order.userIdentifier ?? null,
-      extraField: order.extraField ?? null,
+      id: unified.id,
+      order_uuid: unified.order_uuid || null,
+      origin: unified.origin,
+      status: unified.status,
+      quantity: unified.quantity,
+      price_usd: unified.priceUSD,
+      unit_price_usd: unified.unitPriceUSD,
+      created_at: unified.createdAt,
+      product: unified.product,
+      package: unified.package,
+      userIdentifier: unified.userIdentifier ?? null,
+      extraField: unified.extraField ?? null,
+      reused: unified.reused || false,
     };
   }
 

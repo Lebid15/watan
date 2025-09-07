@@ -45,10 +45,10 @@ export class ClientApiController {
     return this.service.listContent(req.tenant.id, req.clientApiUser.id, categoryId);
   }
 
-  @Post('newOrder/:productId/params')
+  @Post('newOrder/:packageId/params')
   async newOrder(
     @Req() req: any,
-    @Param('productId') productId: string,
+    @Param('packageId') packageId: string,
     @Query('qty') qty?: string,
     @Query('order_uuid') orderUuid?: string,
     @Query() allQuery?: any,
@@ -56,17 +56,17 @@ export class ClientApiController {
     const quantity = Number(qty || '1');
     const user_identifier = allQuery?.user_identifier as string | undefined;
     const extra_field = allQuery?.extra_field as string | undefined;
-    const { order, reused } = await this.service.createOrder({
+    const result = await this.service.createUnifiedClientOrder({
       tenantId: req.tenant.id,
       userId: req.clientApiUser.id,
-      productId,
-      orderUuid: orderUuid,
+      packageId,
+      orderUuid: orderUuid || null,
       quantity,
-      userIdentifier: user_identifier,
-      extraField: extra_field,
+      userIdentifier: user_identifier || null,
+      extraField: extra_field || null,
       rawQuery: allQuery,
     });
-    return { reused: !!reused, ...this.service.toPublic(order) };
+    return result;
   }
 
   @Get('check')

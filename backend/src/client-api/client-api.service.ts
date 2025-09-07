@@ -4,6 +4,7 @@ import { In, Repository } from 'typeorm';
 import { Product } from '../products/product.entity';
 import { ProductPackage } from '../products/product-package.entity';
 import { ProductOrder } from '../products/product-order.entity';
+import { ProductsService } from '../products/products.service';
 import { PackagePrice } from '../products/package-price.entity';
 import { User } from '../user/user.entity';
 import { ErrClientApi } from './client-api-error';
@@ -21,6 +22,7 @@ export class ClientApiService {
     @InjectRepository(User) private usersRepo: Repository<User>,
     @InjectRepository(ProductApiMetadata) private productMetaRepo: Repository<ProductApiMetadata>,
     @InjectDataSource() private dataSource: DataSource,
+    private productsService: ProductsService,
   ) {}
 
   private async loadUserPriceGroup(userId: string) {
@@ -210,6 +212,61 @@ export class ClientApiService {
     });
     await this.ordersRepo.save(order);
     return { order };
+  }
+
+  /** Unified creation path used by /client/api/newOrder now mapped to packageId */
+  async createUnifiedClientOrder(opts: { tenantId: string; userId: string; packageId: string; orderUuid: string | null; quantity: number; userIdentifier: string | null; extraField: string | null; rawQuery: any; }) {
+    // Load package & product for metadata validations
+    const pkg = await this.packagesRepo.findOne({ where: { id: opts.packageId, tenantId: opts.tenantId } as any, relations: ['product'] });
+    if (!pkg || !(pkg as any).product) throw new NotFoundException({ code: 'NOT_FOUND', message: 'NOT_FOUND' });
+    const product = (pkg as any).product as Product;
+    const meta = await this.productMetaRepo.findOne({ where: { productId: product.id } as any });
+    // Quantity & params validation (reuse helpers)
+    this.validateQuantity(meta || undefined, opts.quantity);
+    this.validateParams(meta || undefined, opts.rawQuery || {});
+    // Idempotency check (custom because core createOrder doesn't support yet)
+    if (opts.orderUuid) {
+      const existing = await this.ordersRepo.findOne({ where: { tenantId: opts.tenantId, orderUuid: opts.orderUuid } as any });
+      if (existing) {
+        return {
+          reused: true,
+          id: existing.id,
+          order_uuid: existing.orderUuid,
+            status: this.mapInternalStatus(existing.status),
+          quantity: existing.quantity,
+          price_usd: Number((existing as any).price) || 0,
+          unit_price_usd: existing.quantity ? (Number((existing as any).price) || 0) / Number(existing.quantity) : (Number((existing as any).price) || 0),
+          created_at: existing.createdAt?.toISOString?.() || new Date().toISOString(),
+          origin: existing.origin || 'client_api',
+        };
+      }
+    }
+
+    const view = await this.productsService.createOrder({
+      productId: product.id,
+      packageId: pkg.id,
+      quantity: opts.quantity,
+      userId: opts.userId,
+      userIdentifier: opts.userIdentifier || undefined,
+      extraField: opts.extraField || undefined,
+    });
+
+    // Persist origin + orderUuid post-creation (safe update)
+    try {
+      await this.ordersRepo.update(view.id, { orderUuid: opts.orderUuid, origin: 'client_api' } as any);
+    } catch {}
+
+    return {
+      reused: false,
+      id: view.id,
+      order_uuid: opts.orderUuid,
+      status: view.status === 'pending' ? 'wait' : (view.status === 'approved' ? 'accept' : 'reject'),
+      quantity: view.quantity,
+      price_usd: view.priceUSD,
+      unit_price_usd: view.unitPriceUSD,
+      created_at: view.createdAt,
+      origin: 'client_api',
+    };
   }
 
   async checkOrder(tenantId: string, userId: string, orderId: string) {

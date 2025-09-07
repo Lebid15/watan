@@ -1329,6 +1329,8 @@ export class ProductsService {
       userId: string;
       userIdentifier?: string;
       extraField?: string;
+      orderUuid?: string | null; // idempotency key
+      origin?: 'panel' | 'client_api';
     },
     tenantId?: string,
   ) {
@@ -1339,10 +1341,39 @@ export class ProductsService {
       userId,
       userIdentifier,
       extraField,
+      orderUuid,
+      origin = 'panel',
     } = data;
 
     if (!quantity || quantity <= 0 || !Number.isFinite(Number(quantity))) {
       throw new BadRequestException('Quantity must be a positive number');
+    }
+
+    // Idempotency early check (need tenantId context from user later, so tentative; fallback if tenantId not provided yet)
+    if (orderUuid) {
+      const existing = await this.ordersRepo.findOne({ where: { orderUuid } as any, relations: ['product','package','user','user.currency'] });
+      if (existing) {
+        // Ensure same tenant if tenantId passed
+        this.ensureSameTenant((existing as any).tenantId, tenantId);
+        const priceUSDExisting = Number((existing as any).price) || 0;
+        const unitPriceUSDExisting = (existing as any).quantity ? priceUSDExisting / Number((existing as any).quantity) : priceUSDExisting;
+        return {
+          id: existing.id,
+          status: existing.status,
+          quantity: existing.quantity,
+          priceUSD: priceUSDExisting,
+          unitPriceUSD: unitPriceUSDExisting,
+          display: undefined,
+          product: { id: existing.product?.id, name: existing.product?.name ?? null },
+          package: { id: existing.package?.id, name: existing.package?.name ?? null },
+          userIdentifier: (existing as any).userIdentifier ?? null,
+          extraField: (existing as any).extraField ?? null,
+          createdAt: existing.createdAt,
+          order_uuid: (existing as any).orderUuid || null,
+          origin: (existing as any).origin || 'panel',
+          reused: true,
+        } as any;
+      }
     }
 
     const created = await this.ordersRepo.manager.transaction(async (trx) => {
@@ -1409,6 +1440,8 @@ export class ProductsService {
         user,
         userIdentifier: userIdentifier ?? null,
         extraField: extraField ?? null,
+        orderUuid: orderUuid || null,
+        origin,
       });
 
   // 🔒 لقطة USD وقت الإنشاء (price هو إجمالي البيع بالدولار بالفعل)
@@ -1591,7 +1624,9 @@ export class ProductsService {
           userIdentifier: saved.userIdentifier ?? null,
           extraField: saved.extraField ?? null,
           createdAt: saved.createdAt,
-        } satisfies OrderView,
+          order_uuid: saved.orderUuid || null,
+          origin: saved.origin,
+        } as any,
       };
     });
 
@@ -1600,7 +1635,7 @@ export class ProductsService {
       await this.tryAutoDispatch(created.entityId, tenantId);
     } catch {}
 
-    return created.view;
+  return created.view;
   }
 
   // === Orders & Listing ===
