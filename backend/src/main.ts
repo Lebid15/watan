@@ -140,6 +140,22 @@ async function bootstrap() {
   } catch (e:any) {
     console.warn('pgcrypto extension not created (continuing):', e?.message);
   }
+
+  // 🚚 (Moved Earlier) Run migrations BEFORE any preflight ALTER statements that assume tables exist
+  if (autoMigrations) {
+    try {
+      const ran = await dataSource.runMigrations();
+      if (ran.length) {
+        console.log(`✅ Ran ${ran.length} migration(s) early:`, ran.map(m => m.name));
+      } else {
+        console.log('ℹ️ No pending migrations (early run)');
+      }
+    } catch (err: any) {
+      console.error('❌ Failed to run migrations automatically (early):', err?.message || err);
+    }
+  } else {
+    console.log('⏭ Skipping auto migrations (AUTO_MIGRATIONS=false)');
+  }
   // --- Preflight structural patch: أضف أعمدة tenantId المفقودة قبل أي استعلامات تعتمدها ---
   try {
     console.log('🧪 [Preflight] Checking tenantId columns existence...');
@@ -179,61 +195,77 @@ async function bootstrap() {
           CREATE UNIQUE INDEX IF NOT EXISTS "ux_tenant_domain_domain" ON "tenant_domain" ("domain");
           RAISE NOTICE 'Created table tenant_domain';
         END IF;
-        -- users.tenantId
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "users" ADD COLUMN "tenantId" uuid NULL;
-      RAISE NOTICE 'Added users.tenantId';
+        -- users.tenantId (guard table existence)
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='users') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "users" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added users.tenantId';
+          END IF;
         END IF;
         -- product_orders.tenantId
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='product_orders' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "product_orders" ADD COLUMN "tenantId" uuid NULL;
-      RAISE NOTICE 'Added product_orders.tenantId';
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='product_orders') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='product_orders' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "product_orders" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added product_orders.tenantId';
+          END IF;
         END IF;
         -- product.tenantId (جدول المنتجات)
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='product' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "product" ADD COLUMN "tenantId" uuid NULL;
-          RAISE NOTICE 'Added product.tenantId';
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='product') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='product' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "product" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added product.tenantId';
+          END IF;
         END IF;
         -- product_packages.tenantId
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='product_packages' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "product_packages" ADD COLUMN "tenantId" uuid NULL;
-          RAISE NOTICE 'Added product_packages.tenantId';
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='product_packages') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='product_packages' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "product_packages" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added product_packages.tenantId';
+          END IF;
         END IF;
         -- price_groups.tenantId
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='price_groups' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "price_groups" ADD COLUMN "tenantId" uuid NULL;
-          RAISE NOTICE 'Added price_groups.tenantId';
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='price_groups') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='price_groups' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "price_groups" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added price_groups.tenantId';
+          END IF;
         END IF;
         -- package_prices.tenantId
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='package_prices' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "package_prices" ADD COLUMN "tenantId" uuid NULL;
-          RAISE NOTICE 'Added package_prices.tenantId';
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='package_prices') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='package_prices' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "package_prices" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added package_prices.tenantId';
+          END IF;
         END IF;
         -- package_costs.tenantId
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='package_costs' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "package_costs" ADD COLUMN "tenantId" uuid NULL;
-          RAISE NOTICE 'Added package_costs.tenantId';
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='package_costs') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='package_costs' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "package_costs" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added package_costs.tenantId';
+          END IF;
         END IF;
         -- order_dispatch_logs.tenantId
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns WHERE table_name='order_dispatch_logs' AND column_name='tenantId'
-        ) THEN
-          ALTER TABLE "order_dispatch_logs" ADD COLUMN "tenantId" uuid NULL;
-          RAISE NOTICE 'Added order_dispatch_logs.tenantId';
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='order_dispatch_logs') THEN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns WHERE table_name='order_dispatch_logs' AND column_name='tenantId'
+          ) THEN
+            ALTER TABLE "order_dispatch_logs" ADD COLUMN "tenantId" uuid NULL;
+            RAISE NOTICE 'Added order_dispatch_logs.tenantId';
+          END IF;
         END IF;
         -- ====== integrations (قد تكون مفقودة في الإنتاج) ======
         IF NOT EXISTS (
@@ -384,20 +416,7 @@ async function bootstrap() {
   } else {
     console.log('⏭ [Rescue] orderUuid rescue disabled by env flag');
   }
-  if (autoMigrations) {
-    try {
-      const ran = await dataSource.runMigrations();
-      if (ran.length) {
-        console.log(`✅ Ran ${ran.length} migration(s):`, ran.map(m => m.name));
-      } else {
-        console.log('ℹ️ No pending migrations');
-      }
-    } catch (err: any) {
-      console.error('❌ Failed to run migrations automatically:', err?.message || err);
-    }
-  } else {
-    console.log('⏭ Skipping auto migrations (AUTO_MIGRATIONS=false)');
-  }
+  // (Removed original late migration run; now executed earlier)
 
   // Lightweight health check for orderUuid idempotency infrastructure
   try {
