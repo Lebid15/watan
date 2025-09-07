@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 
-interface PartyRow { id: string; name: string; debt_try: number; debt_usd: number; note?: string | null; updated_at: string; }
+interface PartyRow { id: string; name: string; debt_try: number; debt_usd: number; note?: string | null; updated_at: string; display_order?: number | null; }
 interface SheetData { rate: number; parties: PartyRow[]; sums: { debt_try: number; debt_usd: number; total_usd: number }; lastExport?: any; profit?: number | null; }
 
 async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
@@ -38,7 +38,8 @@ export default function MuhSheetPage() {
       if (patch.name!==undefined) body.name = patch.name;
       if (patch.debt_try!==undefined) body.debt_try = patch.debt_try;
       if (patch.debt_usd!==undefined) body.debt_usd = patch.debt_usd;
-      if (patch.note!==undefined) body.note = patch.note;
+  if (patch.note!==undefined) body.note = patch.note;
+  if (Object.prototype.hasOwnProperty.call(patch,'display_order')) body.display_order = patch.display_order;
   const updated = await api<any>(`/api/muhammed/party/${id}`, { method:'PATCH', body: JSON.stringify(body) });
   setData(d => d ? { ...d, parties: d.parties.map(p=> p.id===id ? { ...p, name: updated.name ?? p.name, debt_try: +updated.debt_try, debt_usd: +updated.debt_usd, note: updated.note } : p ) } : d);
       flash('تم الحفظ');
@@ -102,6 +103,7 @@ export default function MuhSheetPage() {
         <table className="min-w-full text-[11px] rtl:text-right">
       <thead className="bg-slate-700/60 text-slate-200">
             <tr>
+              <th className="p-2 font-medium">#</th>
               <th className="p-2 font-medium">الجهة</th>
               <th className="p-2 font-medium">دين (TRY)</th>
               <th className="p-2 font-medium">دين (USD)</th>
@@ -119,6 +121,13 @@ export default function MuhSheetPage() {
               const posTry = p.debt_try>0; const posUsd = p.debt_usd>0;
               return (
                 <tr key={p.id} className="border-t border-slate-700 hover:bg-slate-700/40 transition-colors">
+                  <td className="p-1 align-top text-center w-10">
+                    <OrderEditor value={p.display_order ?? ''} onSave={(val)=>{
+                      if(val==='') return saveParty(p.id,{ display_order: null });
+                      const num = typeof val === 'number' ? val : parseInt(String(val),10);
+                      if(!isNaN(num)) saveParty(p.id,{ display_order: num });
+                    }} />
+                  </td>
                   <td className="p-1 align-top">
                     <EditableText
                       innerRef={el=>{ nameRefs.current[p.id]=el; }}
@@ -152,6 +161,7 @@ export default function MuhSheetPage() {
           </tbody>
           <tfoot className="bg-slate-900/60 text-[11px] font-medium text-slate-200">
             <tr>
+              <td className="p-2"></td>
               <td className="p-2">المجاميع</td>
               <td className="p-2 font-mono">{data.sums.debt_try.toFixed(2)}</td>
               <td className="p-2 font-mono">{data.sums.debt_usd.toFixed(2)}</td>
@@ -195,4 +205,18 @@ function EditableNumber({ value, onSave }:{ value:number; onSave:(v:number)=>voi
 function EditableTextarea({ value, onSave }:{ value:string; onSave:(v:string)=>void }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
   return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={1} className={`w-full resize-none rounded border px-2 py-[4px] h-[30px] text-[11px] text-black focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-white'}`} />;
+}
+
+function OrderEditor({ value, onSave }:{ value:number|string; onSave:(v:number|string)=>void }){
+  const [val,setVal]=useState(value===''? '': String(value));
+  return (
+    <input
+      value={val}
+      inputMode="numeric"
+      onChange={e=> setVal(e.target.value.replace(/[^0-9]/g,''))}
+      onBlur={()=>{ if(val===''){ onSave(''); return;} const num=parseInt(val,10); if(!isNaN(num)) onSave(num); else setVal(''); }}
+      className="w-14 text-center rounded border border-slate-600 bg-slate-900 text-white px-1 py-[4px] text-[11px] focus:outline-none focus:ring focus:ring-indigo-500"
+      placeholder="-"
+    />
+  );
 }

@@ -17,6 +17,9 @@ export class MuhParty {
   @Column({ type: 'text', nullable: true })
   note?: string | null;
 
+  @Column({ type: 'int', nullable: true })
+  display_order?: number | null;
+
   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
   updated_at!: Date;
 }

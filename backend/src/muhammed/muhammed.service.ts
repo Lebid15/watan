@@ -45,11 +45,19 @@ export class MuhammedService {
   }
 
   async getSheet() {
-    const [rows, settings, lastExport] = await Promise.all([
-      this.parties.find({ order: { name: 'ASC' } }),
+    const [rawRows, settings, lastExport] = await Promise.all([
+      this.parties.find({}),
       this.ensureSettings(),
       this.exportsRepo.find({ order: { created_at: 'DESC' }, take: 1 }),
     ]);
+    // Sort: display_order ASC (nulls last), then name ASC
+    const rows = rawRows.sort((a,b)=>{
+      const ao = a.display_order; const bo = b.display_order;
+      if (ao == null && bo == null) return a.name.localeCompare(b.name, 'ar');
+      if (ao == null) return 1; if (bo == null) return -1;
+      if (ao !== bo) return ao - bo;
+      return a.name.localeCompare(b.name, 'ar');
+    });
     const rate = parseFloat(settings.usd_to_try || '0') || 0;
     let sumTry = 0; let sumUsd = 0;
     rows.forEach(r => { sumTry += parseFloat(r.debt_try || '0'); sumUsd += parseFloat(r.debt_usd || '0'); });
@@ -68,18 +76,19 @@ export class MuhammedService {
     };
   }
 
-  async addParty(name: string) {
-    const p = this.parties.create({ name, debt_try: '0', debt_usd: '0' });
+  async addParty(name: string, display_order?: number) {
+    const p = this.parties.create({ name, debt_try: '0', debt_usd: '0', display_order: display_order ?? null });
     return this.parties.save(p);
   }
 
-  async updateParty(id: string, patch: Partial<{ name: string; debt_try: number; debt_usd: number; note: string | null; }>) {
+  async updateParty(id: string, patch: Partial<{ name: string; debt_try: number; debt_usd: number; note: string | null; display_order: number | null; }>) {
     const p = await this.parties.findOne({ where: { id } });
     if (!p) throw new Error('Party not found');
     if (patch.name !== undefined) p.name = patch.name;
     if (patch.debt_try !== undefined) p.debt_try = patch.debt_try.toFixed(2);
     if (patch.debt_usd !== undefined) p.debt_usd = patch.debt_usd.toFixed(2);
     if (patch.note !== undefined) p.note = patch.note;
+    if (patch.display_order !== undefined) p.display_order = patch.display_order === null ? null : patch.display_order;
     return this.parties.save(p);
   }
 

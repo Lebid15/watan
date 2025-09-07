@@ -32,7 +32,7 @@ export class MuhammedController {
 
   @Post('party')
   async addParty(@Body() dto: MuhAddPartyDto) {
-    return this.service.addParty(dto.name);
+    return this.service.addParty(dto.name, dto.display_order);
   }
 
   @Patch('party/:id')
