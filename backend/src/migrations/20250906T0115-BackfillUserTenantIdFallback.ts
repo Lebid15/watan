@@ -19,12 +19,14 @@ export class BackfillUserTenantIdFallback20250906T0115 implements MigrationInter
       return; // nothing to do
     }
 
-    // Determine target tenant
+    // Determine target tenant (dynamic primary sham.<baseDomain>)
+    const base = (process.env.PUBLIC_TENANT_BASE_DOMAIN || 'example.com').trim().toLowerCase();
+    const desired = `sham.${base}`;
     let targetTenant: Array<{ id: string }> = await queryRunner.query(`
       SELECT t.id FROM tenant t
       JOIN tenant_domain d ON d."tenantId"=t.id
-      WHERE d.domain='sham.syrz1.com' AND d."isPrimary"=true
-      LIMIT 1;`);
+      WHERE d.domain=$1 AND d."isPrimary"=true
+      LIMIT 1;`, [desired]);
 
     if (!targetTenant.length) {
       targetTenant = await queryRunner.query(`
@@ -35,7 +37,11 @@ export class BackfillUserTenantIdFallback20250906T0115 implements MigrationInter
     }
 
     if (!targetTenant.length) {
-      throw new Error('[MIGRATION][FALLBACK] Cannot identify any tenant with a primary domain to backfill NULL users');
+      // As a last resort create a default tenant + primary domain so we can proceed.
+      const newTenantId = (await queryRunner.query(`SELECT gen_random_uuid() as id`))[0].id;
+      await queryRunner.query(`INSERT INTO tenant (id, name, code, "ownerUserId", "isActive") VALUES ($1, 'Sham', 'sham', NULL, true)`, [newTenantId]);
+      await queryRunner.query(`INSERT INTO tenant_domain (id, "tenantId", domain, type, "isPrimary", "isVerified") VALUES (gen_random_uuid(), $1, $2, 'subdomain', true, true)`, [newTenantId, desired]);
+      targetTenant = [{ id: newTenantId }];
     }
     const tenantId = targetTenant[0].id;
 
