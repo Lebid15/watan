@@ -224,48 +224,30 @@ export class ClientApiService {
     // Quantity & params validation (reuse helpers)
     this.validateQuantity(meta || undefined, opts.quantity);
     this.validateParams(meta || undefined, opts.rawQuery || {});
-    // Idempotency check (custom because core createOrder doesn't support yet)
-    if (opts.orderUuid) {
-      const existing = await this.ordersRepo.findOne({ where: { tenantId: opts.tenantId, orderUuid: opts.orderUuid } as any });
-      if (existing) {
-        return {
-          reused: true,
-          id: existing.id,
-          order_uuid: existing.orderUuid,
-            status: this.mapInternalStatus(existing.status),
-          quantity: existing.quantity,
-          price_usd: Number((existing as any).price) || 0,
-          unit_price_usd: existing.quantity ? (Number((existing as any).price) || 0) / Number(existing.quantity) : (Number((existing as any).price) || 0),
-          created_at: existing.createdAt?.toISOString?.() || new Date().toISOString(),
-          origin: existing.origin || 'client_api',
-        };
-      }
-    }
-
-    const view = await this.productsService.createOrder({
+    // Use unified productsService path (now supports idempotency + origin)
+    const unified = await this.productsService.createOrder({
       productId: product.id,
       packageId: pkg.id,
       quantity: opts.quantity,
       userId: opts.userId,
       userIdentifier: opts.userIdentifier || undefined,
       extraField: opts.extraField || undefined,
-    });
+      orderUuid: opts.orderUuid || null,
+      origin: 'client_api',
+    }, opts.tenantId);
 
-    // Persist origin + orderUuid post-creation (safe update)
-    try {
-      await this.ordersRepo.update(view.id, { orderUuid: opts.orderUuid, origin: 'client_api' } as any);
-    } catch {}
+    const reused = (unified as any).reused === true;
 
     return {
-      reused: false,
-      id: view.id,
-      order_uuid: opts.orderUuid,
-      status: view.status === 'pending' ? 'wait' : (view.status === 'approved' ? 'accept' : 'reject'),
-      quantity: view.quantity,
-      price_usd: view.priceUSD,
-      unit_price_usd: view.unitPriceUSD,
-      created_at: view.createdAt,
-      origin: 'client_api',
+      reused,
+      id: unified.id,
+      order_uuid: (unified as any).order_uuid || opts.orderUuid || null,
+      status: unified.status === 'pending' ? 'wait' : (unified.status === 'approved' ? 'accept' : 'reject'),
+      quantity: unified.quantity,
+      price_usd: unified.priceUSD,
+      unit_price_usd: unified.unitPriceUSD,
+      created_at: unified.createdAt,
+      origin: (unified as any).origin || 'client_api',
     };
   }
 

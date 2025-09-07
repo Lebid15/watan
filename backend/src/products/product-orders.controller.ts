@@ -113,7 +113,7 @@ export class ProductOrdersController {
       extraField: body.extraField,
       orderUuid: body.orderUuid || null,
       origin: 'panel',
-    });
+    }, user.tenantId);
 
     return {
       id: unified.id,
