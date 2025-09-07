@@ -102,6 +102,12 @@ export class MuhammedService {
     const exp = this.exportsRepo.create({
       total_usd_at_export: sheet.sums.total_usd.toFixed(4),
       usd_to_try_at_export: sheet.rate.toFixed(4),
+      snapshot: {
+        rate: sheet.rate,
+        parties: sheet.parties.map(p => ({ id: p.id, name: p.name, debt_try: p.debt_try, debt_usd: p.debt_usd, note: p.note })),
+        sums: sheet.sums,
+        exported_at: new Date().toISOString(),
+      },
     });
     return this.exportsRepo.save(exp);
   }
@@ -114,5 +120,9 @@ export class MuhammedService {
       where.created_at = Between(new Date(opts.from), new Date());
     }
     return this.exportsRepo.find({ where, order: { created_at: 'DESC' }, take: 200 });
+  }
+
+  async getExport(id: string) {
+    return this.exportsRepo.findOne({ where: { id } });
   }
 }

@@ -91,16 +91,16 @@ export default function MuhSheetPage() {
 
       <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-700">كل 1 دولار =</label>
-          <input defaultValue={data?.rate ?? 0} onBlur={e=>{ const v= parseFloat(e.target.value)||0; if(v>0) saveRate(v); }} className="w-28 rounded border px-2 py-1 text-sm focus:outline-none focus:ring" type="number" step="0.0001"/>
-          {savingField==='rate' && <span className="text-xs text-gray-500">حفظ...</span>}
+          <label className="text-sm text-slate-200">كل 1 دولار =</label>
+          <input defaultValue={data?.rate ?? 0} onBlur={e=>{ const v= parseFloat(e.target.value)||0; if(v>0) saveRate(v); }} className="w-28 rounded border border-slate-600 bg-slate-900 text-slate-100 px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-indigo-500" type="number" step="0.0001"/>
+          {savingField==='rate' && <span className="text-xs text-slate-400">حفظ...</span>}
         </div>
-        <button onClick={()=>setShowDialog(true)} className="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 shadow">إضافة جهة جديدة</button>
+        <button onClick={()=>setShowDialog(true)} className="rounded bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 shadow">إضافة جهة جديدة</button>
       </div>
 
-      <div className="overflow-x-auto rounded border bg-white shadow-sm">
+    <div className="overflow-x-auto rounded border border-slate-700 bg-slate-800 shadow-sm">
         <table className="min-w-full text-sm rtl:text-right">
-          <thead className="bg-slate-100 text-slate-700">
+      <thead className="bg-slate-700/60 text-slate-200">
             <tr>
               <th className="p-2 font-medium">الجهة</th>
               <th className="p-2 font-medium">دين (TRY)</th>
@@ -118,7 +118,7 @@ export default function MuhSheetPage() {
             {data.parties.map(p=>{
               const posTry = p.debt_try>0; const posUsd = p.debt_usd>0;
               return (
-                <tr key={p.id} className="border-t hover:bg-slate-50 transition-colors">
+                <tr key={p.id} className="border-t border-slate-700 hover:bg-slate-700/40 transition-colors">
                   <td className="p-2 align-top">
                     <EditableText innerRef={el=>{ nameRefs.current[p.id]=el; }} value={p.name} onSave={val=> saveParty(p.id,{ name: val })} />
                   </td>
@@ -133,8 +133,8 @@ export default function MuhSheetPage() {
                   </td>
                   <td className="p-2 text-xs text-gray-500 whitespace-nowrap align-top">
                     <div className="flex gap-2 items-center justify-center">
-                      <button onClick={()=> nameRefs.current[p.id]?.focus()} className="px-2 py-1 rounded border bg-white hover:bg-slate-100 text-[11px]">تحرير</button>
-                      <button disabled={deletingId===p.id} onClick={()=>deleteParty(p.id)} className="px-2 py-1 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-[11px]">حذف</button>
+                      <button onClick={()=> nameRefs.current[p.id]?.focus()} className="px-2 py-1 rounded border border-slate-600 bg-slate-900 hover:bg-slate-700 text-[11px] text-slate-200">تحرير</button>
+                      <button disabled={deletingId===p.id} onClick={()=>deleteParty(p.id)} className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-[11px]">حذف</button>
                     </div>
                     <div className="h-4 mt-1 text-center">
                       {savingField?.startsWith(p.id)&& <span className="text-amber-600">حفظ...</span>}
@@ -145,7 +145,7 @@ export default function MuhSheetPage() {
               );
             })}
           </tbody>
-          <tfoot className="bg-slate-100 text-sm font-medium">
+          <tfoot className="bg-slate-900/60 text-sm font-medium text-slate-200">
             <tr>
               <td className="p-2">المجاميع</td>
               <td className="p-2 font-mono">{data.sums.debt_try.toFixed(2)}</td>
@@ -156,20 +156,20 @@ export default function MuhSheetPage() {
         </table>
       </div>
 
-  <div className="rounded border p-4 bg-white flex flex-col gap-2 text-sm shadow-sm">
-  <div>المجموع الكلي بالدولار: <span className="font-mono font-semibold">{data.sums.total_usd.toFixed(4)}</span> <button onClick={createExport} className="ml-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1">تصدير</button></div>
-  <div>آخر تصدير: <span className="font-mono">{data.lastExport ? (+data.lastExport.total_usd_at_export).toFixed(4) : '—'}</span></div>
-  <div>الربح: <span className={`font-mono ${(data.profit||0) >=0 ? 'text-green-600':'text-red-600'}`}>{data.profit!=null? data.profit.toFixed(4):'—'}</span></div>
+  <div className="rounded border border-slate-700 p-4 bg-slate-800 flex flex-col gap-2 text-sm shadow-sm">
+  <div>المجموع الكلي بالدولار: <span className="font-mono font-semibold text-slate-100">{data.sums.total_usd.toFixed(4)}</span> <button onClick={createExport} className="ml-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1">تصدير</button></div>
+  <div>آخر جرد: <span className="font-mono text-slate-300">{data.lastExport ? (+data.lastExport.total_usd_at_export).toFixed(4) : '—'}</span></div>
+  <div>الربح: <span className={`font-mono ${(data.profit||0) >=0 ? 'text-green-400':'text-red-400'}`}>{data.profit!=null? data.profit.toFixed(4):'—'}</span></div>
       </div>
 
       {showDialog && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-40">
-          <div className="bg-white rounded shadow w-full max-w-sm p-4 space-y-4">
-            <h2 className="font-semibold text-gray-800 text-sm">إضافة جهة جديدة</h2>
-            <input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} placeholder="اسم الجهة" className="w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring" />
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-40">
+          <div className="bg-slate-800 border border-slate-700 rounded shadow-lg w-full max-w-sm p-4 space-y-4 text-slate-100">
+            <h2 className="font-semibold text-slate-100 text-sm">إضافة جهة جديدة</h2>
+            <input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} placeholder="اسم الجهة" className="w-full rounded border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring focus:ring-indigo-500" />
             <div className="flex justify-end gap-2 text-sm">
-              <button onClick={()=>setShowDialog(false)} className="px-3 py-1 rounded border bg-gray-50 hover:bg-gray-100">إلغاء</button>
-              <button disabled={adding} onClick={addParty} className="px-4 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">حفظ</button>
+              <button onClick={()=>setShowDialog(false)} className="px-3 py-1 rounded border border-slate-600 bg-slate-900 hover:bg-slate-700">إلغاء</button>
+              <button disabled={adding} onClick={addParty} className="px-4 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50">حفظ</button>
             </div>
           </div>
         </div>

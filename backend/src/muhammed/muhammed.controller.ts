@@ -59,4 +59,9 @@ export class MuhammedController {
   async listExports(@Query('from') from?: string, @Query('to') to?: string) {
     return this.service.listExports({ from, to });
   }
+
+  @Get('exports/:id')
+  async getExport(@Param('id') id: string) {
+    return this.service.getExport(id);
+  }
 }
