@@ -259,11 +259,13 @@ export default function AdminIntegrationsPage() {
                 <td className="border border-border px-3 py-2 uppercase">{it.provider}</td>
                 <td className="border border-border px-3 py-2">{it.baseUrl || '—'}</td>
                 <td className="border border-border px-3 py-2">
-                  <EnableToggleButton
-                    enabled={it.enabled}
-                    loading={toggling === it.id}
-                    onToggle={() => handleToggle(it)}
-                  />
+                    <EnableToggleButton
+                      enabled={it.enabled}
+                      loading={toggling === it.id}
+                      onToggle={() => handleToggle(it)}
+                      variant="circle"
+                      tooltip={it.enabled ? 'مفعل - اضغط للتعطيل' : 'معطل - اضغط للتفعيل'}
+                    />
                 </td>
                 <td className="border border-border px-3 py-2">
                   {it.enabled === false ? '—' : (balances[it.id] !== undefined
