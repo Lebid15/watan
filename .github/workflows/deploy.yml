@@ -64,4 +64,5 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "\
             cd $DEPLOY_DIR && \
+            # verify-tenants.ts -> dist/scripts/verify-tenants.js after build
             docker compose exec -T backend node dist/scripts/verify-tenants.js"
