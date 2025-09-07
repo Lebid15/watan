@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 
 interface PartyRow { id: string; name: string; debt_try: number; debt_usd: number; note?: string | null; updated_at: string; }
 interface SheetData { rate: number; parties: PartyRow[]; sums: { debt_try: number; debt_usd: number; total_usd: number }; lastExport?: any; profit?: number | null; }
@@ -19,6 +19,8 @@ export default function MuhSheetPage() {
   const [showDialog, setShowDialog] = useState(false);
   const [savingField, setSavingField] = useState<string | null>(null);
   const [toast, setToast] = useState<{msg:string,type:'ok'|'err'}|null>(null);
+  const [deletingId,setDeletingId] = useState<string|null>(null);
+  const nameRefs = useRef<Record<string, HTMLInputElement|null>>({});
 
   const load = useCallback(async ()=>{
     setLoading(true);
@@ -59,6 +61,18 @@ export default function MuhSheetPage() {
   try { await api('/api/muhammed/export',{ method:'POST'}); await load(); flash('تم التصدير'); } catch(e){ flash('خطأ','err'); }
   }
 
+  async function deleteParty(id: string){
+    if (!confirm('حذف هذه الجهة؟ لا يمكن التراجع')) return;
+    setDeletingId(id);
+    try {
+      await api(`/api/muhammed/party/${id}`, { method: 'DELETE' });
+      setData(d => d ? { ...d, parties: d.parties.filter(p=>p.id!==id) } : d);
+      flash('تم الحذف');
+    } catch(e){
+      flash('فشل الحذف','err');
+    } finally { setDeletingId(null); }
+  }
+
   if (loading) return <div className="py-10 text-center text-gray-500">جار التحميل...</div>;
   // إذا فشل التحميل تماماً (خطأ حقيقي) ولم تصل أي بيانات
   if (!data && !loading) {
@@ -84,15 +98,15 @@ export default function MuhSheetPage() {
         <button onClick={()=>setShowDialog(true)} className="rounded bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 shadow">إضافة جهة جديدة</button>
       </div>
 
-      <div className="overflow-x-auto rounded border">
+      <div className="overflow-x-auto rounded border bg-white shadow-sm">
         <table className="min-w-full text-sm rtl:text-right">
-          <thead className="bg-gray-50 text-gray-700">
+          <thead className="bg-slate-100 text-slate-700">
             <tr>
               <th className="p-2 font-medium">الجهة</th>
               <th className="p-2 font-medium">دين (TRY)</th>
               <th className="p-2 font-medium">دين (USD)</th>
               <th className="p-2 font-medium">ملاحظة</th>
-              <th className="p-2"></th>
+              <th className="p-2 font-medium text-center">إجراءات</th>
             </tr>
           </thead>
           <tbody>
@@ -104,9 +118,9 @@ export default function MuhSheetPage() {
             {data.parties.map(p=>{
               const posTry = p.debt_try>0; const posUsd = p.debt_usd>0;
               return (
-                <tr key={p.id} className="border-t hover:bg-gray-50">
+                <tr key={p.id} className="border-t hover:bg-slate-50 transition-colors">
                   <td className="p-2 align-top">
-                    <EditableText value={p.name} onSave={val=> saveParty(p.id,{ name: val })} />
+                    <EditableText innerRef={el=>{ nameRefs.current[p.id]=el; }} value={p.name} onSave={val=> saveParty(p.id,{ name: val })} />
                   </td>
                   <td className={`p-2 align-top font-mono ${posTry?'text-red-600':''}`}>
                     <EditableNumber value={p.debt_try} onSave={val=> saveParty(p.id,{ debt_try: val })} />
@@ -117,12 +131,21 @@ export default function MuhSheetPage() {
                   <td className="p-2 align-top w-64">
                     <EditableTextarea value={p.note||''} onSave={val=> saveParty(p.id,{ note: val })} />
                   </td>
-                  <td className="p-2 text-xs text-gray-400 whitespace-nowrap">{savingField?.startsWith(p.id)?'حفظ...':''}</td>
+                  <td className="p-2 text-xs text-gray-500 whitespace-nowrap align-top">
+                    <div className="flex gap-2 items-center justify-center">
+                      <button onClick={()=> nameRefs.current[p.id]?.focus()} className="px-2 py-1 rounded border bg-white hover:bg-slate-100 text-[11px]">تحرير</button>
+                      <button disabled={deletingId===p.id} onClick={()=>deleteParty(p.id)} className="px-2 py-1 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-[11px]">حذف</button>
+                    </div>
+                    <div className="h-4 mt-1 text-center">
+                      {savingField?.startsWith(p.id)&& <span className="text-amber-600">حفظ...</span>}
+                      {deletingId===p.id && <span className="text-red-600">جاري...</span>}
+                    </div>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
-          <tfoot className="bg-gray-100 text-sm font-medium">
+          <tfoot className="bg-slate-100 text-sm font-medium">
             <tr>
               <td className="p-2">المجاميع</td>
               <td className="p-2 font-mono">{data.sums.debt_try.toFixed(2)}</td>
@@ -133,7 +156,7 @@ export default function MuhSheetPage() {
         </table>
       </div>
 
-      <div className="rounded border p-4 bg-white flex flex-col gap-2 text-sm">
+  <div className="rounded border p-4 bg-white flex flex-col gap-2 text-sm shadow-sm">
   <div>المجموع الكلي بالدولار: <span className="font-mono font-semibold">{data.sums.total_usd.toFixed(4)}</span> <button onClick={createExport} className="ml-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1">تصدير</button></div>
   <div>آخر تصدير: <span className="font-mono">{data.lastExport ? (+data.lastExport.total_usd_at_export).toFixed(4) : '—'}</span></div>
   <div>الربح: <span className={`font-mono ${(data.profit||0) >=0 ? 'text-green-600':'text-red-600'}`}>{data.profit!=null? data.profit.toFixed(4):'—'}</span></div>
@@ -155,15 +178,15 @@ export default function MuhSheetPage() {
   );
 }
 
-function EditableText({ value, onSave }:{ value:string; onSave:(v:string)=>void }){
+function EditableText({ value, onSave, innerRef }:{ value:string; onSave:(v:string)=>void; innerRef?:(el:HTMLInputElement|null)=>void }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
-  return <input value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val.trim()||value); }} className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring ${focus?'bg-white':'bg-gray-50'}`} />;
+  return <input ref={innerRef} value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val.trim()||value); }} className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-slate-50'}`} />;
 }
 function EditableNumber({ value, onSave }:{ value:number; onSave:(v:number)=>void }){
   const [val,setVal]=useState(String(value)); const [focus,setFocus]=useState(false);
-  return <input inputMode="decimal" value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); const num=parseFloat(val); if(!isNaN(num) && num!==value) onSave(num); else setVal(String(value)); }} className={`w-32 rounded border px-2 py-1 text-sm focus:outline-none focus:ring text-end font-mono ${focus?'bg-white':'bg-gray-50'}`} />;
+  return <input inputMode="decimal" value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); const num=parseFloat(val); if(!isNaN(num) && num!==value) onSave(num); else setVal(String(value)); }} className={`w-32 rounded border px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-blue-500 text-end font-mono ${focus?'bg-white':'bg-slate-50'}`} />;
 }
 function EditableTextarea({ value, onSave }:{ value:string; onSave:(v:string)=>void }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
-  return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={2} className={`w-full resize-none rounded border px-2 py-1 text-xs focus:outline-none focus:ring ${focus?'bg-white':'bg-gray-50'}`} />;
+  return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={2} className={`w-full resize-none rounded border px-2 py-1 text-xs focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-slate-50'}`} />;
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Patch, Param, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Patch, Param, Query, UseGuards, Delete } from '@nestjs/common';
 import { MuhammedService } from './muhammed.service';
 import { UpsertMuhammedDailyDto } from './dto/upsert-muhammed-daily.dto';
 import { MuhAddPartyDto } from './dto/muh-add-party.dto';
@@ -38,6 +38,11 @@ export class MuhammedController {
   @Patch('party/:id')
   async updateParty(@Param('id') id: string, @Body() dto: MuhUpdatePartyDto) {
     return this.service.updateParty(id, dto);
+  }
+
+  @Delete('party/:id')
+  async deleteParty(@Param('id') id: string) {
+    return this.service.deleteParty(id);
   }
 
   @Patch('rate')

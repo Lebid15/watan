@@ -21,7 +21,7 @@ export default function MuhExportsPage(){
 
   const load = useCallback(async()=>{
     setLoading(true);
-    try { const q = new URLSearchParams(); if(from) q.append('from',from); if(to) q.append('to',to); const d = await api<ExportRow[]>(`/muhammed/exports${q.size?`?${q.toString()}`:''}`); setRows(d);} catch(e){ flash('فشل التحميل','err'); } finally { setLoading(false); }
+  try { const q = new URLSearchParams(); if(from) q.append('from',from); if(to) q.append('to',to); const d = await api<ExportRow[]>(`/api/muhammed/exports${q.size?`?${q.toString()}`:''}`); setRows(d);} catch(e){ flash('فشل التحميل','err'); } finally { setLoading(false); }
   },[from,to]);
 
   useEffect(()=>{ load(); },[load]);
@@ -44,9 +44,9 @@ export default function MuhExportsPage(){
       </div>
 
       {loading ? <div className="py-8 text-center text-gray-500">جار التحميل...</div> : (
-        <div className="overflow-x-auto rounded border bg-white">
+        <div className="overflow-x-auto rounded border bg-white shadow-sm">
           <table className="min-w-full text-sm rtl:text-right">
-            <thead className="bg-gray-50 text-gray-700">
+            <thead className="bg-slate-100 text-slate-700">
               <tr>
                 <th className="p-2 font-medium">التاريخ</th>
                 <th className="p-2 font-medium">المجموع بالدولار</th>
@@ -55,7 +55,7 @@ export default function MuhExportsPage(){
             </thead>
             <tbody>
               {rows.map(r=> (
-                <tr key={r.id} className="border-t hover:bg-gray-50">
+                <tr key={r.id} className="border-t hover:bg-slate-50">
                   <td className="p-2 whitespace-nowrap text-xs">{new Date(r.created_at).toLocaleString()}</td>
                   <td className="p-2 font-mono">{(+r.total_usd_at_export).toFixed(4)}</td>
                   <td className="p-2 font-mono">{(+r.usd_to_try_at_export).toFixed(4)}</td>

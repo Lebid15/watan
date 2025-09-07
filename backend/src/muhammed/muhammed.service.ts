@@ -83,6 +83,13 @@ export class MuhammedService {
     return this.parties.save(p);
   }
 
+  async deleteParty(id: string) {
+    const p = await this.parties.findOne({ where: { id } });
+    if (!p) return { ok: true };
+    await this.parties.delete(id);
+    return { ok: true };
+  }
+
   async updateRate(rate: number) {
     const s = await this.ensureSettings();
     s.usd_to_try = rate.toFixed(4);
