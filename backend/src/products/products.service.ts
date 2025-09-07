@@ -1345,18 +1345,32 @@ export class ProductsService {
       origin = 'panel',
     } = data;
 
+    // Basic validation for orderUuid (prevent DB errors due to oversize or strange values)
+    if (orderUuid) {
+      if (orderUuid.length > 64)
+        throw new BadRequestException('orderUuid too long (max 64)');
+      // Optional: restrict to safe charset (letters, numbers, dash, underscore)
+      if (!/^[a-zA-Z0-9_-]+$/.test(orderUuid))
+        throw new BadRequestException('orderUuid has invalid characters');
+    }
+
+    // Debug trace (lightweight)
+    try { console.log('[OrderCreate] start', { productId, packageId, quantity, userId, tenantId, hasOrderUuid: Boolean(orderUuid), origin }); } catch {}
+
     if (!quantity || quantity <= 0 || !Number.isFinite(Number(quantity))) {
       throw new BadRequestException('Quantity must be a positive number');
     }
 
-    // Idempotency early check (need tenantId context from user later, so tentative; fallback if tenantId not provided yet)
+    // Idempotency early check — now tenant-scoped when tenantId known to avoid cross-tenant reuse
     if (orderUuid) {
-      const existing = await this.ordersRepo.findOne({ where: { orderUuid } as any, relations: ['product','package','user','user.currency'] });
+      const where: any = tenantId ? { orderUuid, tenantId } : { orderUuid };
+      const existing = await this.ordersRepo.findOne({ where, relations: ['product','package','user','user.currency'] });
       if (existing) {
         // Ensure same tenant if tenantId passed
         this.ensureSameTenant((existing as any).tenantId, tenantId);
         const priceUSDExisting = Number((existing as any).price) || 0;
         const unitPriceUSDExisting = (existing as any).quantity ? priceUSDExisting / Number((existing as any).quantity) : priceUSDExisting;
+        try { console.log('[OrderCreate] reused', { id: existing.id, orderUuid, tenantId: (existing as any).tenantId }); } catch {}
         return {
           id: existing.id,
           status: existing.status,
@@ -1376,7 +1390,7 @@ export class ProductsService {
       }
     }
 
-    const created = await this.ordersRepo.manager.transaction(async (trx) => {
+  const created = await this.ordersRepo.manager.transaction(async (trx) => {
       const productsRepo = trx.getRepository(Product);
       const packagesRepo = trx.getRepository(ProductPackage);
       const usersRepo = trx.getRepository(User);
@@ -1606,7 +1620,7 @@ export class ProductsService {
         createdAt: Date;
       };
 
-      return {
+  const result = {
         entityId: saved.id,
         view: {
           id: saved.id,
@@ -1627,7 +1641,9 @@ export class ProductsService {
           order_uuid: saved.orderUuid || null,
           origin: saved.origin,
         } as any,
-      };
+  };
+  try { console.log('[OrderCreate] created', { id: saved.id, orderUuid: saved.orderUuid, tenantId: (saved as any).tenantId, origin: saved.origin }); } catch {}
+  return result;
     });
 
     // محاولة إرسال تلقائي ضمن نفس المستأجر
