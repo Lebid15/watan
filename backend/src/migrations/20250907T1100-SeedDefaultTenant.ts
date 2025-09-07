@@ -32,37 +32,57 @@ export class SeedDefaultTenant20250907T1100 implements MigrationInterface {
       console.log('[MIGRATION] Created default tenant id=' + tenantId);
     }
 
-    // Attach orphan users (tenantId is null)
-    try {
-      await queryRunner.query(`UPDATE users SET "tenantId" = $1 WHERE "tenantId" IS NULL`, [tenantId]);
-    } catch (e:any) {
-      console.warn('[MIGRATION] Skipping orphan users attach:', e.message);
+    // Helper: check table existence (avoid aborting the transaction on missing tables)
+    const tableExists = async (table: string) => {
+      const r: any[] = await queryRunner.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_name = $1 LIMIT 1`,
+        [table.replace(/"/g, '')],
+      );
+      return r.length > 0;
+    };
+
+    // users
+    if (await tableExists('users')) {
+      try {
+        await queryRunner.query(`UPDATE users SET "tenantId" = $1 WHERE "tenantId" IS NULL`, [tenantId]);
+      } catch (e: any) {
+        console.warn('[MIGRATION] Skipping orphan users attach:', e.message);
+      }
     }
 
-    // Attach orphan products (tenantId null or invalid)
-    try {
-      await queryRunner.query(`UPDATE product SET "tenantId" = $1 WHERE ("tenantId" IS NULL OR NOT EXISTS (SELECT 1 FROM ${tenantTable} t WHERE t.id = product."tenantId"))`, [tenantId]);
-    } catch (e:any) {
-      console.warn('[MIGRATION] Skipping orphan products attach:', e.message);
+    // product
+    if (await tableExists('product')) {
+      try {
+        await queryRunner.query(
+          `UPDATE product SET "tenantId" = $1 WHERE ("tenantId" IS NULL OR NOT EXISTS (SELECT 1 FROM ${tenantTable} t WHERE t.id = product."tenantId"))`,
+          [tenantId],
+        );
+      } catch (e: any) {
+        console.warn('[MIGRATION] Skipping orphan products attach:', e.message);
+      }
     }
 
-    // Attach orphan packages referencing products now fixed
-    try {
-      await queryRunner.query(`
-        UPDATE product_package pp
-        SET "tenantId" = p."tenantId"
-        FROM product p
-        WHERE pp."tenantId" IS NULL AND pp."productId" = p.id
-      `);
-    } catch (e:any) {
-      console.warn('[MIGRATION] Skipping orphan packages tenant sync:', e.message);
+    // product_package
+    if (await tableExists('product_package') && await tableExists('product')) {
+      try {
+        await queryRunner.query(`
+          UPDATE product_package pp
+          SET "tenantId" = p."tenantId"
+          FROM product p
+          WHERE pp."tenantId" IS NULL AND pp."productId" = p.id
+        `);
+      } catch (e: any) {
+        console.warn('[MIGRATION] Skipping orphan packages tenant sync:', e.message);
+      }
     }
 
-    // Attach orphan orders (tenantId null) — risk: cross-tenant mixing; only fill nulls
-    try {
-      await queryRunner.query(`UPDATE product_orders SET "tenantId" = $1 WHERE "tenantId" IS NULL`, [tenantId]);
-    } catch (e:any) {
-      console.warn('[MIGRATION] Skipping orphan orders attach:', e.message);
+    // product_orders
+    if (await tableExists('product_orders')) {
+      try {
+        await queryRunner.query(`UPDATE product_orders SET "tenantId" = $1 WHERE "tenantId" IS NULL`, [tenantId]);
+      } catch (e: any) {
+        console.warn('[MIGRATION] Skipping orphan orders attach:', e.message);
+      }
     }
   }
 
