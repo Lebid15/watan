@@ -99,6 +99,15 @@ export class TenantsService {
     // 3) احفظ المتجر
     const savedTenant = await this.tenants.save(t);
 
+    // Ensure owner user (if any) is linked to this tenant (tenantId nullable globally but owners should be scoped)
+    if ((savedTenant as any).ownerUserId) {
+      const owner = await this.users.findOne({ where: { id: (savedTenant as any).ownerUserId } as any });
+      if (owner && !owner.tenantId) {
+        owner.tenantId = savedTenant.id;
+        try { await this.users.save(owner); } catch (e) { /* ignore if constraint or race */ }
+      }
+    }
+
   // 4) أنشئ نطاق افتراضي ديناميكي: code.<baseDomain>
   const baseDomain = (process.env.PUBLIC_TENANT_BASE_DOMAIN || 'localhost').toLowerCase();
   const defaultDomain = `${dto.code}.${baseDomain}`;
