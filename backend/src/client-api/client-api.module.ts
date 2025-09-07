@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ProductsModule } from '../products/products.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../user/user.entity';
 import { Product } from '../products/product.entity';
@@ -26,7 +27,7 @@ import { ClientApiMeController } from './client-api.me.controller';
 import { ClientApiAccountController } from './client-api-account.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
+  imports: [ProductsModule, TypeOrmModule.forFeature([
     User,
     Product,
     ProductPackage,
@@ -40,6 +41,6 @@ import { ClientApiAccountController } from './client-api-account.controller';
   ])],
   controllers: [ClientApiOpenapiPublicController, ClientApiController, ClientApiAdminController, ClientApiWebhookAdminController, ClientApiSelfController, ClientApiMeController, ClientApiAccountController],
   providers: [ClientApiAuthGuard, ClientApiService, { provide: APP_INTERCEPTOR, useClass: ClientApiLoggingInterceptor }, ClientApiStatsCron, ClientApiWebhookWorker, ClientApiWebhookEnqueueService],
-  exports: [],
+  exports: [ClientApiService],
 })
 export class ClientApiModule {}
