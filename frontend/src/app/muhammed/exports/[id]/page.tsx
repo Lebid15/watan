@@ -10,8 +10,10 @@ async function api<T>(path: string): Promise<T> {
   return res.json();
 }
 
-export default function ExportDetailPage({ params }: { params: { id: string }}) {
-  const { id } = params;
+// Using loose props typing to avoid Next.js PageProps mismatch in client component build
+export default function ExportDetailPage(props: any) {
+  const id: string | undefined = props?.params?.id;
+  if(!id) return <div className="py-10 text-center text-red-400">معرّف غير صالح</div>;
   const [data,setData]=useState<ExportDetail|null>(null);
   const [loading,setLoading]=useState(true);
   const [err,setErr]=useState<string|null>(null);
