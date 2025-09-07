@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Brackets } from 'typeorm';
 import { Product } from './product.entity';
 import { ProductPackage } from './product-package.entity';
+import { IdempotentRequest } from './idempotent-request.entity';
 import { PackagePrice } from './package-price.entity';
 import { PriceGroup } from './price-group.entity';
 import { ProductOrder } from './product-order.entity';
@@ -31,6 +32,7 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
     @InjectRepository(ProductPackage) private readonly packagesRepo: Repository<ProductPackage>,
+  @InjectRepository(IdempotentRequest) private readonly idempotentRepo: Repository<IdempotentRequest>,
     @InjectRepository(PackagePrice) private readonly packagePriceRepo: Repository<PackagePrice>,
     @InjectRepository(PriceGroup) private readonly priceGroupsRepo: Repository<PriceGroup>,
     @InjectRepository(ProductOrder) private readonly ordersRepo: Repository<ProductOrder>,
@@ -655,6 +657,20 @@ export class ProductsService {
       console.error('[CLONE][FATAL]', err instanceof Error ? err.message : err);
       throw new InternalServerErrorException('CLONE_FAILED');
     }
+  }
+
+  // ===== 🆕 (WIP) فحص مسبق لعملية الاستنساخ مع إعادة ترميز متوقعة دون تنفيذ فعلي =====
+  async preflightCloneGlobalProduct(globalProductId: string, targetTenantId: string) {
+    // Placeholder: will reuse enhanced resolution logic to compute potential conflicts & regenerated codes
+    // Intentionally minimal for incremental implementation steps
+    return { status: 'WIP', globalProductId, targetTenantId };
+  }
+
+  // ===== 🆕 (WIP) نسخة مطوّرة مع idempotency + إعادة توليد الأكواد والأسماء =====
+  async cloneGlobalProductToTenantEnhanced(opts: { globalProductId: string; targetTenantId: string; mode: 'regenerate' | 'useExisting' | 'failFast'; idemKey?: string; }): Promise<any> {
+    // Placeholder; will replace controller usage gradually once validated
+    const { globalProductId, targetTenantId, mode, idemKey } = opts;
+    return { status: 'WIP', globalProductId, targetTenantId, mode, idemKey: idemKey || null };
   }
 
   // ===== ✅ قائمة المنتجات العالمية مع عدد الباقات النشطة ذات publicCode =====

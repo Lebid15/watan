@@ -317,6 +317,31 @@ export class ProductsController {
     };
   }
 
+  // 🆕 (WIP) فحص مسبق لعملية الاستنساخ بدون تنفيذ
+  @Get(':id/clone-check')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.INSTANCE_OWNER, UserRole.DEVELOPER)
+  async cloneCheck(@Req() req: Request, @Param('id') globalProductId: string) {
+    const targetTenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    if (!targetTenantId) throw new BadRequestException('لا يمكن تحديد التينانت الهدف');
+    return await this.productsService.preflightCloneGlobalProduct(globalProductId, targetTenantId);
+  }
+
+  // 🆕 (WIP) نسخة مطورة مع أوضاع متعددة وإديمبوتنسي (سيتم توصيلها لاحقًا كاملة)
+  @Post(':id/clone-to-tenant-advanced')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.INSTANCE_OWNER, UserRole.DEVELOPER)
+  async cloneToTenantAdvanced(
+    @Req() req: Request,
+    @Param('id') globalProductId: string,
+    @Query('mode') mode: 'regenerate' | 'useExisting' | 'failFast' = 'regenerate',
+  ) {
+    const targetTenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    if (!targetTenantId) throw new BadRequestException('لا يمكن تحديد التينانت الهدف');
+    const idemKey = (req.headers['idempotency-key'] as string) || (req.headers['x-idempotency-key'] as string) || undefined;
+    return await this.productsService.cloneGlobalProductToTenantEnhanced({ globalProductId, targetTenantId, mode, idemKey });
+  }
+
 
   // (moved catalog-available & snapshot-available routes above @Get(':id') to avoid dynamic capture)
 

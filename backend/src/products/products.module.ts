@@ -36,6 +36,7 @@ import { ThumbnailService } from './thumbnail.service';
 import { ThumbnailScheduler } from './thumbnail.scheduler';
 import { ClientApiWebhookOutbox } from '../client-api/client-api-webhook-outbox.entity';
 import { ClientApiWebhookEnqueueService } from '../client-api/client-api-webhook.enqueue.service';
+import { IdempotentRequest } from './idempotent-request.entity';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { ClientApiWebhookEnqueueService } from '../client-api/client-api-webhook
   PackageMapping,
   ProductImageMetricsSnapshot,
   ClientApiWebhookOutbox,
+  IdempotentRequest,
   // Distributor pricing entities (ensure availability for injection in ProductsService)
   DistributorPriceGroup,
   DistributorPackagePrice,
