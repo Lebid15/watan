@@ -19,11 +19,17 @@ export class TenantContextMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: any, res: any, next: () => void) {
-    // استخراج Host من الـ request headers أو من X-Tenant-Host للـ frontend
-    const originalHost = req.headers.host;
-    const tenantHost = req.headers['x-tenant-host'] || originalHost;
-    const host = (tenantHost || '').split(':')[0]; // ex: kadro.localhost
-  if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'incoming', { originalHost, xTenant: req.headers['x-tenant-host'], path: req.path, url: req.originalUrl });
+    // Resolution priority: X-Tenant-Host > Host > Origin header host
+    const originalHost: string | undefined = req.headers.host;
+    const xTenantHost: string | undefined = req.headers['x-tenant-host'];
+    let originHost: string | undefined;
+    const origin = req.headers.origin as string | undefined;
+    if (origin && /^https?:\/\//i.test(origin)) {
+      try { originHost = new URL(origin).host; } catch {}
+    }
+    const chosenHost = (xTenantHost || originalHost || originHost || '').split(':')[0];
+    const host = chosenHost;
+  if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'incoming', { originalHost, xTenant: xTenantHost, originHost, chosenHost: host, path: req.path });
 
   let tenant: Tenant | null = null;
     if (host) {
@@ -69,7 +75,7 @@ export class TenantContextMiddleware implements NestMiddleware {
             }
           }
         }
-        if (!tenant && debugEnabled('tenantCtx')) debugLog('tenantCtx', 'no domain match', host);
+  if (!tenant && debugEnabled('tenantCtx')) debugLog('tenantCtx', 'no domain match', host);
       }
     }
 
@@ -86,6 +92,7 @@ export class TenantContextMiddleware implements NestMiddleware {
       req.tenant = tenant;
   if (debugEnabled('tenantCtx')) debugLog('tenantCtx', 'attached tenant', { id: tenant.id, code: (tenant as any).code });
     }
+    if (!tenant && debugEnabled('tenantCtx')) debugLog('tenantCtx', 'unresolved tenant', { chosenHost: host, originHost, xTenantHost });
     next();
   }
 }

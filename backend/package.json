@@ -40,6 +40,8 @@
   "tenant:verify": "ts-node -r tsconfig-paths/register ./src/scripts/verify-tenants.ts",
   "users:null": "ts-node -r tsconfig-paths/register ./src/scripts/list-null-users.ts",
   "mapping:verify": "ts-node -r tsconfig-paths/register ./src/scripts/verify-package-mappings.ts"
+  , "create-tenant": "ts-node -r tsconfig-paths/register ./src/scripts/create-tenant.ts"
+  , "provision:store": "bash ../scripts/provision-store.sh"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.6",
