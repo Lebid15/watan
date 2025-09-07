@@ -99,8 +99,16 @@ export default function MuhSheetPage() {
         <button onClick={()=>setShowDialog(true)} className="rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] px-3 py-[6px] shadow">إضافة جهة جديدة</button>
       </div>
 
-  <div className="rounded border border-slate-700 bg-slate-800 shadow-sm text-black md:scale-100 scale-[0.85] origin-top">
-        <table className="rtl:text-right text-[10px] md:text-[11px]">
+  <div className="rounded border border-slate-700 bg-slate-800 shadow-sm text-black">
+        <table className="min-w-full rtl:text-right text-[11px] md:text-[11px] table-fixed">
+          <colgroup>
+            <col className="w-[140px] md:w-[180px]" />
+            <col className="w-[120px] md:w-[140px]" />
+            <col className="w-[110px] md:w-[130px]" />
+            <col className="w-[160px] md:w-[220px]" />
+            <col className="w-[125px] md:w-[140px]" />
+            <col className="w-[60px]" />
+          </colgroup>
       <thead className="bg-slate-700/60 text-slate-200">
             <tr>
               <th className="p-2 font-medium">الجهة</th>
@@ -121,7 +129,7 @@ export default function MuhSheetPage() {
               const negTry = p.debt_try<0; const negUsd = p.debt_usd<0;
               return (
                 <tr key={p.id} className="border-t border-slate-700 hover:bg-slate-700/40 transition-colors">
-                  <td className="p-1 align-top whitespace-nowrap">
+                  <td className="p-1 align-top whitespace-normal break-words">
                     <EditableText
                       innerRef={el=>{ nameRefs.current[p.id]=el; }}
                       value={p.name}
@@ -196,30 +204,26 @@ export default function MuhSheetPage() {
 
 function EditableText({ value, onSave, innerRef, className='' }:{ value:string; onSave:(v:string)=>void; innerRef?:(el:HTMLInputElement|null)=>void; className?:string }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
-  const ch = Math.min(30, Math.max( val.length + 1, 4));
-  return <input ref={innerRef} value={val} style={{ width: ch + 'ch' }} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val.trim()||value); }} className={`rounded border px-2 py-[3px] text-[10px] md:text-[11px] focus:outline-none focus:ring focus:ring-blue-500 ${focus?'':''} ${className||'bg-white text-black'}`} />;
+  return <input ref={innerRef} value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val.trim()||value); }} className={`w-full rounded border px-2 py-[4px] text-[11px] focus:outline-none focus:ring focus:ring-blue-500 leading-tight ${className||'bg-white text-black'}`} />;
 }
 function EditableNumber({ value, onSave }:{ value:number; onSave:(v:number)=>void }){
   const [val,setVal]=useState(String(value)); const [focus,setFocus]=useState(false);
-  const ch = Math.min(16, Math.max(val.replace(/[^0-9.-]/g,'').length + 1, 4));
-  return <input inputMode="decimal" value={val} style={{ width: ch + 'ch' }} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); const num=parseFloat(val); if(!isNaN(num) && num!==value) onSave(num); else setVal(String(value)); }} className={`rounded border px-2 py-[3px] text-[10px] md:text-[11px] text-black focus:outline-none focus:ring focus:ring-blue-500 text-end font-mono ${focus?'bg-white':'bg-white'}`} />;
+  return <input inputMode="decimal" value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); const num=parseFloat(val); if(!isNaN(num) && num!==value) onSave(num); else setVal(String(value)); }} className={`w-full rounded border px-2 py-[4px] text-[11px] text-black focus:outline-none focus:ring focus:ring-blue-500 text-end font-mono ${focus?'bg-white':'bg-white'}`} />;
 }
 function EditableTextarea({ value, onSave }:{ value:string; onSave:(v:string)=>void }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
-  return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={1} className={`w-full resize-none rounded border px-2 py-[3px] h-[26px] text-[10px] md:text-[11px] text-black focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-white'}`} />;
+  return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={1} className={`w-full resize-none rounded border px-2 py-[4px] h-[30px] text-[11px] text-black focus:outline-none focus:ring focus:ring-blue-500 leading-tight ${focus?'bg-white':'bg-white'}`} />;
 }
 
 function OrderEditor({ value, onSave }:{ value:number|string; onSave:(v:number|string)=>void }){
   const [val,setVal]=useState(value===''? '': String(value));
-  const ch = Math.min(5, Math.max(val.length || 1, 1));
   return (
     <input
       value={val}
       inputMode="numeric"
-      style={{ width: ch + 'ch' }}
       onChange={e=> setVal(e.target.value.replace(/[^0-9]/g,''))}
       onBlur={()=>{ if(val===''){ onSave(''); return;} const num=parseInt(val,10); if(!isNaN(num)) onSave(num); else setVal(''); }}
-      className="text-center rounded border border-slate-600 bg-slate-900 text-white px-1 py-[3px] text-[10px] md:text-[11px] focus:outline-none focus:ring focus:ring-indigo-500"
+      className="w-full text-center rounded border border-slate-600 bg-slate-900 text-white px-1 py-[4px] text-[11px] focus:outline-none focus:ring focus:ring-indigo-500"
       placeholder="-"
     />
   );
