@@ -20,7 +20,7 @@ export class BackfillMissingTenantDomains20250907T2300 implements MigrationInter
     const tenants: { id: string; code: string }[] = await queryRunner.query(`
       SELECT t.id, t.code
       FROM tenant t
-      LEFT JOIN tenant_domain d ON d.tenant_id = t.id
+      LEFT JOIN tenant_domain d ON d."tenantId" = t.id
       GROUP BY t.id
       HAVING COUNT(d.id) = 0
     `);
@@ -28,14 +28,13 @@ export class BackfillMissingTenantDomains20250907T2300 implements MigrationInter
     for (const t of tenants) {
       const domain = `${t.code}.${base}`;
       await queryRunner.query(
-        `INSERT INTO tenant_domain (id, tenant_id, domain, type, is_primary, is_verified, created_at, updated_at)
+        `INSERT INTO tenant_domain (id, "tenantId", domain, type, "isPrimary", "isVerified", "createdAt", "updatedAt")
          VALUES (gen_random_uuid(), $1, $2, 'subdomain', true, true, NOW(), NOW())
          ON CONFLICT DO NOTHING` as any,
         [t.id, domain],
       );
-      // Clear other primaries just in case (though none should exist)
       await queryRunner.query(
-        `UPDATE tenant_domain SET is_primary = false WHERE tenant_id = $1 AND domain != $2 AND is_primary = true`,
+        `UPDATE tenant_domain SET "isPrimary" = false WHERE "tenantId" = $1 AND domain != $2 AND "isPrimary" = true`,
         [t.id, domain],
       );
     }
