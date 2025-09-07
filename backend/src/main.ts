@@ -63,11 +63,19 @@ async function bootstrap() {
     exclude: [{ path: 'client/api/openapi.json', method: RequestMethod.GET }],
   });
 
-  // ✅ تفعيل CORS باستخدام Nest مباشرة لدعم نطاق wtn4.com وكافة الساب دومينات
-  // ملاحظة: أضف لاحقاً dev origins عند الحاجة (localhost)
+  // ✅ تفعيل CORS مع دالة ديناميكية للسماح بجميع الساب دومينات لـ wtn4.com + الجذر
+  // يسمح لاحقاً بإضافة نطاقات تطوير (localhost) لو لزم
   app.enableCors({
-    origin: [ 'https://wtn4.com', /\.wtn4\.com$/ ],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // requests like curl or same-origin
+      const allowed = /^(https?):\/\/([a-z0-9-]+)\.wtn4\.com$/i.test(origin) || /^(https?):\/\/wtn4\.com$/i.test(origin);
+      if (allowed) return callback(null, true);
+      return callback(new Error('CORS: Origin not allowed'), false);
+    },
     credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization,X-Tenant-Host,X-Requested-With,Accept,Origin',
+    exposedHeaders: 'Content-Disposition'
   });
 
   // 🔁 دعم الوصول إلى مسارات Client API بدون البادئة /api عبر الدومين المركزي
