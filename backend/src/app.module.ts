@@ -44,6 +44,7 @@ import { SchemaGuardService } from './infrastructure/schema/schema-guard.service
 import { DeveloperNote } from './dev/developer-note.entity';
 import { DeveloperNotesService } from './dev/developer-notes.service';
 import { DeveloperNotesController } from './dev/developer-notes.controller';
+import { MuhammedModule } from './muhammed/muhammed.module';
 
 @Module({
   imports: [
@@ -143,6 +144,7 @@ import { DeveloperNotesController } from './dev/developer-notes.controller';
   ClientApiModule,
   ErrorsModule,
   DevToolsModule,
+  MuhammedModule,
   // Repositories needed directly in AppModule-level controllers (e.g., AdminCountsController)
   // Include ProductOrder + Deposit so their repositories can be injected.
   TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot, ProductOrder, Deposit, DeveloperNote]),

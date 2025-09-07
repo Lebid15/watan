@@ -7,6 +7,7 @@ export enum UserRole {
   DISTRIBUTOR = 'distributor',
   USER = 'user',
   ADMIN = 'admin', // لو تحتاج دور إداري عام
+  MUHAMMED = 'muhammed', // دور خاص لمستخدم واحد لمسار مخصص
 }
 
 /**
