@@ -56,12 +56,13 @@ async function main() {
 
   // Upsert admin user
   let admin = await users.findOne({ where:{ email: args.adminEmail } });
+  const targetRole = 'tenant_owner';
   if (!admin) {
-    admin = users.create({ id: randomUUID(), email: args.adminEmail, password: await bcrypt.hash(args.adminPass,10), role:'ADMIN', tenantId: (tenant as any).id } as any as User);
+    admin = users.create({ id: randomUUID(), email: args.adminEmail, password: await bcrypt.hash(args.adminPass,10), role: targetRole, tenantId: (tenant as any).id } as any as User);
     admin = await users.save(admin as any);
   } else {
     if (!(admin as any).tenantId) { (admin as any).tenantId = (tenant as any).id; }
-    if ((admin as any).role !== 'ADMIN') (admin as any).role = 'ADMIN';
+    if ((admin as any).role !== targetRole) (admin as any).role = targetRole;
     admin.password = await bcrypt.hash(args.adminPass,10); // ensure known pass
     admin = await users.save(admin as any);
   }
