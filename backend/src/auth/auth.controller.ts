@@ -93,7 +93,8 @@ export class AuthController {
     const { access_token } = await this.authService.login(user, tenantIdFromContext);
 
     // تعيين كوكي (دعم الواجهة بالكوكي أو بالـ Bearer). Domain من البيئة إن وجد.
-    const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.syrz1.com';
+  // Default updated to new base domain (.wtn4.com); override via AUTH_COOKIE_DOMAIN if needed
+  const cookieDomain = process.env.AUTH_COOKIE_DOMAIN || '.wtn4.com';
     try {
       res.cookie('auth', access_token, {
         httpOnly: true,

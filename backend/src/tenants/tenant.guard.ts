@@ -15,6 +15,8 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/auth\/request-email-verification$/,
   /^\/api\/auth\/verify-email$/,
   /^\/api\/auth\/bootstrap-developer$/,
+  // Diagnostic tenant resolution endpoint (explicitly public, no auth / tenant required)
+  /^\/(api\/)?tenant\/current$/,
   // السماح بإصدار dev-token بدون مصادقة مسبقة (محمي بالسر DEV_ISSUE_SECRET) - دعم مع وبدون البادئة /api
   /^\/auth\/dev-token$/,
   /^\/api\/auth\/dev-token$/,
