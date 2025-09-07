@@ -14,6 +14,14 @@ export class BackfillUserTenantIdFallback20250906T0115 implements MigrationInter
   name = 'BackfillUserTenantIdFallback20250906T0115';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    const tables = await queryRunner.query(`SELECT table_name FROM information_schema.tables WHERE table_name IN ('users','tenant','tenant_domain')`);
+    const haveUsers = tables.some((r: any) => r.table_name === 'users');
+    const haveTenant = tables.some((r: any) => r.table_name === 'tenant');
+    const haveTenantDomain = tables.some((r: any) => r.table_name === 'tenant_domain');
+    if (!haveUsers || !haveTenant || !haveTenantDomain) {
+      console.log('[Migration][FALLBACK] Skipping (core tables not all present yet).');
+      return;
+    }
     const nullUsers: Array<{ id: string; email: string }> = await queryRunner.query(`SELECT id, email FROM users WHERE "tenantId" IS NULL`);
     if (!nullUsers.length) {
       return; // nothing to do

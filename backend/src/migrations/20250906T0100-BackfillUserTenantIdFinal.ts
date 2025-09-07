@@ -9,6 +9,15 @@ export class BackfillUserTenantIdFinal20250906T0100 implements MigrationInterfac
   name = 'BackfillUserTenantIdFinal20250906T0100';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Skip entirely if core tables not yet created (fresh DB scenario). This makes the migration idempotent & safe.
+    const tablesExist = await queryRunner.query(`SELECT table_name FROM information_schema.tables WHERE table_name IN ('users','tenant','tenant_domain')`);
+    const haveUsers = tablesExist.some((r: any) => r.table_name === 'users');
+    const haveTenant = tablesExist.some((r: any) => r.table_name === 'tenant');
+    const haveTenantDomain = tablesExist.some((r: any) => r.table_name === 'tenant_domain');
+    if (!haveUsers || !haveTenant || !haveTenantDomain) {
+      console.log('[Migration][FINAL] Skipping backfill (required tables missing yet).');
+      return; // Wait until schema established in environments where ordering/glob differences occur.
+    }
     // Derive base domain (fallback to env PUBLIC_TENANT_BASE_DOMAIN or 'example.com')
     const base = (process.env.PUBLIC_TENANT_BASE_DOMAIN || 'example.com').trim().toLowerCase();
     const primaryDomain = `sham.${base}`;
