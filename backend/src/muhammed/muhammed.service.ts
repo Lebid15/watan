@@ -125,4 +125,9 @@ export class MuhammedService {
   async getExport(id: string) {
     return this.exportsRepo.findOne({ where: { id } });
   }
+
+  async deleteExport(id: string) {
+    await this.exportsRepo.delete(id);
+    return { ok: true };
+  }
 }

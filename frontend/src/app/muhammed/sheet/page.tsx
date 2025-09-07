@@ -92,13 +92,13 @@ export default function MuhSheetPage() {
       <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
         <div className="flex items-center gap-2">
           <label className="text-sm text-slate-200">كل 1 دولار =</label>
-          <input defaultValue={data?.rate ?? 0} onBlur={e=>{ const v= parseFloat(e.target.value)||0; if(v>0) saveRate(v); }} className="w-28 rounded border border-slate-600 bg-slate-900 text-slate-100 px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-indigo-500" type="number" step="0.0001"/>
+          <input defaultValue={data?.rate ?? 0} onBlur={e=>{ const v= parseFloat(e.target.value)||0; if(v>0) saveRate(v); }} className="w-28 rounded border border-slate-600 bg-white text-black px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-indigo-500" type="number" step="0.0001"/>
           {savingField==='rate' && <span className="text-xs text-slate-400">حفظ...</span>}
         </div>
         <button onClick={()=>setShowDialog(true)} className="rounded bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-2 shadow">إضافة جهة جديدة</button>
       </div>
 
-    <div className="overflow-x-auto rounded border border-slate-700 bg-slate-800 shadow-sm">
+  <div className="overflow-x-auto rounded border border-slate-700 bg-slate-800 shadow-sm text-black">
         <table className="min-w-full text-sm rtl:text-right">
       <thead className="bg-slate-700/60 text-slate-200">
             <tr>
@@ -156,17 +156,18 @@ export default function MuhSheetPage() {
         </table>
       </div>
 
-  <div className="rounded border border-slate-700 p-4 bg-slate-800 flex flex-col gap-2 text-sm shadow-sm">
-  <div>المجموع الكلي بالدولار: <span className="font-mono font-semibold text-slate-100">{data.sums.total_usd.toFixed(4)}</span> <button onClick={createExport} className="ml-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1">تصدير</button></div>
+  <div className="rounded border border-slate-700 p-4 bg-slate-800 flex flex-col gap-3 text-sm shadow-sm">
+  <div>المجموع الكلي بالدولار: <span className="font-mono font-semibold text-slate-100">{data.sums.total_usd.toFixed(4)}</span></div>
   <div>آخر جرد: <span className="font-mono text-slate-300">{data.lastExport ? (+data.lastExport.total_usd_at_export).toFixed(4) : '—'}</span></div>
   <div>الربح: <span className={`font-mono ${(data.profit||0) >=0 ? 'text-green-400':'text-red-400'}`}>{data.profit!=null? data.profit.toFixed(4):'—'}</span></div>
+  <div><button onClick={createExport} className="rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2">تصدير</button></div>
       </div>
 
       {showDialog && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-40">
           <div className="bg-slate-800 border border-slate-700 rounded shadow-lg w-full max-w-sm p-4 space-y-4 text-slate-100">
             <h2 className="font-semibold text-slate-100 text-sm">إضافة جهة جديدة</h2>
-            <input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} placeholder="اسم الجهة" className="w-full rounded border border-slate-600 bg-slate-900 text-slate-100 placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring focus:ring-indigo-500" />
+            <input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} placeholder="اسم الجهة" className="w-full rounded border border-slate-600 bg-white text-black placeholder-slate-500 px-3 py-2 text-sm focus:outline-none focus:ring focus:ring-indigo-500" />
             <div className="flex justify-end gap-2 text-sm">
               <button onClick={()=>setShowDialog(false)} className="px-3 py-1 rounded border border-slate-600 bg-slate-900 hover:bg-slate-700">إلغاء</button>
               <button disabled={adding} onClick={addParty} className="px-4 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50">حفظ</button>
@@ -180,13 +181,13 @@ export default function MuhSheetPage() {
 
 function EditableText({ value, onSave, innerRef }:{ value:string; onSave:(v:string)=>void; innerRef?:(el:HTMLInputElement|null)=>void }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
-  return <input ref={innerRef} value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val.trim()||value); }} className={`w-full rounded border px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-slate-50'}`} />;
+  return <input ref={innerRef} value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val.trim()||value); }} className={`w-full rounded border px-2 py-1 text-sm text-black focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-white'}`} />;
 }
 function EditableNumber({ value, onSave }:{ value:number; onSave:(v:number)=>void }){
   const [val,setVal]=useState(String(value)); const [focus,setFocus]=useState(false);
-  return <input inputMode="decimal" value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); const num=parseFloat(val); if(!isNaN(num) && num!==value) onSave(num); else setVal(String(value)); }} className={`w-32 rounded border px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-blue-500 text-end font-mono ${focus?'bg-white':'bg-slate-50'}`} />;
+  return <input inputMode="decimal" value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); const num=parseFloat(val); if(!isNaN(num) && num!==value) onSave(num); else setVal(String(value)); }} className={`w-32 rounded border px-2 py-1 text-sm text-black focus:outline-none focus:ring focus:ring-blue-500 text-end font-mono ${focus?'bg-white':'bg-white'}`} />;
 }
 function EditableTextarea({ value, onSave }:{ value:string; onSave:(v:string)=>void }){
   const [val,setVal]=useState(value); const [focus,setFocus]=useState(false);
-  return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={2} className={`w-full resize-none rounded border px-2 py-1 text-xs focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-slate-50'}`} />;
+  return <textarea value={val} onFocus={()=>setFocus(true)} onChange={e=>setVal(e.target.value)} onBlur={()=>{ setFocus(false); if(val!==value) onSave(val); }} rows={2} className={`w-full resize-none rounded border px-2 py-1 text-xs text-black focus:outline-none focus:ring focus:ring-blue-500 ${focus?'bg-white':'bg-white'}`} />;
 }

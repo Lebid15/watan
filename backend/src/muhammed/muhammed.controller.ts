@@ -64,4 +64,9 @@ export class MuhammedController {
   async getExport(@Param('id') id: string) {
     return this.service.getExport(id);
   }
+
+  @Delete('exports/:id')
+  async deleteExport(@Param('id') id: string) {
+    return this.service.deleteExport(id);
+  }
 }

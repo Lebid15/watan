@@ -16,6 +16,7 @@ export default function MuhExportsPage(){
   const [from,setFrom]=useState('');
   const [to,setTo]=useState('');
   const [toast,setToast]=useState<{msg:string,type:'ok'|'err'}|null>(null);
+  const [deleting,setDeleting]=useState<string|null>(null);
 
   function flash(msg:string,type:'ok'|'err'='ok'){ setToast({msg,type}); setTimeout(()=>setToast(null),2500); }
 
@@ -52,6 +53,7 @@ export default function MuhExportsPage(){
                 <th className="p-2 font-medium">المجموع بالدولار</th>
                 <th className="p-2 font-medium">سعر الصرف</th>
                 <th className="p-2 font-medium">تفاصيل</th>
+                <th className="p-2 font-medium text-center">حذف</th>
               </tr>
             </thead>
             <tbody>
@@ -61,9 +63,12 @@ export default function MuhExportsPage(){
                   <td className="p-2 font-mono">{(+r.total_usd_at_export).toFixed(4)}</td>
                   <td className="p-2 font-mono">{(+r.usd_to_try_at_export).toFixed(4)}</td>
                   <td className="p-2"><a href={`/muhammed/exports/${r.id}`} className="text-indigo-300 hover:text-white text-xs underline">عرض</a></td>
+                  <td className="p-2 text-center">
+                    <button disabled={deleting===r.id} onClick={async()=>{ if(!confirm('حذف الجرد؟')) return; setDeleting(r.id); try { await api(`/api/muhammed/exports/${r.id}`, { method:'DELETE'}); setRows(rs=>rs.filter(x=>x.id!==r.id)); flash('تم الحذف'); } catch(e){ flash('فشل','err'); } finally { setDeleting(null);} }} className="text-xs rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white px-2 py-1">حذف</button>
+                  </td>
                 </tr>
               ))}
-              {!rows.length && <tr><td className="p-4 text-center text-slate-400 text-sm" colSpan={4}>لا سجلات</td></tr>}
+              {!rows.length && <tr><td className="p-4 text-center text-slate-400 text-sm" colSpan={5}>لا سجلات</td></tr>}
             </tbody>
           </table>
         </div>
