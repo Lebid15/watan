@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiTrash2 } from 'react-icons/fi';
 
 interface PartyRow { id: string; name: string; debt_try: number; debt_usd: number; note?: string | null; updated_at: string; display_order?: number | null; }
 interface SheetData { rate: number; parties: PartyRow[]; sums: { debt_try: number; debt_usd: number; total_usd: number }; lastExport?: any; profit?: number | null; }
@@ -88,7 +88,7 @@ export default function MuhSheetPage() {
   if (!data) return null; // safeguards (should have returned earlier if null)
 
   return (
-  <div className="space-y-3 text-[12px] scale-[0.95] md:scale-100 origin-top">
+  <div className="space-y-3 text-[12px] scale-[0.92] md:scale-100 origin-top">
       {toast && <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded shadow text-sm ${toast.type==='ok'?'bg-green-600 text-white':'bg-red-600 text-white'}`}>{toast.msg}</div>}
 
       <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
@@ -101,29 +101,25 @@ export default function MuhSheetPage() {
       </div>
 
   <div className="rounded border border-slate-700 bg-slate-800 shadow-sm text-black">
-        <table className="min-w-full rtl:text-right text-[11px] md:text-[11px] table-fixed">
+    <table className="min-w-full rtl:text-right text-[11px] md:text-[11px] table-fixed">
           <colgroup>
             <col className="w-[140px] md:w-[180px]" />
             <col className="w-[120px] md:w-[140px]" />
             <col className="w-[110px] md:w-[130px]" />
-            <col className="w-[160px] md:w-[220px]" />
-            <col className="w-[125px] md:w-[140px]" />
-            <col className="w-[60px]" />
+      <col className="w-[80px] md:w-[90px]" />
           </colgroup>
       <thead className="bg-slate-700/60 text-slate-200">
             <tr>
               <th className="p-2 font-medium">الجهة</th>
               <th className="p-2 font-medium">دين (TRY)</th>
               <th className="p-2 font-medium">دين (USD)</th>
-              <th className="p-2 font-medium">ملاحظة</th>
-              <th className="p-2 font-medium text-center">إجراءات</th>
               <th className="p-2 font-medium text-center">#</th>
             </tr>
           </thead>
           <tbody>
             {data.parties.length===0 && (
               <tr>
-                <td colSpan={6} className="p-4 text-center text-[11px] text-gray-500">لا توجد جهات بعد</td>
+                <td colSpan={5} className="p-4 text-center text-[11px] text-gray-500">لا توجد جهات بعد</td>
               </tr>
             )}
             {data.parties.map(p=>{
@@ -144,29 +140,21 @@ export default function MuhSheetPage() {
                   <td className={`p-1 align-top font-mono ${negUsd?'text-red-500':'text-slate-100'}`}> 
                     <EditableNumber value={p.debt_usd} onSave={val=> saveParty(p.id,{ debt_usd: val })} />
                   </td>
-                  <td className="p-1 align-top w-60">
-                    <EditableTextarea value={p.note||''} onSave={val=> saveParty(p.id,{ note: val })} />
-                  </td>
-                  <td className="p-1 text-[10px] text-gray-500 whitespace-nowrap align-top">
-                    <div className="flex gap-1 items-center justify-center">
-                      <button title="تحرير" onClick={()=> nameRefs.current[p.id]?.focus()} className="h-6 w-6 flex items-center justify-center rounded border border-slate-600 bg-slate-900 hover:bg-slate-700 text-slate-200">
-                        <FiEdit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button title="حذف" disabled={deletingId===p.id} onClick={()=>deleteParty(p.id)} className="h-6 w-6 flex items-center justify-center rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white">
-                        <FiTrash2 className="w-3.5 h-3.5" />
+                  <td className="p-1 align-top text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <OrderEditor value={p.display_order ?? ''} onSave={(val)=>{
+                        if(val==='') return saveParty(p.id,{ display_order: null });
+                        const num = typeof val === 'number' ? val : parseInt(String(val),10);
+                        if(!isNaN(num)) saveParty(p.id,{ display_order: num });
+                      }} />
+                      <button title="حذف" disabled={deletingId===p.id} onClick={()=>deleteParty(p.id)} className="h-5 w-5 flex items-center justify-center rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white">
+                        <FiTrash2 className="w-3 h-3" />
                       </button>
                     </div>
-                    <div className="h-4 mt-1 text-center">
-                      {savingField?.startsWith(p.id)&& <span className="text-amber-600">حفظ...</span>}
-                      {deletingId===p.id && <span className="text-red-600">جاري...</span>}
+                    <div className="h-3 mt-0.5 text-center">
+                      {savingField?.startsWith(p.id)&& <span className="text-amber-600 text-[9px]">حفظ...</span>}
+                      {deletingId===p.id && <span className="text-red-600 text-[9px]">جاري...</span>}
                     </div>
-                  </td>
-                  <td className="p-1 align-top text-center w-10">
-                    <OrderEditor value={p.display_order ?? ''} onSave={(val)=>{
-                      if(val==='') return saveParty(p.id,{ display_order: null });
-                      const num = typeof val === 'number' ? val : parseInt(String(val),10);
-                      if(!isNaN(num)) saveParty(p.id,{ display_order: num });
-                    }} />
                   </td>
                 </tr>
               );
@@ -177,7 +165,6 @@ export default function MuhSheetPage() {
               <td className="p-2">المجاميع</td>
               <td className="p-2 font-mono">{data.sums.debt_try.toFixed(2)}</td>
               <td className="p-2 font-mono">{data.sums.debt_usd.toFixed(2)}</td>
-              <td className="p-2" colSpan={2}></td>
               <td className="p-2"></td>
             </tr>
           </tfoot>
