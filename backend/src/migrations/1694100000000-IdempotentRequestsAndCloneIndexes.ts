@@ -22,7 +22,8 @@ export class IdempotentRequestsAndCloneIndexes1694100000000 implements Migration
     }));
 
     // unique partial index for (tenant_id, source_global_product_id)
-    await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "uq_product_clone_once" ON products (tenant_id, source_global_product_id) WHERE source_global_product_id IS NOT NULL`);
+  // Table name is singular 'product' in existing schema
+  await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "uq_product_clone_once" ON product (tenant_id, source_global_product_id) WHERE source_global_product_id IS NOT NULL`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
