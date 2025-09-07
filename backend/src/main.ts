@@ -63,43 +63,11 @@ async function bootstrap() {
     exclude: [{ path: 'client/api/openapi.json', method: RequestMethod.GET }],
   });
 
-  // ✅ تفعيل CORS مبكر جدًا (قبل أي middlewares أخرى) مع دعم *.syrz1.com + localhost للتطوير
-  const devOrigin = 'http://localhost:3000';
-  function originAllowed(origin?: string | null): boolean {
-    if (!origin) return true; // طلبات داخلية
-    if (origin === devOrigin) return true;
-    // قبول أي https://<sub>.syrz1.com أو الجذر نفسه
-    if (/^https:\/\/(?:[a-zA-Z0-9-]+\.)?syrz1\.com$/i.test(origin)) return true;
-    return false;
-  }
-  const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE, OPTIONS';
-  const ALLOWED_HEADERS = 'Content-Type, Authorization, X-Tenant-Host, X-Tenant-Id, X-Upload-Correlation, Accept';
-
-  // Middleware يدوي لضبط هيدرات CORS + Vary: Origin لكل الردود (نجاح أو خطأ)
-  app.use((req: any, res: any, next: any) => {
-    const origin = req.headers.origin as string | undefined;
-    if (originAllowed(origin)) {
-      if (origin) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        console.log('[CORS] allow', origin);
-      }
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      res.setHeader('Vary', 'Origin');
-    } else if (origin) {
-      console.warn('[CORS] reject', origin);
-    }
-    if (req.method === 'OPTIONS') {
-      if (originAllowed(origin)) {
-        if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-        res.setHeader('Access-Control-Allow-Methods', ALLOWED_METHODS);
-        res.setHeader('Access-Control-Allow-Headers', ALLOWED_HEADERS);
-        res.setHeader('Vary', 'Origin');
-        res.setHeader('Access-Control-Max-Age', '600');
-      }
-      return res.status(204).end();
-    }
-    next();
+  // ✅ تفعيل CORS باستخدام Nest مباشرة لدعم نطاق wtn4.com وكافة الساب دومينات
+  // ملاحظة: أضف لاحقاً dev origins عند الحاجة (localhost)
+  app.enableCors({
+    origin: [ 'https://wtn4.com', /\.wtn4\.com$/ ],
+    credentials: true,
   });
 
   // 🔁 دعم الوصول إلى مسارات Client API بدون البادئة /api عبر الدومين المركزي
