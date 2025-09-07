@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 
 interface PartyRow { id: string; name: string; debt_try: number; debt_usd: number; note?: string | null; updated_at: string; display_order?: number | null; }
 interface SheetData { rate: number; parties: PartyRow[]; sums: { debt_try: number; debt_usd: number; total_usd: number }; lastExport?: any; profit?: number | null; }
@@ -87,7 +88,7 @@ export default function MuhSheetPage() {
   if (!data) return null; // safeguards (should have returned earlier if null)
 
   return (
-    <div className="space-y-3 text-[12px]">
+  <div className="space-y-3 text-[12px] scale-[0.95] md:scale-100 origin-top">
       {toast && <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded shadow text-sm ${toast.type==='ok'?'bg-green-600 text-white':'bg-red-600 text-white'}`}>{toast.msg}</div>}
 
       <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
@@ -147,9 +148,13 @@ export default function MuhSheetPage() {
                     <EditableTextarea value={p.note||''} onSave={val=> saveParty(p.id,{ note: val })} />
                   </td>
                   <td className="p-1 text-[10px] text-gray-500 whitespace-nowrap align-top">
-                    <div className="flex gap-2 items-center justify-center">
-                      <button onClick={()=> nameRefs.current[p.id]?.focus()} className="px-2 py-[3px] rounded border border-slate-600 bg-slate-900 hover:bg-slate-700 text-[10px] text-slate-200">تحرير</button>
-                      <button disabled={deletingId===p.id} onClick={()=>deleteParty(p.id)} className="px-2 py-[3px] rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-[10px]">حذف</button>
+                    <div className="flex gap-1 items-center justify-center">
+                      <button title="تحرير" onClick={()=> nameRefs.current[p.id]?.focus()} className="h-6 w-6 flex items-center justify-center rounded border border-slate-600 bg-slate-900 hover:bg-slate-700 text-slate-200">
+                        <FiEdit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button title="حذف" disabled={deletingId===p.id} onClick={()=>deleteParty(p.id)} className="h-6 w-6 flex items-center justify-center rounded bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white">
+                        <FiTrash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                     <div className="h-4 mt-1 text-center">
                       {savingField?.startsWith(p.id)&& <span className="text-amber-600">حفظ...</span>}
