@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
 import { useToast } from '@/context/ToastContext';
@@ -81,9 +81,11 @@ export default function AdminIntegrationsPage() {
     load();
   }, []);
 
-  // جلب الرصيد لكل تكامل تلقائيًا بعد تحميل القائمة
+  // جلب الرصيد لكل تكامل مرة واحدة فقط بعد أول تحميل (منع التكرار السريع)
+  const fetchedBalancesRef = useRef(false);
   useEffect(() => {
-    if (items.length > 0) {
+    if (!fetchedBalancesRef.current && items.length > 0) {
+      fetchedBalancesRef.current = true;
       items.forEach((it) => it.enabled !== false && handleRefreshBalance(it.id));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

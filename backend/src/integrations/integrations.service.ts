@@ -188,12 +188,11 @@ export class IntegrationsService {
       if (msg === 'INTEGRATION_DISABLED') {
         throw new BadRequestException('INTEGRATION_DISABLED');
       }
-      if (/requires (baseUrl|apiToken)/i.test(msg)) {
-        // أعد استجابة ناعمة بدل 500 حتى يتمكن الواجهة من عرض رسالة إعداد ناقصة
-        return { balance: 0, missingConfig: true, message: msg } as any;
+      if (/requires (baseUrl|apiToken|kod|sifre)/i.test(msg)) {
+        return { balance: null, missingConfig: true, message: msg } as any;
       }
-      // مرّر الأخطاء الأخرى (ستُسجَّل كلوج 500 للمزيد من التحقيق)
-      throw e;
+      console.error('[INTEGRATIONS][refreshBalance] provider error', { id: cfg.id, provider: cfg.provider, msg });
+      return { balance: null, error: 'FETCH_FAILED', message: msg.slice(0, 180) } as any;
     }
   }
 

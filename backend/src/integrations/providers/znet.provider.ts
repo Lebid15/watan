@@ -30,8 +30,13 @@ export class ZnetProvider implements ProviderDriver {
   }
 
   async getBalance(cfg: IntegrationConfig): Promise<{ balance: number }> {
-    const data = await this.client.getRaw(this.baseUrl(cfg), 'bakiye_kontrol', this.authQuery(cfg));
-    return ZnetParser.parseBalance(data);
+    try {
+      const data = await this.client.getRaw(this.baseUrl(cfg), 'bakiye_kontrol', this.authQuery(cfg));
+      return ZnetParser.parseBalance(data);
+    } catch (e: any) {
+      this.logger.error('[Znet] getBalance failed: ' + (e?.message || e));
+      return { balance: 0 };
+    }
   }
 
   async listProducts(cfg: IntegrationConfig): Promise<NormalizedProduct[]> {
