@@ -17,18 +17,32 @@ export class ClientApiController {
 
   @Get('profile')
   profile(@Req() req: any) {
-    const u = req.clientApiUser;
-    // Currency resolution priority:
-    // 1. preferredCurrencyCode (explicit user preference)
-    // 2. linked currency relation code (if any)
-    // 3. fallback default (system-wide) -> 'USD' (can be later externalized)
-    const currencyCode = u.preferredCurrencyCode || u.currency?.code || 'USD';
-    return {
-      username: u.username,
-      email: u.email,
-      balance: Number(u.balance),
-      currency: currencyCode,
-    };
+    try {
+      const u = req.clientApiUser;
+      if (!u) throw new Error('profile_missing_user_ctx');
+      // Normalize balance (TypeORM decimal => string sometimes)
+      const rawBal: any = u.balance;
+      const balanceNum = typeof rawBal === 'number' ? rawBal : Number(rawBal);
+      if (Number.isNaN(balanceNum)) throw new Error('profile_balance_nan');
+      // Currency resolution priority:
+      // 1. preferredCurrencyCode (explicit user preference)
+      // 2. linked currency relation code (if any)
+      // 3. fallback default (system-wide) -> 'USD'
+      const currencyCode = u.preferredCurrencyCode || (u.currency && u.currency.code) || 'USD';
+      return {
+        username: u.username || null,
+        email: u.email || null,
+        balance: balanceNum,
+        currency: currencyCode,
+      };
+    } catch (e: any) {
+      // Surface root cause in logs so we stop getting generic {code:500,"Unknown error"}
+      // This will still be mapped by the global filter but with stack trace available in container logs.
+      // Remove after diagnosing production issue.
+      // eslint-disable-next-line no-console
+      console.error('[CLIENT_API][PROFILE][ERROR]', { msg: e?.message, stack: e?.stack?.split('\n').slice(0,4).join(' | ') });
+      throw e; // rethrow so filter handles mapping
+    }
   }
 
   @Get('products')
