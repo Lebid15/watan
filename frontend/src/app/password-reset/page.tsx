@@ -15,14 +15,14 @@ export default function PasswordResetPage() {
       <h1 className="text-xl font-semibold mb-4">إعادة تعيين كلمة المرور</h1>
       <div className="mb-6">
         <label className="block text-sm mb-1">البريد أو اسم المستخدم</label>
-        <input value={email} onChange={e=>setEmail(e.target.value)} className="border w-full rounded px-3 py-2 text-sm" placeholder="example@mail.com" />
+  <input value={email} onChange={e=>setEmail(e.target.value)} className="border w-full rounded px-3 py-2 text-sm text-black placeholder-gray-400" placeholder="example@mail.com" />
         <button disabled={loading || !email || requested} onClick={async ()=>{ try { await request(email); show('تم إرسال الطلب (تحقق من السجل مؤقتاً)'); } catch(e:any){ show(e.message || 'فشل'); } }} className="mt-3 bg-sky-600 text-white px-4 py-2 rounded text-sm disabled:opacity-60">{requested? 'تم الإرسال' : 'طلب رابط إعادة التعيين'}</button>
       </div>
       <div>
         <label className="block text-sm mb-1">رمز إعادة التعيين</label>
-        <input value={token} onChange={e=>setToken(e.target.value)} className="border w-full rounded px-3 py-2 text-sm" />
+  <input value={token} onChange={e=>setToken(e.target.value)} className="border w-full rounded px-3 py-2 text-sm text-black placeholder-gray-400" />
         <label className="block text-sm mb-1 mt-4">كلمة مرور جديدة</label>
-        <input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} className="border w-full rounded px-3 py-2 text-sm" />
+  <input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} className="border w-full rounded px-3 py-2 text-sm text-black placeholder-gray-400" />
         <button disabled={loading || !token || !newPassword || completed} onClick={async ()=>{ try { await reset(token, newPassword); show('تم التغيير'); } catch(e:any){ show(e.message || 'فشل'); } }} className="mt-3 bg-green-600 text-white px-4 py-2 rounded text-sm disabled:opacity-60">تعيين كلمة مرور</button>
       </div>
       {completed && <div className="mt-4 text-green-700 text-sm">تم تعيين كلمة المرور ✅</div>}
