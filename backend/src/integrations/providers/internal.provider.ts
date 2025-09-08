@@ -48,6 +48,7 @@ export class InternalProvider implements ProviderDriver {
         balance: 0,
         error: 'FETCH_FAILED',
         message: e?.response?.data?.message || e?.message || 'failed',
+        hint: 'internal-provider-profile-request',
       } as any;
     }
   }
