@@ -400,6 +400,10 @@ export class AuthController {
         try { await this.audit.log('password_reset_fallback_matched_any_tenant', { targetUserId: user.id, targetTenantId: user.tenantId ?? null }); } catch {}
       }
     }
+    // Diagnostic logging (temporary): whether a user was matched
+    try {
+      console.log('[PWDRESET] request emailOrUsername=', body.emailOrUsername, 'matchedUser=', user ? user.id : 'none', 'matchedTenant=', user ? (user.tenantId ?? 'null') : 'n/a');
+    } catch {}
 
     if (user) {
       const { raw, entity } = await this.tokens.create(
