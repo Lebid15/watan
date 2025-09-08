@@ -181,7 +181,11 @@ export class IntegrationsService {
     const cfg = await this.get(id, tenantId);
     try {
       const driver = this.driverOf(cfg);
-      const { balance } = await driver.getBalance(this.toConfig(cfg));
+      const res: any = await driver.getBalance(this.toConfig(cfg));
+      const balance = typeof res?.balance === 'number' ? res.balance : null;
+      if (res?.error || res?.missingConfig) {
+        return { balance, error: res.error, missingConfig: res.missingConfig, message: res.message };
+      }
       return { balance };
     } catch (e: any) {
       const msg = String(e?.message || e || 'error');

@@ -113,6 +113,14 @@ export class IntegrationsController {
     return this.svc.refreshBalance(id, tenantId);
   }
 
+  // توافق مع الواجهة القديمة التي تستدعي /:id/balance
+  @Post(':id/balance')
+  balance(@Req() req: any, @Param('id') id: string) {
+    this.assertUuid(id);
+    const tenantId = this.getTenantId(req);
+    return this.svc.refreshBalance(id, tenantId);
+  }
+
   @Post(':id/sync-products')
   sync(@Req() req: any, @Param('id') id: string) {
   this.assertUuid(id);

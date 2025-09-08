@@ -34,8 +34,9 @@ export class ZnetProvider implements ProviderDriver {
       const data = await this.client.getRaw(this.baseUrl(cfg), 'bakiye_kontrol', this.authQuery(cfg));
       return ZnetParser.parseBalance(data);
     } catch (e: any) {
-      this.logger.error('[Znet] getBalance failed: ' + (e?.message || e));
-      return { balance: 0 };
+      const msg = e?.response?.data?.message || e?.message || 'znet balance failed';
+      this.logger.error('[Znet] getBalance failed: ' + msg);
+      return { balance: 0, error: 'FETCH_FAILED', message: msg } as any;
     }
   }
 

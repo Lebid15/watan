@@ -24,7 +24,7 @@ export class InternalProvider implements ProviderDriver {
       const balance = Number(data?.balance ?? data?.data?.balance ?? 0);
       return { balance: isNaN(balance) ? 0 : balance };
     } catch (e: any) {
-      return { balance: 0 }; // Fail-soft
+  return { balance: 0, error: 'FETCH_FAILED', message: e?.response?.data?.message || e?.message || 'failed' } as any;
     }
   }
 
