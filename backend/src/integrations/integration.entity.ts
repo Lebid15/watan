@@ -49,6 +49,13 @@ export class Integration {
   @Column({ type: 'boolean', default: true })
   enabled!: boolean;
 
+  // آخر رصيد تم جلبه (يحدث عند refreshBalance)
+  @Column({ type: 'numeric', precision: 18, scale: 3, nullable: true })
+  balance?: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  balanceUpdatedAt?: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

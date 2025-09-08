@@ -186,6 +186,12 @@ export class IntegrationsService {
       if (res?.error || res?.missingConfig) {
         return { balance, error: res.error, missingConfig: res.missingConfig, message: res.message };
       }
+      if (balance !== null) {
+        // persist cached balance
+        (cfg as any).balance = balance;
+        (cfg as any).balanceUpdatedAt = new Date();
+        try { await this.integrationRepo.save(cfg); } catch (e) { console.error('[INTEGRATIONS][refreshBalance][CACHE_FAIL]', { id: cfg.id, err: (e as any)?.message }); }
+      }
       return { balance };
     } catch (e: any) {
       const msg = String(e?.message || e || 'error');
@@ -534,7 +540,12 @@ export class IntegrationsService {
       sifre?: string;
     },
   ) {
-    const cfg = await this.get(id, tenantId);
+    const cfg = await this.get(id, tenantId).catch(e => {
+      if (e?.message === 'Integration not found') {
+        console.error('[INTEGRATIONS][UPDATE][NOT_FOUND]', { id, tenantId, reason: 'not_found_for_tenant_or_scope' });
+      }
+      throw e;
+    });
     Object.assign(cfg, dto);
     return this.integrationRepo.save(cfg);
   }
