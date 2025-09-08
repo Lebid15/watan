@@ -579,9 +579,13 @@ export class ProductsService {
       throw new ConflictException('SOURCE_DUPLICATE_PACKAGE_CODES');
     }
 
-  // نحضّر مجموعة الأكواد المستخدمة في التينانت الهدف لتجنب 409
-  const existingTenantPackages = await this.packagesRepo.find({ where: { tenantId: targetTenantId } as any, select: ['publicCode'] as any });
-  const usedCodes = new Set<string>(existingTenantPackages.filter(e => e.publicCode != null).map(e => String(e.publicCode)));
+    // نحضّر مجموعة الأكواد المستخدمة عالميًا لأن القيد الحالي ما زال عالميًا على publicCode (index: ux_product_packages_public_code)
+    // لاحقًا يمكن تقليل ذلك إلى نطاق المنتج فقط عند تعديل القيد.
+    const existingGlobalCodesRaw = await this.packagesRepo.createQueryBuilder('pp')
+      .select('pp.publicCode', 'publicCode')
+      .where('pp.publicCode IS NOT NULL')
+      .getRawMany();
+    const usedCodes = new Set<string>(existingGlobalCodesRaw.map(r => String(r.publicCode)));
   const remap: Record<string, number> = {}; // original -> new
 
     // توليد اسم المنتج الجديد مع محاولة فض تعارض الأسماء
