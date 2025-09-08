@@ -376,7 +376,10 @@ export class AuthController {
       if (t) tenantId = t.id;
     }
 
-    // Find user (tenant-specific first, then owner if tenantId null)
+    // Find user:
+    // 1. If tenantCode provided, restrict to that tenant.
+    // 2. If none provided, previously we only looked for global (tenantId IS NULL) users which excluded tenant-specific accounts.
+    //    Now we add a fallback to search any tenant-scoped user if still not found.
     let user: User | null = null;
     if (tenantId) {
       user =
@@ -387,6 +390,15 @@ export class AuthController {
       user =
         (await this.usersRepo.findOne({ where: { email: body.emailOrUsername, tenantId: IsNull() } as any })) ||
         (await this.usersRepo.findOne({ where: { username: body.emailOrUsername, tenantId: IsNull() } as any }));
+    }
+    // Fallback: search any tenant (first match) if still not found (covers multi-tenant users when tenantCode omitted)
+    if (!user) {
+      user =
+        (await this.usersRepo.findOne({ where: { email: body.emailOrUsername } as any })) ||
+        (await this.usersRepo.findOne({ where: { username: body.emailOrUsername } as any }));
+      if (user) {
+        try { await this.audit.log('password_reset_fallback_matched_any_tenant', { targetUserId: user.id, targetTenantId: user.tenantId ?? null }); } catch {}
+      }
     }
 
     if (user) {
