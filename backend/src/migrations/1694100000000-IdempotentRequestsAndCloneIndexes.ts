@@ -23,16 +23,16 @@ export class IdempotentRequestsAndCloneIndexes1694100000000 implements Migration
 
     // unique partial index for (tenant_id, source_global_product_id)
     // Ensure column source_global_product_id exists (legacy DBs may miss it if earlier migration skipped)
-    const hasCol = await queryRunner.query(`SELECT 1 FROM information_schema.columns WHERE table_name='product' AND column_name='source_global_product_id' LIMIT 1`);
+    const hasCol = await queryRunner.query(`SELECT 1 FROM information_schema.columns WHERE table_name='product' AND column_name='sourceGlobalProductId' LIMIT 1`);
     if (!hasCol.length) {
-      await queryRunner.query(`ALTER TABLE product ADD COLUMN source_global_product_id uuid NULL`);
-      await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_product_source_global ON product (source_global_product_id)`);
+      await queryRunner.query(`ALTER TABLE product ADD COLUMN "sourceGlobalProductId" uuid NULL`);
+      await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_product_source_global ON product ("sourceGlobalProductId")`);
     }
-    await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "uq_product_clone_once" ON product (tenant_id, source_global_product_id) WHERE source_global_product_id IS NOT NULL`);
+    await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "uq_product_clone_once" ON product ("tenantId", "sourceGlobalProductId") WHERE "sourceGlobalProductId" IS NOT NULL`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query('DROP INDEX IF EXISTS "uq_product_clone_once"');
+  await queryRunner.query('DROP INDEX IF EXISTS "uq_product_clone_once"');
     await queryRunner.dropIndex('idempotent_requests', 'idx_idempotent_requests_key');
     await queryRunner.dropTable('idempotent_requests');
   }

@@ -579,14 +579,18 @@ export class ProductsService {
       throw new ConflictException('SOURCE_DUPLICATE_PACKAGE_CODES');
     }
 
-    // نحضّر مجموعة الأكواد المستخدمة عالميًا لأن القيد الحالي ما زال عالميًا على publicCode (index: ux_product_packages_public_code)
-    // لاحقًا يمكن تقليل ذلك إلى نطاق المنتج فقط عند تعديل القيد.
-    const existingGlobalCodesRaw = await this.packagesRepo.createQueryBuilder('pp')
+    // فحص التعارض داخل نفس التينانت فقط (بعد تعديل الفهارس لتكون محلية للتينانت)
+    const existingTenantCodes = await this.packagesRepo.createQueryBuilder('pp')
       .select('pp.publicCode', 'publicCode')
-      .where('pp.publicCode IS NOT NULL')
+      .where('pp."tenantId" = :tid', { tid: targetTenantId })
+      .andWhere('pp.publicCode IS NOT NULL')
       .getRawMany();
-    const usedCodes = new Set<string>(existingGlobalCodesRaw.map(r => String(r.publicCode)));
-  const remap: Record<string, number> = {}; // original -> new
+    const usedTenantCodes = new Set<number>(existingTenantCodes.map(r => Number(r.publicCode)));
+    const sourceCodes = validPkgs.map(p => p.publicCode).filter((c: any) => c != null);
+    const conflicting = sourceCodes.filter((c: any) => usedTenantCodes.has(Number(c)));
+    if (conflicting.length) {
+      throw new ConflictException(JSON.stringify({ code: 'PACKAGE_CONFLICT', conflicting }));
+    }
 
     // توليد اسم المنتج الجديد مع محاولة فض تعارض الأسماء
     const baseName = source.name?.trim() || 'منتج';
@@ -628,22 +632,7 @@ export class ProductsService {
         for (const pkg of validPkgs) {
           const clone = new ProductPackage();
           clone.tenantId = targetTenantId;
-          let desired = pkg.publicCode;
-          if (desired != null) {
-            let candidate = desired;
-            let safety = 0;
-            while (usedCodes.has(String(candidate)) && safety < 200) {
-              candidate = Number(candidate) + 1;
-              safety++;
-            }
-            if (candidate !== desired) {
-              remap[String(desired)] = candidate;
-            }
-            clone.publicCode = candidate as any;
-            usedCodes.add(String(clone.publicCode));
-          } else {
-            clone.publicCode = null as any;
-          }
+          clone.publicCode = pkg.publicCode; // 1:1 copy الآن
           clone.name = pkg.name;
           clone.description = pkg.description || undefined;
           clone.imageUrl = pkg.imageUrl || undefined;
@@ -659,31 +648,14 @@ export class ProductsService {
             const code = e?.code;
             const detail: string | undefined = e?.detail;
             console.error('[CLONE][PACKAGE][ERROR]', { pkgId: pkg.id, msg: e?.message, code, detail });
-            if (code === '23505' || (detail && detail.includes('ux_product_packages_public_code'))) {
-              console.error('[CLONE][PACKAGE][RETRY-CONFLICT]', { original: pkg.publicCode, attempted: clone.publicCode });
-              // محاولة أخيرة بزيادة 1 فورية
-              let fallback = (Number(clone.publicCode) || 0) + 1;
-              let guard = 0;
-              while (usedCodes.has(String(fallback)) && guard < 50) { fallback++; guard++; }
-              clone.publicCode = fallback as any;
-              usedCodes.add(String(clone.publicCode));
-              try {
-                const savedRetry = await pkgRepo.save(clone);
-                clones.push(savedRetry);
-                continue;
-              } catch (e2: any) {
-                console.error('[CLONE][PACKAGE][RETRY-FAILED]', { msg: e2?.message, code: e2?.code });
-                throw new ConflictException('PACKAGE_CONFLICT_ESCALATED');
-              }
+            if (code === '23505') {
+              console.error('[CLONE][PACKAGE][UNEXPECTED_CONFLICT_AFTER_CHECK]', { codeVal: clone.publicCode });
+              throw new ConflictException(JSON.stringify({ code: 'PACKAGE_CONFLICT', conflicting: [clone.publicCode] }));
             }
             throw new InternalServerErrorException('CLONE_PACKAGE_FAILED');
           }
         }
         (savedProduct as any).packages = clones;
-        if (Object.keys(remap).length) {
-          console.log('[CLONE][PACKAGE][REMAPPED]', remap);
-          (savedProduct as any).remappedPackageCodes = remap;
-        }
         return savedProduct;
       });
     } catch (err) {
