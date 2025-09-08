@@ -30,10 +30,16 @@ export class InternalProvider implements ProviderDriver {
     const base = this.buildBase(cfg);
     try {
       // Correct endpoint: client API exposes balance via /client/api/profile not /api/client/wallet/balance
+      const headers = this.authHeader(cfg);
       const { data } = await axios.get(base + '/client/api/profile', {
-        headers: this.authHeader(cfg),
+        headers,
         timeout: 10000,
+        validateStatus: () => true, // we will interpret non-2xx to include body in diagnostics
       });
+      if (data && (data.code === 500 || data.message === 'Unknown error')) {
+        // Remote returned internal error – surface as fetch failure with context
+        return { balance: 0, error: 'REMOTE_500', message: 'Remote internal error', remoteCode: data.code } as any;
+      }
       // Possible shapes: { balance: number } OR { user: { balance } } OR direct field 'balanceUSD3'
       const rawBal = (
         data?.balance ??
@@ -49,6 +55,14 @@ export class InternalProvider implements ProviderDriver {
         error: 'FETCH_FAILED',
         message: e?.response?.data?.message || e?.message || 'failed',
         hint: 'internal-provider-profile-request',
+        status: e?.response?.status,
+        remoteData: (() => {
+          try {
+            const d = e?.response?.data;
+            if (!d) return undefined;
+            return typeof d === 'object' ? JSON.stringify(d).slice(0, 300) : String(d).slice(0, 300);
+          } catch { return undefined; }
+        })(),
       } as any;
     }
   }
