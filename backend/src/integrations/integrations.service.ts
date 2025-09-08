@@ -225,7 +225,15 @@ export class IntegrationsService {
   }
 
   async getIntegrationPackages(id: string, tenantId: string, product?: string) {
-    const cfg = await this.get(id, tenantId);
+    // Diagnostic wrapper to reduce silent 404/500 confusion
+    let cfg: Integration | null = null;
+    try {
+      cfg = await this.get(id, tenantId);
+    } catch (e: any) {
+      // Extra context before rethrow
+      console.error('[INTEGRATIONS][getIntegrationPackages][MISS]', { id, tenantId, err: e?.message });
+      throw e;
+    }
     const driver = this.driverOf(cfg);
 
     const qb = this.packageRepo
@@ -241,8 +249,24 @@ export class IntegrationsService {
     qb.orderBy('product.name', 'ASC').addOrderBy('pkg.name', 'ASC');
     const ourPkgs = await qb.getMany();
 
-    const providerData: NormalizedProduct[] = await driver.listProducts(this.toConfig(cfg));
-    const mappings = await this.packageMappingsRepo.find({ where: { provider_api_id: id, tenantId } as any });
+    let providerData: NormalizedProduct[] = [];
+    try {
+      providerData = await driver.listProducts(this.toConfig(cfg));
+    } catch (e: any) {
+      console.error('[INTEGRATIONS][getIntegrationPackages][PROVIDER_LIST_FAIL]', { id: cfg.id, provider: cfg.provider, msg: e?.message });
+      providerData = [];
+    }
+    let mappings: PackageMapping[] = [];
+    try {
+      mappings = await this.packageMappingsRepo.find({ where: { provider_api_id: id, tenantId } as any });
+    } catch (e: any) {
+      if (e?.code === '42703') {
+        console.error('[INTEGRATIONS][getIntegrationPackages][SCHEMA_DRIFT] package_mappings missing tenantId/meta');
+      } else {
+        console.error('[INTEGRATIONS][getIntegrationPackages][MAPPINGS_FAIL]', { id, tenantId, msg: e?.message });
+      }
+      mappings = [];
+    }
 
     const providerList = providerData.map((p) => ({ id: String(p.externalId), name: p.name }));
 
@@ -260,7 +284,14 @@ export class IntegrationsService {
       };
     });
 
-    const { balance } = await driver.getBalance(this.toConfig(cfg));
+    let balance: number | null = null;
+    try {
+      const b = await driver.getBalance(this.toConfig(cfg));
+      balance = typeof b?.balance === 'number' ? b.balance : null;
+    } catch (e: any) {
+      console.error('[INTEGRATIONS][getIntegrationPackages][BALANCE_FAIL]', { id: cfg.id, provider: cfg.provider, msg: e?.message });
+      balance = null;
+    }
     return { api: { id: cfg.id, name: cfg.name, type: cfg.provider, balance }, packages: result };
   }
 
@@ -269,9 +300,29 @@ export class IntegrationsService {
     apiId: string,
     data: { our_package_id: string; provider_package_id: string }[],
   ) {
-    await this.packageMappingsRepo.delete({ provider_api_id: apiId, tenantId } as any);
+    // Extra guard: ensure integration truly belongs to tenant to avoid silent cross-tenant deletes
+    const integ = await this.integrationRepo.findOne({ where: { id: apiId, tenantId } as any });
+    if (!integ) {
+      console.error('[INTEGRATIONS][savePackageMappings][INTEG_MISS]', { apiId, tenantId });
+      throw new NotFoundException('Integration not found');
+    }
+    try {
+      await this.packageMappingsRepo.delete({ provider_api_id: apiId, tenantId } as any);
+    } catch (e: any) {
+      if (e?.code === '42703') {
+        console.error('[INTEGRATIONS][savePackageMappings][SCHEMA_DRIFT] missing tenantId in package_mappings');
+      } else {
+        console.error('[INTEGRATIONS][savePackageMappings][DELETE_FAIL]', { apiId, tenantId, msg: e?.message });
+        throw e;
+      }
+    }
     const records = data.map((d) => ({ tenantId, provider_api_id: apiId, ...d }));
-    return this.packageMappingsRepo.save(records);
+    try {
+      return await this.packageMappingsRepo.save(records);
+    } catch (e: any) {
+      console.error('[INTEGRATIONS][savePackageMappings][SAVE_FAIL]', { apiId, tenantId, msg: e?.message });
+      throw e;
+    }
   }
 
   async getRoutingAll(tenantId: string, q?: string) {
