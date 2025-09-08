@@ -26,6 +26,13 @@ import { UserRole } from '../auth/user-role.enum';
 export class IntegrationsController {
   constructor(private readonly svc: IntegrationsService) {}
 
+  /** تأكيد أن معرف UUID صحيح لتجنّب أخطاء cast من قاعدة البيانات */
+  private assertUuid(id: string) {
+    if (!/^[0-9a-fA-F-]{36}$/.test(String(id || '').trim())) {
+      throw new (require('@nestjs/common').BadRequestException)('INVALID_INTEGRATION_ID');
+    }
+  }
+
   /** استخراج tenantId من الطلب (JWT أو الهيدر الاحتياطي) */
   private getTenantId(req: any): string {
     const fromUser = req?.user?.tenantId ?? req?.user?.tenant_id;
@@ -71,6 +78,7 @@ export class IntegrationsController {
   // ⬇️ جلب مزود واحد بالتعريف
   @Get(':id')
   getOne(@Req() req: any, @Param('id') id: string) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.get(id, tenantId);
   }
@@ -78,6 +86,7 @@ export class IntegrationsController {
   // ⬇️ تعديل مزود
   @Put(':id')
   updateOne(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateIntegrationDto) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.updateIntegration(id, tenantId, dto as any);
   }
@@ -85,36 +94,42 @@ export class IntegrationsController {
   // ⬇️ حذف مزود
   @Delete(':id')
   deleteOne(@Req() req: any, @Param('id') id: string) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.deleteIntegration(tenantId, id);
   }
 
   @Post(':id/test')
   test(@Req() req: any, @Param('id') id: string) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.testConnection(id, tenantId);
   }
 
   @Post(':id/refresh-balance')
   refresh(@Req() req: any, @Param('id') id: string) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.refreshBalance(id, tenantId);
   }
 
   @Post(':id/sync-products')
   sync(@Req() req: any, @Param('id') id: string) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.syncProducts(id, tenantId);
   }
 
   @Post(':id/orders')
   place(@Req() req: any, @Param('id') id: string, @Body() dto: PlaceOrderDto) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.placeOrder(id, tenantId, dto as any);
   }
 
   @Get(':id/orders/status')
   status(@Req() req: any, @Param('id') id: string, @Query('ids') ids: string) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     const arr = (ids || '')
       .split(',')
@@ -125,6 +140,7 @@ export class IntegrationsController {
 
   @Get(':id/packages')
   getPackages(@Req() req: any, @Param('id') id: string, @Query('product') product?: string) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.getIntegrationPackages(id, tenantId, product);
   }
@@ -135,6 +151,7 @@ export class IntegrationsController {
     @Param('id') id: string,
     @Body() body: { our_package_id: string; provider_package_id: string }[],
   ) {
+  this.assertUuid(id);
     const tenantId = this.getTenantId(req);
     return this.svc.savePackageMappings(tenantId, id, body);
   }
