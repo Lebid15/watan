@@ -193,6 +193,9 @@ const walletCurrency = useMemo(() => {
             </div>
           </div>
 
+          {/* معلومات الحساب / التكوين */}
+          <PaymentMethodConfigView method={method} />
+
           {error && <div className="mb-3 text-danger">{error}</div>}
 
           {/* النموذج */}
@@ -284,6 +287,93 @@ const walletCurrency = useMemo(() => {
           </form>
         </>
       )}
+    </div>
+  );
+}
+
+/* ======================
+   عرض الحقول (config) الخاصة بوسيلة الدفع للمستخدم
+   ====================== */
+interface MethodWithConfig { id: string; name: string; type: PaymentMethodType; config: Record<string, any>; }
+
+function PaymentMethodConfigView({ method }: { method: MethodWithConfig }) {
+  const cfg = method?.config || {};
+  // اختيار مفاتيح معروفة بترتيب منطقي؛ ثم أي مفاتيح إضافية نصية
+  const preferredOrder = [
+    'bankName','bank','accountName','accountHolder','recipientName','accountNumber','iban','swift','branch','country','city','currency','walletAddress','network','phone','transferCode','note'
+  ];
+
+  const labelMap: Record<string,string> = {
+    bankName: 'اسم البنك',
+    bank: 'اسم البنك',
+    accountName: 'اسم صاحب الحساب',
+    accountHolder: 'اسم صاحب الحساب',
+    recipientName: 'اسم المستلم',
+    accountNumber: 'رقم الحساب',
+    iban: 'IBAN',
+    swift: 'SWIFT',
+    branch: 'الفرع',
+    country: 'الدولة',
+    city: 'المدينة',
+    currency: 'العملة',
+    walletAddress: 'عنوان المحفظة',
+    network: 'الشبكة',
+    phone: 'الهاتف',
+    transferCode: 'كود التحويل',
+    note: 'ملاحظة'
+  };
+
+  // استخراج القيم النصية / الرقمية فقط
+  const rawEntries = Object.entries(cfg).filter(([_,v]) => ['string','number'].includes(typeof v) && String(v).trim() !== '');
+
+  // دمج الترتيب المفضل مع الباقي
+  const ordered: [string,string|number][] = [];
+  const used = new Set<string>();
+  for (const k of preferredOrder) {
+    const f = rawEntries.find(([rk]) => rk === k);
+    if (f) { ordered.push(f as [string,string|number]); used.add(k); }
+  }
+  for (const e of rawEntries) { if (!used.has(e[0])) ordered.push(e as [string,string|number]); }
+
+  if (!ordered.length) return null; // لا شيء لعرضه
+
+  const bankTitle = (cfg.bankName || cfg.bank) ? (cfg.bankName || cfg.bank) : null;
+
+  const copyValue = async (val: string|number) => {
+    try { await navigator.clipboard?.writeText(String(val)); } catch {}
+  };
+
+  return (
+    <div className="card border border-border bg-bg-surface mb-4 p-4 space-y-3">
+      {bankTitle && (
+        <div className="text-md font-semibold mb-1 flex items-center gap-2">
+          <span>اسم البنك:</span>
+          <span className="text-primary/90 break-all">{bankTitle}</span>
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {ordered.map(([k,v]) => {
+          if (bankTitle && (k === 'bankName' || k === 'bank')) return null; // تم عرضه أعلاه
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => copyValue(v)}
+              className="group text-start rounded border border-border/70 bg-bg-surface-alt hover:border-primary/60 hover:bg-primary/5 px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-primary/30"
+              title="انقر للنسخ"
+            >
+              <div className="text-[11px] text-text-secondary tracking-wide mb-1">{labelMap[k] || k}</div>
+              <div className="font-mono text-sm break-all group-active:scale-[.99]">
+                {String(v)}
+              </div>
+              <div className="mt-1 text-[10px] text-primary/60 opacity-0 group-hover:opacity-100 transition">نسخ</div>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-warning/80 leading-relaxed mt-2">
+        يرجى تنفيذ الحوالة بهذه المعلومات ثم إدخال بيانات الطلب أعلاه. قد يُرفض الطلب إذا كانت البيانات أو المبلغ غير مطابقة.
+      </p>
     </div>
   );
 }
