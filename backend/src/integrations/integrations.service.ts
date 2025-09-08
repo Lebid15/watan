@@ -1,6 +1,5 @@
 // backend/src/integrations/integrations.service.ts
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 
@@ -103,10 +102,6 @@ export class IntegrationsService {
       scope: dto.scope ?? ('tenant' as any),
       ...dto,
     } as any);
-    // Fallback safeguard: if database schema lacks a default for id (uuid), assign one manually
-    if (!(entity as any).id) {
-      (entity as any).id = randomUUID();
-    }
     return this.integrationRepo.save(entity);
   }
 
