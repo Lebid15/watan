@@ -1,5 +1,5 @@
 // backend/src/integrations/integrations.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -184,9 +184,22 @@ export class IntegrationsService {
 
   async refreshBalance(id: string, tenantId: string | null) {
     const cfg = await this.get(id, tenantId);
-    const driver = this.driverOf(cfg);
-    const { balance } = await driver.getBalance(this.toConfig(cfg));
-    return { balance };
+    try {
+      const driver = this.driverOf(cfg);
+      const { balance } = await driver.getBalance(this.toConfig(cfg));
+      return { balance };
+    } catch (e: any) {
+      const msg = String(e?.message || e || 'error');
+      if (msg === 'INTEGRATION_DISABLED') {
+        throw new BadRequestException('INTEGRATION_DISABLED');
+      }
+      if (/requires (baseUrl|apiToken)/i.test(msg)) {
+        // أعد استجابة ناعمة بدل 500 حتى يتمكن الواجهة من عرض رسالة إعداد ناقصة
+        return { balance: 0, missingConfig: true, message: msg } as any;
+      }
+      // مرّر الأخطاء الأخرى (ستُسجَّل كلوج 500 للمزيد من التحقيق)
+      throw e;
+    }
   }
 
   async syncProducts(id: string, tenantId: string | null): Promise<NormalizedProduct[]> {
