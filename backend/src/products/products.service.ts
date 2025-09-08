@@ -558,9 +558,13 @@ export class ProductsService {
     const source = await this.productsRepo.findOne({ where: { id: globalProductId, tenantId: GLOBAL_ID } as any, relations: ['packages'] });
     if (!source) throw new NotFoundException('GLOBAL_PRODUCT_NOT_FOUND');
 
-    // منع إعادة الاستنساخ
-    const already = await this.productsRepo.findOne({ where: { tenantId: targetTenantId, sourceGlobalProductId: source.id } as any });
-    if (already) throw new ConflictException('ALREADY_CLONED');
+    // في حال تم الاستنساخ سابقاً -> أعد نفس المنتج (idempotent) بدل 409
+    const already = await this.productsRepo.findOne({ where: { tenantId: targetTenantId, sourceGlobalProductId: source.id } as any, relations: ['packages'] });
+    if (already) {
+      // ضمان تهيئة packages
+      (already as any).packages = (already as any).packages || [];
+      return already;
+    }
 
     const validPkgs = (source.packages || []).filter((p: any) => p.isActive && p.publicCode != null);
     if (validPkgs.length === 0) throw new UnprocessableEntityException('NO_ACTIVE_PACKAGES');
@@ -575,14 +579,10 @@ export class ProductsService {
       throw new ConflictException('SOURCE_DUPLICATE_PACKAGE_CODES');
     }
 
-    // فحص تعارضات حالية في التينانت الهدف
-    if (pcodes.length) {
-      const existing = await this.packagesRepo.find({ where: { tenantId: targetTenantId, publicCode: In(pcodes) } as any, select: ['id','publicCode'] as any });
-      if (existing.length) {
-        console.warn('[CLONE][PACKAGE][PRECONFLICT]', { count: existing.length, codes: existing.map(e => e.publicCode) });
-        throw new ConflictException('PACKAGE_CONFLICT');
-      }
-    }
+  // نحضّر مجموعة الأكواد المستخدمة في التينانت الهدف لتجنب 409
+  const existingTenantPackages = await this.packagesRepo.find({ where: { tenantId: targetTenantId } as any, select: ['publicCode'] as any });
+  const usedCodes = new Set<string>(existingTenantPackages.filter(e => e.publicCode != null).map(e => String(e.publicCode)));
+  const remap: Record<string, number> = {}; // original -> new
 
     // توليد اسم المنتج الجديد مع محاولة فض تعارض الأسماء
     const baseName = source.name?.trim() || 'منتج';
@@ -624,7 +624,22 @@ export class ProductsService {
         for (const pkg of validPkgs) {
           const clone = new ProductPackage();
           clone.tenantId = targetTenantId;
-          clone.publicCode = pkg.publicCode;
+          let desired = pkg.publicCode;
+          if (desired != null) {
+            let candidate = desired;
+            let safety = 0;
+            while (usedCodes.has(String(candidate)) && safety < 200) {
+              candidate = Number(candidate) + 1;
+              safety++;
+            }
+            if (candidate !== desired) {
+              remap[String(desired)] = candidate;
+            }
+            clone.publicCode = candidate as any;
+            usedCodes.add(String(clone.publicCode));
+          } else {
+            clone.publicCode = null as any;
+          }
           clone.name = pkg.name;
           clone.description = pkg.description || undefined;
           clone.imageUrl = pkg.imageUrl || undefined;
@@ -641,12 +656,30 @@ export class ProductsService {
             const detail: string | undefined = e?.detail;
             console.error('[CLONE][PACKAGE][ERROR]', { pkgId: pkg.id, msg: e?.message, code, detail });
             if (code === '23505' || (detail && detail.includes('ux_product_packages_public_code'))) {
-              throw new ConflictException('PACKAGE_CONFLICT');
+              console.error('[CLONE][PACKAGE][RETRY-CONFLICT]', { original: pkg.publicCode, attempted: clone.publicCode });
+              // محاولة أخيرة بزيادة 1 فورية
+              let fallback = (Number(clone.publicCode) || 0) + 1;
+              let guard = 0;
+              while (usedCodes.has(String(fallback)) && guard < 50) { fallback++; guard++; }
+              clone.publicCode = fallback as any;
+              usedCodes.add(String(clone.publicCode));
+              try {
+                const savedRetry = await pkgRepo.save(clone);
+                clones.push(savedRetry);
+                continue;
+              } catch (e2: any) {
+                console.error('[CLONE][PACKAGE][RETRY-FAILED]', { msg: e2?.message, code: e2?.code });
+                throw new ConflictException('PACKAGE_CONFLICT_ESCALATED');
+              }
             }
             throw new InternalServerErrorException('CLONE_PACKAGE_FAILED');
           }
         }
         (savedProduct as any).packages = clones;
+        if (Object.keys(remap).length) {
+          console.log('[CLONE][PACKAGE][REMAPPED]', remap);
+          (savedProduct as any).remappedPackageCodes = remap;
+        }
         return savedProduct;
       });
     } catch (err) {
