@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards, UseFilters } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards, UseFilters } from '@nestjs/common';
 import { debugEnabled, debugLog } from '../common/debug.util';
 import { ApiTags } from '@nestjs/swagger';
 import * as fs from 'fs';
@@ -17,15 +17,18 @@ export class ClientApiController {
   // openapi.json now served publicly via separate controller
 
   @Get('profile')
-  profile(@Req() req: any) {
+  profile(@Req() req: any, @Res({ passthrough: true }) res: any) {
     try {
       const reqId = (req.headers['x-request-id'] as string) || Math.random().toString(36).slice(2,8);
+      req.reqId = reqId;
+      try { res?.set?.('x-req-id', reqId); } catch {}
       const host = (req.headers['host'] as string) || '';
       if (debugEnabled('clientApiProfile')) debugLog('clientApiProfile', 'begin', {
         reqId,
         host,
         tenantId: req.tenant?.id || null,
         tokenHash8: req.clientApiTokenHash8 || null,
+        tokenLen: req.clientApiTokenLen || null,
         path: req.originalUrl || req.url,
       });
       const u = req.clientApiUser;
@@ -57,7 +60,16 @@ export class ClientApiController {
       // This will still be mapped by the global filter but with stack trace available in container logs.
       // Remove after diagnosing production issue.
       // eslint-disable-next-line no-console
-  console.error('[CLIENT_API][PROFILE][ERROR]', { msg: e?.message, stack: e?.stack?.split('\n').slice(0,4).join(' | '), tenantId: req.tenant?.id || null, tokenHash8: req.clientApiTokenHash8 || null });
+  console.error('[CLIENT_API][PROFILE][ERROR]', {
+        reqId: req.reqId || null,
+        host: (req.headers && (req.headers['host'] as string)) || null,
+        tenantId: req.tenant?.id || null,
+        tokenHash8: req.clientApiTokenHash8 || null,
+        tokenLen: req.clientApiTokenLen || null,
+        userId: req.clientApiUser?.id || null,
+        msg: e?.message,
+        stack: e?.stack?.split('\n').slice(0,5).join(' | '),
+      });
       throw e; // rethrow so filter handles mapping
     }
   }

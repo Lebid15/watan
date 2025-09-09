@@ -18,10 +18,13 @@ export class ClientApiAuthGuard implements CanActivate {
       const hl = h.toLowerCase();
       return hl === 'api-token' || hl === 'x-api-token';
     });
-    const token = rawHeader ? (req.headers as any)[rawHeader] as string : undefined;
+  let token = rawHeader ? (req.headers as any)[rawHeader] as string : undefined;
     if (!token) throw new ClientApiError(120, 'Api Token is required', { reason: 'missing_token' });
     if (typeof token !== 'string') throw new ClientApiError(121, 'Token error', { reason: 'non_string' });
-    if (token.length !== 40 || !/^[a-f0-9]{40}$/i.test(token)) {
+  const tokenOriginalLen = token.length;
+  // Trim whitespace and invisible unicode (ZWNJ/ZWS etc.) at ends
+  token = token.trim();
+  if (token.length !== 40 || !/^[a-f0-9]{40}$/i.test(token)) {
       throw new ClientApiError(121, 'Token error', { reason: 'invalid_format' });
     }
   // Compute token hash (for logs)
@@ -60,15 +63,17 @@ export class ClientApiAuthGuard implements CanActivate {
     }
 
     // Attach context
-    req.clientApiUser = user;
+  req.clientApiUser = user;
     req.tenant = { id: user.tenantId };
     req.clientApiTokenHash8 = tokenHash8;
+  req.clientApiTokenLen = tokenOriginalLen;
 
     if (debugEnabled('clientApiAuth')) {
       debugLog('clientApiAuth', 'token ok', {
         userId: user.id,
         tenantId: user.tenantId,
         tokenHash8,
+        tokenLen: tokenOriginalLen,
         ip: extractNormalizedIp(req.headers['x-forwarded-for'] as any, req.socket?.remoteAddress),
       });
     }
