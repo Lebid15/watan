@@ -19,14 +19,14 @@ cat > .env <<EOT
 DATABASE_URL=postgres://user:pass@dbhost:5432/watan
 REDIS_URL=redis://redishost:6379/0
 JWT_SECRET=change-me-super-secret
-PUBLIC_TENANT_BASE_DOMAIN=syrz1.com
+PUBLIC_TENANT_BASE_DOMAIN=wtn4.com
 AUTO_MIGRATIONS=true
 HOST=0.0.0.0
 PORT=3000
 INITIAL_ROOT_EMAIL=owner@example.com
 INITIAL_ROOT_PASSWORD=ChangeMe123!
 BOOTSTRAP_ENABLED=true
-NEXT_PUBLIC_API_URL=http://api.syrz1.com/api
+NEXT_PUBLIC_API_URL=https://api.wtn4.com/api
 EOT
 else
 echo ".env already exists; not overwriting"
@@ -41,7 +41,7 @@ ssh root@${HOST} "cd ${DIR} && docker compose ps"
 
 echo "==> Waiting for backend health"
 for i in {1..25}; do
-  if curl -fsS http://api.syrz1.com/api/health >/dev/null 2>&1; then
+  if curl -fsS https://api.wtn4.com/api/health >/dev/null 2>&1; then
     echo "Backend healthy"
     break
   fi
@@ -52,7 +52,7 @@ for i in {1..25}; do
 done
 
 echo "==> Frontend status line"
-curl -I -s http://syrz1.com | head -n 1 || true
+curl -I -s https://wtn4.com | head -n 1 || true
 
 echo "==> Recent logs"
 for svc in backend frontend worker nginx; do

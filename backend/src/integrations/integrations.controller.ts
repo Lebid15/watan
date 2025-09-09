@@ -46,7 +46,7 @@ export class IntegrationsController {
     // نجمع كل المحاولات
     let tenantId = String(fromUser ?? fromTenant ?? fromHeader ?? '').trim();
 
-    // إذا كانت فارغة نحاول إستنتاج أن السبب أن الواجهة تستدعي api.syrz1.com بدل نفس الساب دومين
+  // إذا كانت فارغة نحاول إستنتاج أن السبب أن الواجهة تستدعي api.wtn4.com بدل نفس الساب دومين
     // في هذه الحالة نُعيد خطأ واضح بدل "invalid input syntax for type uuid: \"\""
     if (!tenantId) {
       throw new (require('@nestjs/common').BadRequestException)(

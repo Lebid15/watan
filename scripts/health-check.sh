@@ -2,7 +2,7 @@
 # Simple health check script. Logs only on failure or state change.
 # Location suggestion: /root/watan/scripts/health-check.sh
 
-URL="https://api.syrz1.com/api/health"
+URL="https://api.wtn4.com/api/health"
 STATE_FILE="/root/watan/health.state"
 TS=$(date '+%Y-%m-%d %H:%M:%S')
 

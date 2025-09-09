@@ -5,10 +5,10 @@ import axios from 'axios';
    Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª ÙˆØ¨ÙŠØ¦Ø© Ø§Ù„ØªØ´ØºÙŠÙ„
    ========================= */
 
-// عنوان الـ API (مثال إنتاج: https://api.syrz1.com/api) نستخدمه كما هو بدون أي fallback نسبي.
+// عنوان الـ API (مثال إنتاج: https://api.wtn4.com/api) نستخدمه كما هو بدون أي fallback نسبي.
 const RAW_API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/$/, '');
 
-// Prefer relative /api when on a tenant subdomain (non api/www) of syrz1.com to eliminate cross-origin & CORS preflight.
+// Prefer relative /api when on a tenant subdomain (non api/www) of wtn4.com to eliminate cross-origin & CORS preflight.
 // This should help with mysterious timeouts in normal browser mode while incognito works.
 // Disabled: relative /api caused 404 on tenant subdomains because frontend host doesn't serve backend endpoints.
 // Keeping absolute api.<root>/api base to avoid redirect loops & 404.
@@ -21,7 +21,7 @@ function upgradeToHttpsIfNeeded(raw: string): string {
     if (!/^http:\/\//i.test(raw)) return raw; // Ù„ÙŠØ³ http
     const url = new URL(raw);
     // Ù„Ùˆ Ø§Ù„Ø¯ÙˆÙ…ÙŠÙ† Ù‡Ùˆ api.<rootDomain> ÙˆÙ†ÙØ³ Ø§Ù„Ù€ rootDomain Ø§Ù„Ø°ÙŠ ØªÙØ®Ø¯Ù‘ÙŽÙ… Ù…Ù†Ù‡ Ø§Ù„ØµÙØ­Ø©ØŒ Ù†Ø±ÙØ¹ Ø§Ù„Ø¨Ø±ÙˆØªÙˆÙƒÙˆÙ„
-    const pageHost = window.location.hostname; // Ù…Ø«Ø§Ù„: syrz1.com
+  const pageHost = window.location.hostname; // مثال: wtn4.com
     // Ø§Ø³ØªØ®Ø±Ø¬ Ø§Ù„Ø¬Ø°Ø± (Ø¢Ø®Ø± Ù…Ù‚Ø·Ø¹ÙŠÙ† Ø¹Ø§Ø¯Ø©Ù‹) Ø¨Ø´ÙƒÙ„ Ù…Ø¨Ø³Ù‘Ø·
     const pageRoot = pageHost.split('.').slice(-2).join('.');
     const apiRoot = url.hostname.split('.').slice(-2).join('.');
@@ -350,7 +350,7 @@ export const Api = {
       const res = await api.post('/auth/logout');
       
       const cookieNames = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
-      const domains = [window.location.hostname, `.${window.location.hostname}`, '.syrz1.com', 'api.syrz1.com'];
+  const domains = [window.location.hostname, `.${window.location.hostname}`, '.wtn4.com', 'api.wtn4.com'];
       const paths = ['/', '/api'];
       
       for (const name of cookieNames) {
@@ -375,7 +375,7 @@ export const Api = {
       console.warn('[API] logout: server logout failed, clearing cookies anyway');
       
       const cookieNames = ['auth', 'access_token', 'role', 'tenant_host', 'refresh_token'];
-      const domains = [window.location.hostname, `.${window.location.hostname}`, '.syrz1.com', 'api.syrz1.com'];
+  const domains = [window.location.hostname, `.${window.location.hostname}`, '.wtn4.com', 'api.wtn4.com'];
       const paths = ['/', '/api'];
       
       for (const name of cookieNames) {
@@ -439,8 +439,8 @@ function addTenantHeaders(config: any): any {
         document.cookie = `tenant_host=${tenantHost}; path=/`;
       }
     }
-    // Production multi-tenant: *.syrz1.com (exclude bare root, www, api)
-    else if (/\.syrz1\.com$/i.test(currentHost)) {
+  // Production multi-tenant: *.wtn4.com (exclude bare root, www, api)
+  else if (/\.wtn4\.com$/i.test(currentHost)) {
       const hostParts = currentHost.split('.');
       if (hostParts.length > 2) {
         const sub = hostParts[0].toLowerCase();
@@ -483,7 +483,7 @@ if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: bo
           document.cookie = `tenant_host=${tenantHost}; path=/`;
           console.log(`[FETCH] Setting X-Tenant-Host header: ${tenantHost}`);
         }
-      } else if (/\.syrz1\.com$/i.test(h)) {
+  } else if (/\.wtn4\.com$/i.test(h)) {
         const parts = h.split('.');
         if (parts.length > 2) {
           const sub = parts[0].toLowerCase();
