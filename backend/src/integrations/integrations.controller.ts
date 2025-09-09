@@ -109,6 +109,14 @@ export class IntegrationsController {
     return this.svc.testConnection(id, tenantId);
   }
 
+  @Post(':id/debug-balance')
+  @HttpCode(200)
+  debugBalance(@Req() req: any, @Param('id') id: string) {
+    this.assertUuid(id);
+    const tenantId = this.getTenantId(req);
+    return this.svc.debugBalance(id, tenantId);
+  }
+
   @Post(':id/refresh-balance')
   @HttpCode(200)
   refresh(@Req() req: any, @Param('id') id: string) {

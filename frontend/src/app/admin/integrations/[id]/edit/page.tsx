@@ -34,6 +34,7 @@ export default function EditIntegrationPage() {
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<{ status?: number; url?: string; body?: string } | null>(null);
 
   // جلب بيانات المزود
   useEffect(() => {
@@ -75,6 +76,17 @@ export default function EditIntegrationPage() {
       try { setBalanceError(e?.response?.data?.message || e?.message || null); } catch { setBalanceError(null); }
     } finally {
       setLoadingBalance(false);
+    }
+  }, [info]);
+
+  const debugBalance = useCallback(async (integId: string) => {
+    try {
+      const { data } = await api.post<any>(API_ROUTES.admin.integrations.byId(String(integId)) + '/debug-balance', {});
+      const A = data?.A || {};
+      setDebugInfo({ status: A.status, url: A.finalUrl, body: String(A.bodySnippet || '').slice(0, 200) });
+      info('تم تنفيذ اختبار الرصيد');
+    } catch (e: any) {
+      setDebugInfo({ status: e?.response?.status, url: '', body: String(e?.message || '').slice(0, 200) });
     }
   }, [info]);
 
@@ -306,12 +318,26 @@ export default function EditIntegrationPage() {
           {saving ? 'يحفظ…' : 'حفظ'}
         </button>
         <button
+          onClick={() => item && debugBalance(item.id)}
+          className="btn btn-secondary"
+        >
+          اختبار الرصيد
+        </button>
+        <button
           onClick={() => router.push('/admin/products/api-settings')}
           className="btn btn-secondary"
         >
           رجوع
         </button>
       </div>
+
+      {debugInfo && (
+        <div className="mt-3 card text-xs text-text-secondary">
+          <div>Debug Status: {debugInfo.status ?? '-'}</div>
+          <div>Final URL: {debugInfo.url || '-'}</div>
+          <div>Body: {debugInfo.body || '-'}</div>
+        </div>
+      )}
     </div>
   );
 }

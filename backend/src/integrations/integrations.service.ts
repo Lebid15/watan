@@ -177,6 +177,15 @@ export class IntegrationsService {
     return driver.getBalance(this.toConfig(cfg));
   }
 
+  async debugBalance(id: string, tenantId: string | null) {
+    const cfg = await this.get(id, tenantId);
+    const driver: any = this.driverOf(cfg);
+    if (typeof driver.debugBalance !== 'function') {
+      return { ok: false, message: 'Not supported' };
+    }
+    return driver.debugBalance(this.toConfig(cfg));
+  }
+
   async refreshBalance(id: string, tenantId: string | null) {
     const cfg = await this.get(id, tenantId);
     try {
