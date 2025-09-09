@@ -18,11 +18,11 @@ export class InternalProvider implements ProviderDriver {
 
   private authHeader(cfg: IntegrationConfig) {
     if (!cfg.apiToken) throw new Error('Internal provider requires apiToken');
-  // Normalize token: strip common prefixes like 'Bearer ' or 'Token '
-  const t = cfg.apiToken.trim().replace(/^bearer\s+/i, '').replace(/^token\s+/i, '').trim();
-    // If it looks like a 40-char hex (client API token), use api-token header; else assume JWT and use Authorization
+    // Normalize token: strip common prefixes like 'Bearer ' or 'Token '
+    const t = cfg.apiToken.trim().replace(/^bearer\s+/i, '').replace(/^token\s+/i, '').trim();
+    // If it looks like a 40-char hex (client API token), set both api-token and x-api-token; else assume JWT and use Authorization
     if (/^[a-f0-9]{40}$/i.test(t)) {
-      return { 'api-token': t } as any;
+      return { 'api-token': t, 'x-api-token': t } as any;
     }
     return { Authorization: `Bearer ${t}` } as any;
   }
@@ -31,10 +31,17 @@ export class InternalProvider implements ProviderDriver {
     const base = this.buildBase(cfg);
     try {
       // Correct endpoint: client API exposes balance via /client/api/profile not /api/client/wallet/balance
-      const headers = this.authHeader(cfg);
+      const headersBase = this.authHeader(cfg);
       const url = base + '/client/api/profile';
-      const { data, status, headers: respHeaders } = await axios.get(url, {
-        headers,
+      const hostname = (() => { try { return new URL(base).hostname; } catch { return undefined; } })();
+      const commonHeaders: any = {
+        ...headersBase,
+        Accept: 'application/json',
+        'User-Agent': 'Watan-InternalProvider/1.0',
+      };
+      if (hostname) commonHeaders['X-Tenant-Host'] = hostname;
+      const { data, status } = await axios.get(url, {
+        headers: commonHeaders,
         timeout: 10000,
         validateStatus: () => true, // we will interpret non-2xx to include body in diagnostics
       });
@@ -60,28 +67,41 @@ export class InternalProvider implements ProviderDriver {
           remoteData: (() => { try { return JSON.stringify(data).slice(0, 400); } catch { return String(data).slice(0, 400); } })(),
         } as any;
       }
-      // Possible shapes: { balance: number } OR { user: { balance } } OR direct field 'balanceUSD3'
-      const rawBal = (
-        data?.balance ??
-        data?.user?.balance ??
-        (typeof data?.balanceUSD3 === 'string' ? parseFloat(data.balanceUSD3) : undefined)
-      );
-      const balance = Number(rawBal);
-      if (rawBal === undefined || rawBal === null || Number.isNaN(balance)) {
-        // Don’t silently coerce to 0; surface as provider error so caller can avoid caching/displaying 0
-        try {
-          const snippet = (() => { try { return JSON.stringify(data).slice(0, 400); } catch { return String(data).slice(0, 400); } })();
-          console.warn('[InternalProvider] profile parse failed', { url, status, remoteSnippet: snippet });
-        } catch {}
-        return {
-          balance: 0,
-          error: 'BALANCE_PARSE_FAIL',
-          message: 'Could not parse balance from client profile',
-          status,
-          remoteData: (() => { try { return JSON.stringify(data).slice(0, 400); } catch { return String(data).slice(0, 400); } })(),
-        } as any;
-      }
-      return { balance };
+      // Attempt to parse balance; if it fails, try fallback endpoints
+      const parseBalance = (d: any) => {
+        const raw = (d?.balance ?? d?.user?.balance ?? (typeof d?.balanceUSD3 === 'string' ? parseFloat(d.balanceUSD3) : undefined) ?? d?.data?.balance ?? d?.amount);
+        const n = Number(raw);
+        return raw === undefined || raw === null || Number.isNaN(n) ? null : n;
+      };
+      let parsed = parseBalance(data);
+      if (parsed !== null) return { balance: parsed };
+
+      // Fallback 1: /api/client/profile
+      const url2 = base + '/api/client/profile';
+      const { data: data2, status: status2 } = await axios.get(url2, { headers: commonHeaders, timeout: 10000, validateStatus: () => true });
+      parsed = parseBalance(data2);
+      if (parsed !== null) return { balance: parsed };
+
+      // Fallback 2: /api/client/wallet/balance
+      const url3 = base + '/api/client/wallet/balance';
+      const { data: data3, status: status3 } = await axios.get(url3, { headers: commonHeaders, timeout: 10000, validateStatus: () => true });
+      parsed = parseBalance(data3);
+      if (parsed !== null) return { balance: parsed };
+
+      // If still not parsed, report diagnostics
+      try {
+        const snippet1 = (() => { try { return JSON.stringify(data).slice(0, 400); } catch { return String(data).slice(0, 400); } })();
+        const snippet2 = (() => { try { return JSON.stringify(data2).slice(0, 400); } catch { return String(data2).slice(0, 400); } })();
+        const snippet3 = (() => { try { return JSON.stringify(data3).slice(0, 400); } catch { return String(data3).slice(0, 400); } })();
+        console.warn('[InternalProvider] balance parse failed after fallbacks', { url, url2, url3, status, status2, status3, remote1: snippet1, remote2: snippet2, remote3: snippet3 });
+      } catch {}
+      return {
+        balance: 0,
+        error: 'BALANCE_PARSE_FAIL',
+        message: 'Could not parse balance from client profile (after fallbacks)',
+        status,
+        remoteData: (() => { try { return JSON.stringify({ p1: data, p2: data2, p3: data3 }).slice(0, 600); } catch { return undefined; } })(),
+      } as any;
     } catch (e: any) {
       return {
         balance: 0,
