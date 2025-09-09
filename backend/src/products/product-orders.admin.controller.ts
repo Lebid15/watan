@@ -657,18 +657,22 @@ export class ProductOrdersAdminController {
 
     const messageRaw: string =
       ((res as any)?.raw &&
-        (((res as any).raw.message as any) || (res as any).raw.desc || (res as any).raw.raw)) ||
+        ((((res as any).raw.message as any) || (res as any).raw.desc || (res as any).raw.note || (res as any).raw.raw))) ||
       'sent';
     const noteFromRes: string | undefined = (res as any)?.note?.toString?.().trim?.() || undefined;
-    const message: string = String(noteFromRes || messageRaw || '').slice(0, 250) || 'sent';
+    const message: string = String((noteFromRes && noteFromRes !== 'sync' ? noteFromRes : messageRaw) || '').slice(0, 250) || 'sent';
     const extStatus = this.normalizeExternalStatus(statusRaw || 'processing');
 
     let finalCostAmount = costAmount;
     let finalCostCurrency = costCurrency;
 
-    if (res && typeof (res as any).price === 'number') {
-      finalCostAmount = Number((res as any).price);
-      finalCostCurrency = ((res as any).costCurrency as string) || finalCostCurrency;
+    if (res) {
+      const priceVal: any = (res as any).price;
+      const num = typeof priceVal === 'string' ? Number(priceVal) : priceVal;
+      if (typeof num === 'number' && Number.isFinite(num) && num > 0) {
+        finalCostAmount = num;
+        finalCostCurrency = ((res as any).costCurrency as string) || finalCostCurrency;
+      }
     }
 
     (order as any).providerId = chosenProviderId!;

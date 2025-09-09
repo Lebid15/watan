@@ -1308,17 +1308,18 @@ export class ProductsService {
       const externalOrderId = (res as any)?.externalOrderId ?? null;
       const statusRaw: string = (res as any)?.providerStatus ?? ((res as any)?.mappedStatus as any) ?? 'sent';
       const messageRaw: string =
-        ((res as any)?.raw && (((res as any).raw.message as any) || (res as any).raw.desc || (res as any).raw.raw)) || 'sent';
+        ((res as any)?.raw && ((((res as any).raw.message as any) || (res as any).raw.desc || (res as any).raw.note || (res as any).raw.raw))) || 'sent';
       const noteFromRes: string | undefined =
         (res as any)?.note?.toString?.().trim?.() || undefined;
-      const message: string = String(noteFromRes || messageRaw || '').slice(0, 250) || 'sent';
+      const message: string = String((noteFromRes && noteFromRes !== 'sync' ? noteFromRes : messageRaw) || '').slice(0, 250) || 'sent';
 
       // Prefer provider-returned price/currency when available
       let finalCostCurrency = costCurrency;
       let finalCostAmount = costAmount;
       if (res && (res as any).price != null) {
-        const p = Number((res as any).price);
-        if (Number.isFinite(p) && p >= 0) finalCostAmount = p;
+        const rawP: any = (res as any).price;
+        const p = typeof rawP === 'string' ? Number(rawP) : rawP;
+        if (typeof p === 'number' && Number.isFinite(p) && p > 0) finalCostAmount = p;
       }
       if ((res as any)?.costCurrency) {
         finalCostCurrency = String((res as any).costCurrency);

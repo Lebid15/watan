@@ -286,6 +286,7 @@ export class InternalProvider implements ProviderDriver {
       let note: string | undefined =
         data?.message?.toString?.().trim?.() ||
         data?.note?.toString?.().trim?.() ||
+        data?.desc?.toString?.().trim?.() ||
         undefined;
       if (!note) {
         if (mapped === 'success') note = 'تم قبول الطلب';
@@ -334,16 +335,11 @@ export class InternalProvider implements ProviderDriver {
         : providerStatus === 'reject'
         ? 'failed'
         : 'pending';
-      let note =
+      const note =
         o?.message?.toString?.().trim?.() ||
         o?.note?.toString?.().trim?.() ||
         o?.desc?.toString?.().trim?.() ||
         undefined;
-      if (!note) {
-        if (mapped === 'success') note = 'تم قبول الطلب';
-        else if (mapped === 'failed') note = 'تم رفض الطلب';
-        else note = 'قيد المعالجة';
-      }
       const pin =
         o?.pin != null
           ? String(o.pin).trim()
