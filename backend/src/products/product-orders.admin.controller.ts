@@ -655,10 +655,12 @@ export class ProductOrdersAdminController {
     const statusRaw: string =
       (res as any)?.providerStatus ?? ((res as any)?.mappedStatus as any) ?? 'sent';
 
-    const message: string =
+    const messageRaw: string =
       ((res as any)?.raw &&
         (((res as any).raw.message as any) || (res as any).raw.desc || (res as any).raw.raw)) ||
       'sent';
+    const noteFromRes: string | undefined = (res as any)?.note?.toString?.().trim?.() || undefined;
+    const message: string = String(noteFromRes || messageRaw || '').slice(0, 250) || 'sent';
     const extStatus = this.normalizeExternalStatus(statusRaw || 'processing');
 
     let finalCostAmount = costAmount;
@@ -675,6 +677,11 @@ export class ProductOrdersAdminController {
     (order as any).sentAt = new Date();
     (order as any).lastSyncAt = new Date();
     (order as any).lastMessage = String(message ?? '').slice(0, 250);
+    if (noteFromRes && noteFromRes !== 'sync' && noteFromRes !== 'sent') {
+      (order as any).providerMessage = noteFromRes;
+    } else if (message && message !== 'sync' && message !== 'sent') {
+      (order as any).providerMessage = message;
+    }
     (order as any).attempts = ((order as any).attempts ?? 0) + 1;
 
     (order as any).costCurrency = finalCostCurrency;

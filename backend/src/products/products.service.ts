@@ -1307,8 +1307,11 @@ export class ProductsService {
       const res = await this.integrations.placeOrder(providerId, effectiveTenantId, payload);
       const externalOrderId = (res as any)?.externalOrderId ?? null;
       const statusRaw: string = (res as any)?.providerStatus ?? ((res as any)?.mappedStatus as any) ?? 'sent';
-      const message: string =
+      const messageRaw: string =
         ((res as any)?.raw && (((res as any).raw.message as any) || (res as any).raw.desc || (res as any).raw.raw)) || 'sent';
+      const noteFromRes: string | undefined =
+        (res as any)?.note?.toString?.().trim?.() || undefined;
+      const message: string = String(noteFromRes || messageRaw || '').slice(0, 250) || 'sent';
 
       // Prefer provider-returned price/currency when available
       let finalCostCurrency = costCurrency;
@@ -1328,6 +1331,12 @@ export class ProductsService {
       (order as any).lastSyncAt = new Date();
       (order as any).lastMessage = String(message ?? '').slice(0, 250);
       (order as any).attempts = ((order as any).attempts ?? 0) + 1;
+      // Persist providerMessage immediately if we have a meaningful note/message
+      if (noteFromRes && noteFromRes !== 'sync' && noteFromRes !== 'sent') {
+        (order as any).providerMessage = noteFromRes;
+      } else if (message && message !== 'sync' && message !== 'sent') {
+        (order as any).providerMessage = message;
+      }
       (order as any).costCurrency = finalCostCurrency;
       (order as any).costAmount = Number(finalCostAmount.toFixed(2));
       const sell = Number((order as any).sellPriceAmount ?? (order as any).price ?? 0);
