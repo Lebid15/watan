@@ -246,4 +246,91 @@ export class InternalProvider implements ProviderDriver {
       return [];
     }
   }
+
+  // Create order via the target tenant's Client API
+  async placeOrder(
+    cfg: IntegrationConfig,
+    dto: { productId: string; qty: number; params: Record<string, any>; clientOrderUuid?: string }
+  ) {
+    const base = this.buildBase(cfg);
+    const headers = { ...this.authHeader(cfg), Accept: 'application/json', 'User-Agent': 'Watan-InternalProvider/1.0' } as any;
+
+    // Map common param names to our Client API expectations; pass through the rest as-is
+    const qp = new URLSearchParams();
+    qp.set('qty', String(dto.qty || 1));
+    if (dto.clientOrderUuid) qp.set('order_uuid', String(dto.clientOrderUuid));
+    const params = dto.params || {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null) continue;
+      let key = k;
+      if (k === 'oyuncu_bilgi') key = 'user_identifier';
+      if (k === 'extra') key = 'extra_field';
+      qp.set(key, String(v));
+    }
+
+    const url = `${base}/client/api/newOrder/${encodeURIComponent(dto.productId)}/params?${qp.toString()}`;
+    try {
+      // Our Client API expects POST, but accepts params from query string
+      const res = await axios.post(url, null, { headers, timeout: 15000, maxRedirects: 3 });
+      const data: any = res?.data ?? {};
+
+      // Expected response shape from our Client API
+      const providerStatus: string = String(data?.status || '');
+      const mapped: 'pending' | 'success' | 'failed' = providerStatus === 'accept'
+        ? 'success'
+        : providerStatus === 'reject'
+        ? 'failed'
+        : 'pending';
+
+      const priceNum = Number(data?.price_usd ?? data?.priceUSD ?? 0);
+      const note = data?.message || data?.note || undefined;
+
+      return {
+        success: providerStatus !== 'reject',
+        externalOrderId: data?.id ? String(data.id) : undefined,
+        providerStatus,
+        mappedStatus: mapped,
+        price: Number.isFinite(priceNum) ? priceNum : undefined,
+        costCurrency: 'USD',
+        ...(note ? { note } : {}),
+        raw: data,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        mappedStatus: 'failed' as const,
+        providerStatus: 'error',
+        note: String(err?.response?.data?.message || err?.message || 'failed'),
+        raw: {
+          status: err?.response?.status,
+          body: (() => { try { return JSON.stringify(err?.response?.data).slice(0, 500); } catch { return String(err?.response?.data ?? ''); } })(),
+        },
+      };
+    }
+  }
+
+  // Check orders via the target tenant's Client API
+  async checkOrders(cfg: IntegrationConfig, ids: string[]) {
+    const base = this.buildBase(cfg);
+    const headers = { ...this.authHeader(cfg), Accept: 'application/json', 'User-Agent': 'Watan-InternalProvider/1.0' } as any;
+    const encoded = encodeURIComponent(`[${ids.join(',')}]`);
+    const url = `${base}/client/api/check?orders=${encoded}`;
+    const res = await axios.get(url, { headers, timeout: 15000, maxRedirects: 3 }).catch((e: any) => ({ data: { error: String(e?.message || e) } } as any));
+    const data: any = res?.data ?? {};
+    const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+    return list.map((o: any) => {
+      const providerStatus: string = String(o?.status || '');
+      const mapped: 'pending' | 'success' | 'failed' = providerStatus === 'accept'
+        ? 'success'
+        : providerStatus === 'reject'
+        ? 'failed'
+        : 'pending';
+      return {
+        externalOrderId: o?.id ? String(o.id) : '',
+        providerStatus,
+        mappedStatus: mapped,
+        raw: o,
+      };
+    });
+  }
 }

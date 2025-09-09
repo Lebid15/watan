@@ -1241,7 +1241,8 @@ export class ProductsService {
     } catch {}
     if (!routing) return; // no routing configured
     if (routing.mode !== 'auto') return; // manual routing – skip
-    if (routing.providerType !== 'external') return; // we only auto-dispatch to external providers for now
+  // Auto-dispatch only when routing is configured as 'external' provider
+  if (routing.providerType !== 'external') return;
     if (!routing.primaryProviderId) return; // nothing to send to
 
     const providerId = routing.primaryProviderId;
