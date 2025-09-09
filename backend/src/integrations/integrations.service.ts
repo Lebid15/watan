@@ -67,10 +67,25 @@ export class IntegrationsService {
           'SCHEMA_UPGRADE_REQUIRED: package_routing missing columns (providerType/codeGroupId/tenantId). Please run DB migrations.'
         );
       }
-      // 23505 = unique_violation; help if old unique (package_id) exists without tenant scope
-      if (code === '23505' && /ux_package_routing_package/i.test(msg)) {
+      // 23505 = unique_violation; try to adopt legacy row, else return guidance
+      if (code === '23505') {
+        try {
+          const pkgId = (row as any)?.package?.id;
+          if (pkgId) {
+            const conflict = await this.routingRepo.findOne({ where: { package: { id: pkgId } as any } as any, relations: ['package'] });
+            if (conflict) {
+              (conflict as any).tenantId = (conflict as any).tenantId || (row as any).tenantId;
+              conflict.mode = row.mode;
+              (conflict as any).providerType = (row as any).providerType ?? (conflict as any).providerType ?? ('manual' as any);
+              conflict.primaryProviderId = row.primaryProviderId ?? null;
+              conflict.fallbackProviderId = row.fallbackProviderId ?? null;
+              (conflict as any).codeGroupId = (row as any).codeGroupId ?? null;
+              return await this.routingRepo.save(conflict);
+            }
+          }
+        } catch (_) { /* ignore and map to guidance */ }
         throw new BadRequestException(
-          'SCHEMA_UPGRADE_REQUIRED: legacy unique constraint on package_routing detected. Please run FixPackageRoutingTenantId migration.'
+          'SCHEMA_UPGRADE_REQUIRED: routing unique constraint conflict. Run latest migrations (FixPackageRoutingTenantId) to scope by tenant.'
         );
       }
       // 23503 = foreign_key_violation or other constraint issues
@@ -107,11 +122,19 @@ export class IntegrationsService {
   }
 
   private async getOrCreateRoutingForPackage(pkg: ProductPackage, tenantId: string) {
+    // Prefer tenant-scoped row
     let row = await this.routingRepo.findOne({ where: { package: { id: pkg.id } as any, tenantId } as any, relations: ['package'] });
-    if (!row) {
-      row = this.routingRepo.create({ package: pkg, tenantId, mode: 'manual' as any });
+    if (row) return row;
+    // Adopt legacy row without tenantId (pre-migration data)
+    const legacy = await this.routingRepo.findOne({ where: { package: { id: pkg.id } as any } as any, relations: ['package'] });
+    if (legacy) {
+      if (!(legacy as any).tenantId) (legacy as any).tenantId = tenantId;
+      if (!(legacy as any).providerType) (legacy as any).providerType = 'manual' as any;
+      if (!(legacy as any).mode) (legacy as any).mode = 'manual' as any;
+      return legacy;
     }
-    return row;
+    // Create new
+    return this.routingRepo.create({ package: pkg, tenantId, mode: 'manual' as any });
   }
 
   async create(
