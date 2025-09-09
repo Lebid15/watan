@@ -18,7 +18,8 @@ export class InternalProvider implements ProviderDriver {
 
   private authHeader(cfg: IntegrationConfig) {
     if (!cfg.apiToken) throw new Error('Internal provider requires apiToken');
-    const t = cfg.apiToken.trim();
+  // Normalize token: strip common prefixes like 'Bearer ' or 'Token '
+  const t = cfg.apiToken.trim().replace(/^bearer\s+/i, '').replace(/^token\s+/i, '').trim();
     // If it looks like a 40-char hex (client API token), use api-token header; else assume JWT and use Authorization
     if (/^[a-f0-9]{40}$/i.test(t)) {
       return { 'api-token': t } as any;

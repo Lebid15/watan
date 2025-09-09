@@ -190,6 +190,8 @@ export class IntegrationsService {
           id: cfg.id,
           provider: cfg.provider,
           msg: (res?.message || res?.error || '').toString().slice(0, 180),
+          status: (res as any)?.status,
+          remote: (res as any)?.remoteCode || (res as any)?.remoteData,
         });
         return { balance: null, error: res.error, missingConfig: res.missingConfig, message: res.message } as any;
       }
