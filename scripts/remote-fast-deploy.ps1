@@ -90,8 +90,9 @@ log(){ printf "\n[%s] %s\n" "$(date -u '+%H:%M:%S')" "$*"; }
 fail(){ echo "[FATAL] $*" >&2; exit 90; }
 
 # Ensure docker (auto-install on Debian/Ubuntu if missing)
-_HAS_DOCKER=$(command -v docker 2>/dev/null || true)
-if [ -z "$_HAS_DOCKER" ]; then
+HAS_DOCKER=0
+if command -v docker >/dev/null 2>&1; then HAS_DOCKER=1; else HAS_DOCKER=0; fi
+if [ "$HAS_DOCKER" -eq 0 ]; then
   log 'docker not found; attempting install (Debian/Ubuntu)...'
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
