@@ -89,17 +89,34 @@ log(){ printf "\n[%s] %s\n" "$(date -u '+%H:%M:%S')" "$*"; }
 
 fail(){ echo "[FATAL] $*" >&2; exit 90; }
 
-# Detect docker compose implementation
-if command -v docker >/dev/null 2>&1; then
-  if docker compose version >/dev/null 2>&1; then
-    _dc(){ docker compose "$@"; }
-  elif command -v docker-compose >/dev/null 2>&1; then
-    _dc(){ docker-compose "$@"; }
+# Ensure docker (auto-install on Debian/Ubuntu if missing)
+if ! command -v docker >/dev/null 2>&1; then
+  log 'docker not found; attempting install (Debian/Ubuntu)...'
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y || true
+    apt-get install -y ca-certificates curl gnupg lsb-release >/dev/null 2>&1 || apt-get install -y ca-certificates curl gnupg lsb-release
+    install -m 0755 -d /etc/apt/keyrings || true
+    if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
+      curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg || fail 'failed to fetch docker gpg'
+      chmod a+r /etc/apt/keyrings/docker.gpg || true
+    fi
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(. /etc/os-release; echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+    apt-get update -y || true
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || fail 'docker install failed'
+    (systemctl enable --now docker || true)
   else
-    echo "[FATAL] docker compose / docker-compose not found" >&2; exit 91
+    fail 'docker not installed and auto-install unsupported on this distro'
   fi
+fi
+
+# Detect docker compose implementation
+if docker compose version >/dev/null 2>&1; then
+  _dc(){ docker compose "$@"; }
+elif command -v docker-compose >/dev/null 2>&1; then
+  _dc(){ docker-compose "$@"; }
 else
-  echo "[FATAL] docker not installed" >&2; exit 92
+  echo "[FATAL] docker compose / docker-compose not found" >&2; exit 91
 fi
 
 cd "$REMOTE_DIR" 2>/dev/null || fail "Remote dir $REMOTE_DIR not found"
