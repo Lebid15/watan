@@ -1310,6 +1310,16 @@ export class ProductsService {
       const message: string =
         ((res as any)?.raw && (((res as any).raw.message as any) || (res as any).raw.desc || (res as any).raw.raw)) || 'sent';
 
+      // Prefer provider-returned price/currency when available
+      let finalCostCurrency = costCurrency;
+      let finalCostAmount = costAmount;
+      if (res && typeof (res as any).price === 'number' && Number.isFinite((res as any).price)) {
+        finalCostAmount = Number((res as any).price);
+      }
+      if ((res as any)?.costCurrency) {
+        finalCostCurrency = String((res as any).costCurrency);
+      }
+
       (order as any).providerId = providerId;
       (order as any).externalOrderId = externalOrderId;
       (order as any).externalStatus = this.mapMappedToExternalStatus(statusRaw);
@@ -1317,8 +1327,8 @@ export class ProductsService {
       (order as any).lastSyncAt = new Date();
       (order as any).lastMessage = String(message ?? '').slice(0, 250);
       (order as any).attempts = ((order as any).attempts ?? 0) + 1;
-      (order as any).costCurrency = costCurrency;
-      (order as any).costAmount = Number(costAmount.toFixed(2));
+      (order as any).costCurrency = finalCostCurrency;
+      (order as any).costAmount = Number(finalCostAmount.toFixed(2));
       const sell = Number((order as any).sellPriceAmount ?? (order as any).price ?? 0);
       (order as any).profitAmount = Number((sell - (order as any).costAmount).toFixed(2));
       await this.ordersRepo.save(order);

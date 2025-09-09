@@ -127,6 +127,15 @@ export class OrdersMonitorService {
         const msgToStore = String((note ?? fallbackMsg) || '').slice(0, 250);
         order.lastMessage = msgToStore;
 
+        // خزّن providerMessage لعرضها للمستخدم (تُظهر الواجهة هذه القيمة إن وُجدت)
+        try {
+          if (note && note.trim()) {
+            (order as any).providerMessage = note;
+          } else if (fallbackMsg && fallbackMsg !== 'sync') {
+            (order as any).providerMessage = fallbackMsg;
+          }
+        } catch {}
+
         // خزّن PIN إن توفّر
         if (pin) {
           order.pinCode = pin;

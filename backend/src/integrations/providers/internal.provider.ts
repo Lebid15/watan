@@ -326,10 +326,21 @@ export class InternalProvider implements ProviderDriver {
         : providerStatus === 'reject'
         ? 'failed'
         : 'pending';
+      const note =
+        o?.message?.toString?.().trim?.() ||
+        o?.note?.toString?.().trim?.() ||
+        o?.desc?.toString?.().trim?.() ||
+        undefined;
+      const pin =
+        o?.pin != null
+          ? String(o.pin).trim()
+          : undefined;
       return {
         externalOrderId: o?.id ? String(o.id) : '',
         providerStatus,
         mappedStatus: mapped,
+        ...(note ? { note } : {}),
+        ...(pin ? { pin } : {}),
         raw: o,
       };
     });
