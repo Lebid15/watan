@@ -88,7 +88,8 @@ export class IntegrationsController {
   updateOne(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateIntegrationDto) {
   this.assertUuid(id);
     const tenantId = this.getTenantId(req);
-    return this.svc.updateIntegration(id, tenantId, dto as any);
+  // BUGFIX: correct parameter order -> service expects (tenantId, id, dto)
+  return this.svc.updateIntegration(tenantId, id, dto as any);
   }
 
   // ⬇️ حذف مزود
