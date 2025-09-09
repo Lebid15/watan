@@ -90,6 +90,20 @@ async function bootstrap() {
     next();
   });
 
+  // 📌 ثبت reqId مبكرًا لكل طلبات Client API وأعده في الهيدر x-req-id حتى عند وقوع الاستثناء قبل الوصول للـ Controller
+  app.use((req: any, res: any, next: any) => {
+    try {
+      const p: string = req.url || '';
+      if ((p.startsWith('/api/client/api/') || p.startsWith('/client/api/')) && !p.includes('openapi.json')) {
+        const incoming = (req.headers && (req.headers['x-request-id'] as string)) || '';
+        const reqId = incoming || Math.random().toString(36).slice(2, 10);
+        req.reqId = reqId;
+        try { res.setHeader('x-req-id', reqId); } catch {}
+      }
+    } catch {}
+    next();
+  });
+
   // ✅ تفعيل cookie-parser لقراءة التوكن من الكوكي عند اللزوم
   app.use(cookieParser());
 
