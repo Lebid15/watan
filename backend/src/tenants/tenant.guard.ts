@@ -63,6 +63,11 @@ export class TenantGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req: any = context.switchToHttp().getRequest();
   const path = req.path || req.url || '';
+    // ⛳ تخطَّ كل مسارات Client API بالكامل هنا لتُعالج بواسطة ClientApiAuthGuard فقط
+    // ندعم وجود/غياب البادئة /api لأن Nest قد يُعيد path بدون البادئة
+    if (/^\/(api\/)?client\/api\//.test(path)) {
+      return true;
+    }
     if (/^\/api\/pages\/(about|infoes)$/.test(path)) return true;
   const original = req.originalUrl || '';
   // Allow dev-token issuance regardless of prefix variations (defensive)
