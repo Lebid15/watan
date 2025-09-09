@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import api from '@/utils/api';
 
 interface SettingsState {
   allowAll: boolean;
@@ -22,8 +23,8 @@ export default function AccountApiPage(){
 
   async function load(){
     try{
-      const r=await fetch('/api/tenant/client-api/users/me/settings',{cache:'no-store'});
-      const j=await r.json();
+      const r = await api.get('/tenant/client-api/users/me/settings', { params: { _ts: Date.now() } });
+      const j = r.data;
       setSettings(j);
       setAllowAll(j.allowAll);
       setIpsText((j.allowIps||[]).join('\n'));
@@ -35,8 +36,8 @@ export default function AccountApiPage(){
   async function action(kind: 'generate'|'rotate'|'revoke'){
     setLoading(true); setMsg(null); setToken(null);
     try{
-      const r=await fetch('/api/tenant/client-api/users/me/'+kind,{method:'POST'});
-      const j=await r.json();
+      const r = await api.post('/tenant/client-api/users/me/'+kind);
+      const j = r.data;
   if(j.token) { setToken(j.token); setMsg('تم الإنشاء – انسخ التوكن الآن'); }
   else { setMsg(kind==='revoke'?'تم الإبطال':'تم التنفيذ'); }
   await load();
@@ -49,8 +50,8 @@ export default function AccountApiPage(){
     try{
       const ips=ipsText.split(/\n+/).map(s=>s.trim()).filter(Boolean).slice(0,200);
       const body:any={ allowAll, allowIps: ips, rateLimitPerMin: rateLimit? Number(rateLimit): null };
-      const r=await fetch('/api/tenant/client-api/users/me/settings',{ method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-      if(!r.ok) throw 0;
+      const r = await api.patch('/tenant/client-api/users/me/settings', body);
+      if(r.status < 200 || r.status >= 300) throw 0;
       await load();
       setMsg('تم الحفظ');
     }catch{ setMsg('فشل الحفظ'); }

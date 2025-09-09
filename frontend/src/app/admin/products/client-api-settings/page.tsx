@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from 'react';
+import api from '@/utils/api';
 
 // Moved original API token/settings UI here to keep tenant panel clean.
 // Route: /admin/products/client-api-settings
@@ -34,9 +35,9 @@ export default function ClientApiSettingsPage() {
   const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/me').then(r=>r.json()).then(d=> {
-      const id = d?.user?.id; setUserId(id || null);
-    });
+    api.get('/users/profile').then(r=>{
+      const d = r.data; const id = d?.id || d?.user?.id; setUserId(id || null);
+    }).catch(()=> setUserId(null));
   }, []);
 
   useEffect(() => { if (!userId) return; refresh(); }, [userId]);
@@ -44,7 +45,7 @@ export default function ClientApiSettingsPage() {
   function refresh() {
     if (!userId) return;
     setLoading(true);
-    fetch(`/api/tenant/client-api/users/${userId}/settings`).then(r=>r.json()).then((d: SettingsResp) => {
+    api.get(`/tenant/client-api/users/${userId}/settings`).then(r=>r.data).then((d: SettingsResp) => {
       setSettings(d);
       setIpsText((d.allowIps || []).join('\n'));
       setWebhookUrl(d.webhookUrl || d.webhook?.url || '');
@@ -54,10 +55,10 @@ export default function ClientApiSettingsPage() {
   async function action(url: string) {
     if (!userId) return;
     setLoading(true); setError(null); setInfo(null);
-    const r = await fetch(url.replace(':id', userId), { method: 'POST' });
-    const d = await r.json();
-    if (d?.token) setToken(d.token);
-    if (r.ok) { setInfo('Done'); refresh(); } else setError('Action failed');
+    const r = await api.post(url.replace(':id', userId).replace('/api',''));
+    const d = r.data;
+  if (d?.token) setToken(d.token);
+  if (r.status >= 200 && r.status < 300) { setInfo('Done'); refresh(); } else setError('Action failed');
     setLoading(false);
   }
 
@@ -71,8 +72,8 @@ export default function ClientApiSettingsPage() {
       enabled: settings?.enabled,
     };
     if (settings?.rateLimitPerMin !== undefined) body.rateLimitPerMin = settings.rateLimitPerMin === null ? null : Number(settings.rateLimitPerMin);
-    const r = await fetch(`/api/tenant/client-api/users/${userId}/settings`, { method: 'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    if (!r.ok) setError('Failed to save'); else { setInfo('Saved'); refresh(); }
+    const r = await api.patch(`/tenant/client-api/users/${userId}/settings`, body);
+    if (!(r.status>=200 && r.status<300)) setError('Failed to save'); else { setInfo('Saved'); refresh(); }
     setLoading(false);
   }
 
