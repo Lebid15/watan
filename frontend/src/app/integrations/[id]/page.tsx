@@ -557,8 +557,16 @@ export default function IntegrationMappingPage() {
             )}
 
             {rows.map((r) => {
-              // تحويل سعر المزود من TRY إلى USD إن توفر سعر الصرف
-              const providerUSD = r.provider_price != null && tryRate ? r.provider_price / tryRate : null;
+              // سعر المزود:
+              // - للمزوّد الداخلي: السعر بالفعل USD -> لا تحويل
+              // - للمزوّد الخارجي: (غالبًا TRY) نحوّله إلى USD عند توفر tryRate
+              const providerUSD = (() => {
+                if (r.provider_price == null) return null;
+                const val = Number(r.provider_price);
+                if (!Number.isFinite(val)) return null;
+                if (apiInfo?.type === 'internal') return val; // لا تحويل
+                return tryRate ? val / tryRate : null;
+              })();
               const diffUSD = providerUSD != null ? providerUSD - Number(r.our_base_price) : null;
               const diffClass = diffUSD == null
                 ? 'text-text-secondary'
