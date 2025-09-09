@@ -44,11 +44,14 @@ export class InternalProvider implements ProviderDriver {
       const rawBal = (
         data?.balance ??
         data?.user?.balance ??
-        (typeof data?.balanceUSD3 === 'string' ? parseFloat(data.balanceUSD3) : undefined) ??
-        0
+        (typeof data?.balanceUSD3 === 'string' ? parseFloat(data.balanceUSD3) : undefined)
       );
       const balance = Number(rawBal);
-      return { balance: isNaN(balance) ? 0 : balance };
+      if (rawBal === undefined || rawBal === null || Number.isNaN(balance)) {
+        // Don’t silently coerce to 0; surface as provider error so caller can avoid caching/displaying 0
+        return { balance: 0, error: 'BALANCE_PARSE_FAIL', message: 'Could not parse balance from client profile' } as any;
+      }
+      return { balance };
     } catch (e: any) {
       return {
         balance: 0,

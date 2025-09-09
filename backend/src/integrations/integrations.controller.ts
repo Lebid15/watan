@@ -5,6 +5,7 @@ import {
   Get,
   Put,
   Delete,
+  HttpCode,
   Param,
   Post,
   Query,
@@ -101,6 +102,7 @@ export class IntegrationsController {
   }
 
   @Post(':id/test')
+  @HttpCode(200)
   test(@Req() req: any, @Param('id') id: string) {
   this.assertUuid(id);
     const tenantId = this.getTenantId(req);
@@ -108,6 +110,7 @@ export class IntegrationsController {
   }
 
   @Post(':id/refresh-balance')
+  @HttpCode(200)
   refresh(@Req() req: any, @Param('id') id: string) {
   this.assertUuid(id);
     const tenantId = this.getTenantId(req);
@@ -116,6 +119,7 @@ export class IntegrationsController {
 
   // توافق مع الواجهة القديمة التي تستدعي /:id/balance
   @Post(':id/balance')
+  @HttpCode(200)
   balance(@Req() req: any, @Param('id') id: string) {
     this.assertUuid(id);
     const tenantId = this.getTenantId(req);

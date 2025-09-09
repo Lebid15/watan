@@ -182,9 +182,16 @@ export class IntegrationsService {
     try {
       const driver = this.driverOf(cfg);
       const res: any = await driver.getBalance(this.toConfig(cfg));
-      const balance = typeof res?.balance === 'number' ? res.balance : null;
-      if (res?.error || res?.missingConfig) {
-        return { balance, error: res.error, missingConfig: res.missingConfig, message: res.message };
+      const hasError = !!(res?.error || res?.missingConfig);
+      const balance = typeof res?.balance === 'number' && !hasError ? res.balance : null;
+      if (hasError) {
+        // Do not surface 0 as a balance when the provider returned an error; keep it null and include context
+        console.warn('[INTEGRATIONS][refreshBalance][PROVIDER_ERR]', {
+          id: cfg.id,
+          provider: cfg.provider,
+          msg: (res?.message || res?.error || '').toString().slice(0, 180),
+        });
+        return { balance: null, error: res.error, missingConfig: res.missingConfig, message: res.message } as any;
       }
       if (balance !== null) {
         // persist cached balance
