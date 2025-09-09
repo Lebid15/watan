@@ -74,8 +74,8 @@ details{border:1px solid #334155;background:#0f1d33;padding:10px 14px;border-rad
 
 <section id="base-url">
  <h2>Base URL</h2>
- <p><strong>Base URL:</strong> <code>https://api.syrz1.com/</code></p>
- <p>أضف المسار المطلوب بعد <code>/client/api/</code>. مثال: <code>https://api.syrz1.com/client/api/profile</code></p>
+ <p><strong>Base URL:</strong> <code>https://alsham.wtn4.com/</code></p>
+ <p>أضف المسار المطلوب بعد <code>/client/api/</code>. مثال: <code>https://alsham.wtn4.com/client/api/profile</code></p>
 </section>
 
 <section id="auth">
@@ -83,7 +83,7 @@ details{border:1px solid #334155;background:#0f1d33;padding:10px 14px;border-rad
  <p>ضع ترويسة (Header) من النوع Bearer Token في كل طلب:</p>
  <pre>Authorization: Bearer YOUR_TOKEN</pre>
  <p>مثال سريع:</p>
- <pre>curl -H "Authorization: Bearer YOUR_TOKEN" https://api.syrz1.com/client/api/profile</pre>
+ <pre>curl -H "Authorization: Bearer YOUR_TOKEN" https://alsham.wtn4.com/client/api/profile</pre>
  <p>استلم التوكن من النظام (يُولد للمستخدم العميل). أي طلب بدون التوكن سيعيد خطأ 401 أو 403.</p>
 </section>
 
@@ -187,7 +187,7 @@ details{border:1px solid #334155;background:#0f1d33;padding:10px 14px;border-rad
  <h3>مثال cURL</h3>
  <pre>curl -X POST \
  -H "Authorization: Bearer YOUR_TOKEN" \
- "https://api.syrz1.com/client/api/newOrder/364/params?qty=1&playerId=test&order_uuid=ecbdd545-e616-4aee-8770-7eefa977bcd"</pre>
+ "https://alsham.wtn4.com/client/api/newOrder/364/params?qty=1&playerId=test&order_uuid=ecbdd545-e616-4aee-8770-7eefa977bcd"</pre>
  <details open><summary>مثال استجابة</summary>
  <pre>{
   "id": "uuid",
