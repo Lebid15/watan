@@ -196,7 +196,7 @@ function SearchableSelect({
             >
               — إختر باقة —
             </button>
-            {filtered.map((o) => (
+      {filtered.map((o) => (
               <button
                 key={String(o.id)}
                 className={`w-full text-right px-3 py-2 text-sm hover:bg-bg-surface-alt ${
@@ -207,9 +207,9 @@ function SearchableSelect({
                   setOpen(false);
                   setQ('');
                 }}
-                title={`${o.name} (${o.id})`}
+        title={`${o.name} (${o.id})`}
               >
-                {o.name} <span className="text-text-secondary">({o.id})</span>
+        {o.name}
               </button>
             ))}
             {filtered.length === 0 && (
@@ -231,7 +231,7 @@ function SearchableSelect({
         className="border border-border rounded-md px-2 py-1 w-72 bg-bg-surface text-text-primary text-left truncate focus:outline-none focus:ring-2 focus:ring-primary/40"
         title={selected ? `${selected.name} (${selected.id})` : placeholder}
       >
-        {selected ? `${selected.name} (${selected.id})` : placeholder || 'Select…'}
+        {selected ? `${selected.name}` : placeholder || 'Select…'}
       </button>
       {dropdown}
     </>
@@ -279,7 +279,7 @@ async function loadTryRateFromApi(): Promise<number | null> {
    الصفحة الأصلية
    ======================= */
 
-type ProviderPkg = { id: string; name: string };
+type ProviderPkg = { id: string; name: string; price?: number; currency?: string | null };
 type Row = {
   our_package_id: string;
   our_package_name: string;
@@ -595,10 +595,12 @@ export default function IntegrationMappingPage() {
                     <SearchableSelect
                       value={r.current_mapping}
                       onChange={(v) => updateRowMapping(r.our_package_id, v)}
-                      options={r.provider_packages.map((pp) => ({
-                        id: String(pp.id),
-                        name: pp.name,
-                      }))}
+                      options={r.provider_packages.map((pp) => {
+                        const hasPrice = pp.price != null && !Number.isNaN(Number(pp.price));
+                        const priceStr = hasPrice ? `${Number(pp.price).toFixed(2)}${pp.currency ? ' ' + pp.currency : ''}` : '';
+                        const label = hasPrice ? `${pp.name} — ${priceStr}` : pp.name;
+                        return { id: String(pp.id), name: label };
+                      })}
                       placeholder="— إختر باقة للربط —"
                     />
                   </td>

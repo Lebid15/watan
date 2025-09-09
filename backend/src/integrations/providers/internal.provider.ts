@@ -200,25 +200,48 @@ export class InternalProvider implements ProviderDriver {
   async listProducts(cfg: IntegrationConfig): Promise<NormalizedProduct[]> {
     const base = this.buildBase(cfg);
     try {
-  // Use the same public Client API contract as balance/profile
-  // Use base=1 to include all packages even if price is 0 (minimal fields id+name)
-  const { data } = await axios.get(base + '/client/api/products?base=1', {
-        headers: { ...this.authHeader(cfg), Accept: 'application/json' },
-        timeout: 15000,
+      // Strategy: fetch base=1 (all packages incl. zero-priced) + full list (priced only), then merge prices.
+      const headers = { ...this.authHeader(cfg), Accept: 'application/json' } as any;
+      const [baseRes, fullRes] = await Promise.all([
+        axios.get(base + '/client/api/products?base=1', { headers, timeout: 15000 }).catch(() => ({ data: [] })),
+        axios.get(base + '/client/api/products', { headers, timeout: 15000 }).catch(() => ({ data: [] })),
+      ]);
+      const baseItems = Array.isArray((baseRes as any).data?.items)
+        ? (baseRes as any).data.items
+        : Array.isArray((baseRes as any).data)
+        ? (baseRes as any).data
+        : [];
+      const fullItems = Array.isArray((fullRes as any).data?.items)
+        ? (fullRes as any).data.items
+        : Array.isArray((fullRes as any).data)
+        ? (fullRes as any).data
+        : [];
+      const priceMap = new Map<string, { price: number; currency?: string | null }>();
+      for (const p of fullItems) {
+        const id = String((p as any).id);
+        const price = Number((p as any).basePrice ?? (p as any).price ?? 0);
+        const currency = (p as any).currencyCode || (p as any).currency || null;
+        priceMap.set(id, { price, currency });
+      }
+      return baseItems.map((p: any) => {
+        const id = String(p.id);
+        const name = String(p.name || p.title || 'Item');
+        const merged = priceMap.get(id);
+        const basePrice = merged ? merged.price : Number(p.basePrice ?? p.price ?? 0) || 0;
+        const currencyCode = (p.currencyCode || p.currency || (merged ? merged.currency : null)) || null;
+        return {
+          externalId: id,
+          name,
+          basePrice,
+          category: p.categoryName || null,
+          available: true, // base list includes all; availability for selection is allowed
+          inputParams: Array.isArray(p.inputParams) ? p.inputParams.map(String) : [],
+          quantity: { type: 'none' },
+          kind: 'package',
+          meta: { currency: currencyCode },
+          currencyCode,
+        } as NormalizedProduct;
       });
-      const arr = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-      return arr.map((p: any) => ({
-        externalId: String(p.id),
-        name: String(p.name || p.title || 'Item'),
-        basePrice: Number(p.basePrice ?? p.price ?? 0),
-        category: p.categoryName || null,
-        available: p.isActive !== false,
-        inputParams: Array.isArray(p.inputParams) ? p.inputParams.map(String) : [],
-        quantity: { type: 'none' },
-        kind: 'package',
-        meta: { currency: p.currencyCode || p.currency || null },
-        currencyCode: p.currencyCode || null,
-      }));
     } catch {
       return [];
     }

@@ -293,7 +293,12 @@ export class IntegrationsService {
       mappings = [];
     }
 
-    const providerList = providerData.map((p) => ({ id: String(p.externalId), name: p.name }));
+    const providerList = providerData.map((p) => ({
+      id: String(p.externalId),
+      name: p.name,
+      price: Number(p.basePrice ?? 0),
+      currency: (p.currencyCode as any) || (p.meta && (p.meta as any).currency) || null,
+    }));
 
     const result = ourPkgs.map((pkg) => {
       const mapping = mappings.find((m) => m.our_package_id === pkg.id) || null;
