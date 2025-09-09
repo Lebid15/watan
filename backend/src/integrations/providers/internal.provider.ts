@@ -32,14 +32,33 @@ export class InternalProvider implements ProviderDriver {
     try {
       // Correct endpoint: client API exposes balance via /client/api/profile not /api/client/wallet/balance
       const headers = this.authHeader(cfg);
-      const { data } = await axios.get(base + '/client/api/profile', {
+      const url = base + '/client/api/profile';
+      const { data, status, headers: respHeaders } = await axios.get(url, {
         headers,
         timeout: 10000,
         validateStatus: () => true, // we will interpret non-2xx to include body in diagnostics
       });
       if (data && (data.code === 500 || data.message === 'Unknown error')) {
         // Remote returned internal error – surface as fetch failure with context
-        return { balance: 0, error: 'REMOTE_500', message: 'Remote internal error', remoteCode: data.code } as any;
+        try {
+          // Log a compact diagnostic (without secrets)
+          const snippet = (() => {
+            try { return JSON.stringify(data).slice(0, 400); } catch { return String(data).slice(0, 400); }
+          })();
+          console.warn('[InternalProvider] profile responded with code=500 envelope', {
+            url,
+            status,
+            remoteSnippet: snippet,
+          });
+        } catch {}
+        return {
+          balance: 0,
+          error: 'REMOTE_500',
+          message: 'Remote internal error',
+          status,
+          remoteCode: data.code,
+          remoteData: (() => { try { return JSON.stringify(data).slice(0, 400); } catch { return String(data).slice(0, 400); } })(),
+        } as any;
       }
       // Possible shapes: { balance: number } OR { user: { balance } } OR direct field 'balanceUSD3'
       const rawBal = (
@@ -50,7 +69,17 @@ export class InternalProvider implements ProviderDriver {
       const balance = Number(rawBal);
       if (rawBal === undefined || rawBal === null || Number.isNaN(balance)) {
         // Don’t silently coerce to 0; surface as provider error so caller can avoid caching/displaying 0
-        return { balance: 0, error: 'BALANCE_PARSE_FAIL', message: 'Could not parse balance from client profile' } as any;
+        try {
+          const snippet = (() => { try { return JSON.stringify(data).slice(0, 400); } catch { return String(data).slice(0, 400); } })();
+          console.warn('[InternalProvider] profile parse failed', { url, status, remoteSnippet: snippet });
+        } catch {}
+        return {
+          balance: 0,
+          error: 'BALANCE_PARSE_FAIL',
+          message: 'Could not parse balance from client profile',
+          status,
+          remoteData: (() => { try { return JSON.stringify(data).slice(0, 400); } catch { return String(data).slice(0, 400); } })(),
+        } as any;
       }
       return { balance };
     } catch (e: any) {
