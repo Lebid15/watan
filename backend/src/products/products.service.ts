@@ -1313,8 +1313,9 @@ export class ProductsService {
       // Prefer provider-returned price/currency when available
       let finalCostCurrency = costCurrency;
       let finalCostAmount = costAmount;
-      if (res && typeof (res as any).price === 'number' && Number.isFinite((res as any).price)) {
-        finalCostAmount = Number((res as any).price);
+      if (res && (res as any).price != null) {
+        const p = Number((res as any).price);
+        if (Number.isFinite(p) && p >= 0) finalCostAmount = p;
       }
       if ((res as any)?.costCurrency) {
         finalCostCurrency = String((res as any).costCurrency);

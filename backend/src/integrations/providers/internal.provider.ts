@@ -283,7 +283,15 @@ export class InternalProvider implements ProviderDriver {
         : 'pending';
 
       const priceNum = Number(data?.price_usd ?? data?.priceUSD ?? 0);
-      const note = data?.message || data?.note || undefined;
+      let note: string | undefined =
+        data?.message?.toString?.().trim?.() ||
+        data?.note?.toString?.().trim?.() ||
+        undefined;
+      if (!note) {
+        if (mapped === 'success') note = 'تم قبول الطلب';
+        else if (mapped === 'failed') note = 'تم رفض الطلب';
+        else note = 'تم استلام الطلب';
+      }
 
       return {
         success: providerStatus !== 'reject',
@@ -326,11 +334,16 @@ export class InternalProvider implements ProviderDriver {
         : providerStatus === 'reject'
         ? 'failed'
         : 'pending';
-      const note =
+      let note =
         o?.message?.toString?.().trim?.() ||
         o?.note?.toString?.().trim?.() ||
         o?.desc?.toString?.().trim?.() ||
         undefined;
+      if (!note) {
+        if (mapped === 'success') note = 'تم قبول الطلب';
+        else if (mapped === 'failed') note = 'تم رفض الطلب';
+        else note = 'قيد المعالجة';
+      }
       const pin =
         o?.pin != null
           ? String(o.pin).trim()
