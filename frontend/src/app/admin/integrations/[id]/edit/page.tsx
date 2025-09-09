@@ -31,6 +31,7 @@ export default function EditIntegrationPage() {
   const [error, setError] = useState('');
   // changed: numeric balance + error message
   const [balance, setBalance] = useState<number | null>(null);
+  const [currency, setCurrency] = useState<string | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -58,12 +59,13 @@ export default function EditIntegrationPage() {
   const fetchBalance = useCallback(async (provider: ProviderKind, creds: Record<string, string>, integId: string) => {
     setLoadingBalance(true);
     try {
-      const { data } = await api.post<{ balance: number | null; error?: string; message?: string }>(
+  const { data } = await api.post<{ balance: number | null; currency?: string | null; error?: string; message?: string }>(
         API_ROUTES.admin.integrations.balance(integId),
         { provider, ...creds }
       );
       const b = typeof data?.balance === 'number' ? data.balance : null;
       setBalance(b);
+  setCurrency(b !== null ? (data?.currency ?? null) : null);
       setBalanceError(b === null ? (data?.message || data?.error || null) : null);
     } catch (e: any) {
       const code = e?.response?.data?.code;
@@ -72,7 +74,8 @@ export default function EditIntegrationPage() {
       } else {
         info('تعذر جلب الرصيد');
       }
-      setBalance(null);
+  setBalance(null);
+  setCurrency(null);
       try { setBalanceError(e?.response?.data?.message || e?.message || null); } catch { setBalanceError(null); }
     } finally {
       setLoadingBalance(false);
@@ -206,9 +209,9 @@ export default function EditIntegrationPage() {
         <div className="mb-4 card border border-accent/40 text-accent">
           جارِ جلب الرصيد…
         </div>
-      ) : balance !== null ? (
+    ) : balance !== null ? (
         <div className="mb-4 card border border-success/40 bg-success/10 text-success">
-          الرصيد: {balance}
+      الرصيد: {balance}{currency ? ` ${currency}` : ''}
         </div>
       ) : (
         <div className="mb-4 card text-text-secondary">

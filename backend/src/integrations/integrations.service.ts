@@ -191,8 +191,9 @@ export class IntegrationsService {
     try {
       const driver = this.driverOf(cfg);
       const res: any = await driver.getBalance(this.toConfig(cfg));
-      const hasError = !!(res?.error || res?.missingConfig);
-      const balance = typeof res?.balance === 'number' && !hasError ? res.balance : null;
+  const hasError = !!(res?.error || res?.missingConfig);
+  const balance = typeof res?.balance === 'number' && !hasError ? res.balance : null;
+  const currency = !hasError ? (res as any)?.currency ?? null : null;
       if (hasError) {
         // Do not surface 0 as a balance when the provider returned an error; keep it null and include context
         console.warn('[INTEGRATIONS][refreshBalance][PROVIDER_ERR]', {
@@ -204,13 +205,13 @@ export class IntegrationsService {
         });
         return { balance: null, error: res.error, missingConfig: res.missingConfig, message: res.message } as any;
       }
-      if (balance !== null) {
+  if (balance !== null) {
         // persist cached balance
         (cfg as any).balance = balance;
         (cfg as any).balanceUpdatedAt = new Date();
         try { await this.integrationRepo.save(cfg); } catch (e) { console.error('[INTEGRATIONS][refreshBalance][CACHE_FAIL]', { id: cfg.id, err: (e as any)?.message }); }
       }
-      return { balance };
+  return { balance, currency } as any;
     } catch (e: any) {
       const msg = String(e?.message || e || 'error');
       if (msg === 'INTEGRATION_DISABLED') {
