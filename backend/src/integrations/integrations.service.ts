@@ -92,6 +92,10 @@ export class IntegrationsService {
       if (code === '23503') {
         throw new BadRequestException('CONSTRAINT_VIOLATION: invalid reference while saving routing');
       }
+      // 23502 = not_null_violation on id if default missing
+      if (code === '23502' && /column\s+"id"\s+of\s+relation\s+"package_routing"\s+violates\s+not-null/i.test(msg)) {
+        throw new BadRequestException('SCHEMA_UPGRADE_REQUIRED: package_routing.id has no default. Run migrations to set gen_random_uuid() default.');
+      }
       // Fallback: rethrow original to be handled by global filters
       throw e;
     }
