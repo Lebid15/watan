@@ -96,9 +96,10 @@ export class ClientApiService {
         const price = priceMap.get(pkg.id) || 0;
         const available = price > 0 && product.isActive && pkg.isActive;
         if (!available && !opts.baseOnly) continue; // exclude zero-priced when full listing
-        const item = opts.baseOnly ? { id: pkg.id, name: product.name } : {
+        // Expose package-level name so integrators can distinguish variants (e.g., PUBG 16200)
+        const item = opts.baseOnly ? { id: pkg.id, name: pkg.name } : {
           id: pkg.id,
-          name: product.name,
+          name: pkg.name,
           product_type: 'package',
           price: price,
           available,
