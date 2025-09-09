@@ -1,4 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import * as crypto from 'crypto';
+import { debugEnabled, debugLog } from '../common/debug.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import { User } from '../user/user.entity';
@@ -22,7 +24,10 @@ export class ClientApiAuthGuard implements CanActivate {
     if (token.length !== 40 || !/^[a-f0-9]{40}$/i.test(token)) {
       throw new ClientApiError(121, 'Token error', { reason: 'invalid_format' });
     }
-    let user: any;
+  // Compute token hash (for logs)
+  const tokenHash8 = crypto.createHash('sha256').update(token).digest('hex').slice(0, 8);
+
+  let user: any;
     try {
       // Load currency relation so profile can expose currency code
       user = await this.usersRepo.findOne({ where: { apiToken: token } as any, relations: ['currency'] });
@@ -57,6 +62,16 @@ export class ClientApiAuthGuard implements CanActivate {
     // Attach context
     req.clientApiUser = user;
     req.tenant = { id: user.tenantId };
+    req.clientApiTokenHash8 = tokenHash8;
+
+    if (debugEnabled('clientApiAuth')) {
+      debugLog('clientApiAuth', 'token ok', {
+        userId: user.id,
+        tenantId: user.tenantId,
+        tokenHash8,
+        ip: extractNormalizedIp(req.headers['x-forwarded-for'] as any, req.socket?.remoteAddress),
+      });
+    }
 
     // Update last used at async
   this.usersRepo.update(user.id, { apiLastUsedAt: new Date() }).catch(()=>{});

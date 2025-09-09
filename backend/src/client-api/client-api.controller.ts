@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards, UseFilters } from '@nestjs/common';
+import { debugEnabled, debugLog } from '../common/debug.util';
 import { ApiTags } from '@nestjs/swagger';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -18,6 +19,15 @@ export class ClientApiController {
   @Get('profile')
   profile(@Req() req: any) {
     try {
+      const reqId = (req.headers['x-request-id'] as string) || Math.random().toString(36).slice(2,8);
+      const host = (req.headers['host'] as string) || '';
+      if (debugEnabled('clientApiProfile')) debugLog('clientApiProfile', 'begin', {
+        reqId,
+        host,
+        tenantId: req.tenant?.id || null,
+        tokenHash8: req.clientApiTokenHash8 || null,
+        path: req.originalUrl || req.url,
+      });
       const u = req.clientApiUser;
       if (!u) throw new Error('profile_missing_user_ctx');
       // Normalize balance (TypeORM decimal => string sometimes)
@@ -29,18 +39,20 @@ export class ClientApiController {
       // 2. linked currency relation code (if any)
       // 3. fallback default (system-wide) -> 'USD'
       const currencyCode = u.preferredCurrencyCode || (u.currency && u.currency.code) || 'USD';
-      return {
+  const resp = {
         username: u.username || null,
         email: u.email || null,
         balance: balanceNum,
         currency: currencyCode,
       };
+  if (debugEnabled('clientApiProfile')) debugLog('clientApiProfile', 'end', { reqId, status: 200 });
+  return resp;
     } catch (e: any) {
       // Surface root cause in logs so we stop getting generic {code:500,"Unknown error"}
       // This will still be mapped by the global filter but with stack trace available in container logs.
       // Remove after diagnosing production issue.
       // eslint-disable-next-line no-console
-      console.error('[CLIENT_API][PROFILE][ERROR]', { msg: e?.message, stack: e?.stack?.split('\n').slice(0,4).join(' | ') });
+  console.error('[CLIENT_API][PROFILE][ERROR]', { msg: e?.message, stack: e?.stack?.split('\n').slice(0,4).join(' | '), tenantId: req.tenant?.id || null, tokenHash8: req.clientApiTokenHash8 || null });
       throw e; // rethrow so filter handles mapping
     }
   }

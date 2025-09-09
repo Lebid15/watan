@@ -27,7 +27,7 @@ function mapGeneric(e: any): { code: number; message: string; httpStatus?: numbe
   if (/NOT_FOUND/i.test(codeStr) || /NOT_FOUND/i.test(norm)) return { code: 109, message: 'Product not found', httpStatus: 200 };
   if (/INVALID_PRODUCT/i.test(norm)) return { code: 110, message: 'Product not available now', httpStatus: 200 };
   if (/INSUFFICIENT_BALANCE/i.test(norm)) return { code: 100, message: 'Insufficient balance', httpStatus: 200 };
-  return { code: 500, message: 'Unknown error' };
+  return { code: 500, message: 'Unknown error', httpStatus: 500 };
 }
 
 @Catch()
