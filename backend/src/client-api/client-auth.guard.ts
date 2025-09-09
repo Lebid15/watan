@@ -19,12 +19,18 @@ export class ClientApiAuthGuard implements CanActivate {
       return hl === 'api-token' || hl === 'x-api-token';
     });
   let token = rawHeader ? (req.headers as any)[rawHeader] as string : undefined;
-    if (!token) throw new ClientApiError(120, 'Api Token is required', { reason: 'missing_token' });
+    if (!token) {
+      // eslint-disable-next-line no-console
+      console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'missing_token' });
+      throw new ClientApiError(120, 'Api Token is required', { reason: 'missing_token' });
+    }
     if (typeof token !== 'string') throw new ClientApiError(121, 'Token error', { reason: 'non_string' });
   const tokenOriginalLen = token.length;
   // Trim whitespace and invisible unicode (ZWNJ/ZWS etc.) at ends
   token = token.trim();
   if (token.length !== 40 || !/^[a-f0-9]{40}$/i.test(token)) {
+      // eslint-disable-next-line no-console
+      console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'invalid_format', tokenLen: token.length });
       throw new ClientApiError(121, 'Token error', { reason: 'invalid_format' });
     }
   // Compute token hash (for logs)
@@ -35,17 +41,35 @@ export class ClientApiAuthGuard implements CanActivate {
       // Load currency relation so profile can expose currency code
       user = await this.usersRepo.findOne({ where: { apiToken: token } as any, relations: ['currency'] });
     } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'lookup_failed' });
       throw new ClientApiError(121, 'Token error', { reason: 'lookup_failed' });
     }
-    if (!user) throw new ClientApiError(121, 'Token error', { reason: 'not_found' });
-    if (user.apiTokenRevoked) throw new ClientApiError(121, 'Token error', { reason: 'revoked' });
-    if (!user.apiEnabled) throw new ClientApiError(121, 'Token error', { reason: 'disabled' });
+    if (!user) {
+      // eslint-disable-next-line no-console
+      console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'not_found' });
+      throw new ClientApiError(121, 'Token error', { reason: 'not_found' });
+    }
+    if (user.apiTokenRevoked) {
+      // eslint-disable-next-line no-console
+      console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'revoked', userId: user.id });
+      throw new ClientApiError(121, 'Token error', { reason: 'revoked' });
+    }
+    if (!user.apiEnabled) {
+      // eslint-disable-next-line no-console
+      console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'disabled', userId: user.id });
+      throw new ClientApiError(121, 'Token error', { reason: 'disabled' });
+    }
 
     // IP allow-list
     const ip = extractNormalizedIp(req.headers['x-forwarded-for'] as any, req.socket?.remoteAddress);
     if (!user.apiAllowAllIps) {
       const list: string[] = Array.isArray(user.apiAllowIps) ? user.apiAllowIps : [];
-  if (!ipAllowed(list, ip)) throw new ClientApiError(123, 'IP not allowed', { reason: 'ip_not_allowed', ip, allow: list });
+  if (!ipAllowed(list, ip)) {
+      // eslint-disable-next-line no-console
+      console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'ip_not_allowed', ip, allow: list });
+      throw new ClientApiError(123, 'IP not allowed', { reason: 'ip_not_allowed', ip, allow: list });
+    }
     }
     if (process.env.MAINTENANCE === '1') {
       throw ErrClientApi.maintenance();
@@ -58,7 +82,9 @@ export class ClientApiAuthGuard implements CanActivate {
       const cntRows = await this.usersRepo.query(`SELECT count(*)::int AS c FROM client_api_request_logs WHERE "userId"=$1 AND "createdAt" > $2`, [user.id, since]);
       const count = cntRows?.[0]?.c || 0;
       if (count >= user.apiRateLimitPerMin) {
-  throw new ClientApiError(429, 'Rate limit exceeded', { reason: 'rate_limited', limit: user.apiRateLimitPerMin });
+  // eslint-disable-next-line no-console
+      console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'rate_limited', limit: user.apiRateLimitPerMin, userId: user.id });
+      throw new ClientApiError(429, 'Rate limit exceeded', { reason: 'rate_limited', limit: user.apiRateLimitPerMin });
       }
     }
 

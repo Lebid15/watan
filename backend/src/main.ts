@@ -103,6 +103,29 @@ async function bootstrap() {
     } catch {}
     next();
   });
+  // 🧾 سجل كل طلبات Client API عند الانتهاء (يساعد على التتبع بواسطة reqId حتى لو فشلت الحراسة)
+  app.use((req: any, res: any, next: any) => {
+    const started = Date.now();
+    const p: string = req.url || '';
+    const isClientApi = (p.startsWith('/api/client/api/') || p.startsWith('/client/api/')) && !p.includes('openapi.json');
+    const reqId = req.reqId;
+    const host = req.headers?.host;
+    if (!isClientApi) return next();
+    res.on('finish', () => {
+      try {
+        // لا تطبع أي أسرار؛ فقط معلومات تشخيصية خفيفة
+        console.log('[CLIENT_API][REQ]', {
+          reqId: reqId || null,
+          method: req.method,
+          path: req.originalUrl || req.url,
+          host,
+          status: res.statusCode,
+          ms: Date.now() - started,
+        });
+      } catch {}
+    });
+    next();
+  });
 
   // ✅ تفعيل cookie-parser لقراءة التوكن من الكوكي عند اللزوم
   app.use(cookieParser());

@@ -53,6 +53,21 @@ export class ClientApiExceptionFilter implements ExceptionFilter {
     } catch { /* ignore */ }
     // Success responses not handled here
     const mapped = mapGeneric(exception);
+    try {
+      const p: string = req?.originalUrl || req?.url || '';
+      if ((p.startsWith('/api/client/api/') || p.startsWith('/client/api/')) && !p.includes('openapi.json')) {
+        // eslint-disable-next-line no-console
+        console.error('[CLIENT_API][ERROR]', {
+          reqId: req?.reqId || null,
+          path: p,
+          code: mapped.code,
+          httpStatus: mapped.httpStatus || 200,
+          msg: mapped.message,
+          raw: exception?.message,
+          stack: exception?.stack?.split('\n').slice(0, 3).join(' | '),
+        });
+      }
+    } catch {/* ignore */}
     const reason = (exception?.original?.reason || exception?.reason || exception?.codeNumber === 120 && 'missing_token' || null);
     if (reason) { // temporary always-on debug header
       try { res.setHeader('X-Debug-Reason', String(reason)); } catch {}
