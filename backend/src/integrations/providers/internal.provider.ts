@@ -313,8 +313,9 @@ export class InternalProvider implements ProviderDriver {
   async checkOrders(cfg: IntegrationConfig, ids: string[]) {
     const base = this.buildBase(cfg);
     const headers = { ...this.authHeader(cfg), Accept: 'application/json', 'User-Agent': 'Watan-InternalProvider/1.0' } as any;
-    const encoded = encodeURIComponent(`[${ids.join(',')}]`);
-    const url = `${base}/client/api/check?orders=${encoded}`;
+  // Our Client API expects a comma-separated list in the `orders` param (not a JSON array string)
+  const encoded = encodeURIComponent(ids.join(','));
+  const url = `${base}/client/api/check?orders=${encoded}`;
     const res = await axios.get(url, { headers, timeout: 15000, maxRedirects: 3 }).catch((e: any) => ({ data: { error: String(e?.message || e) } } as any));
     const data: any = res?.data ?? {};
     const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
