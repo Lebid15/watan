@@ -1415,7 +1415,9 @@ export class ProductsService {
       }
     }
 
-  const created = await this.ordersRepo.manager.transaction(async (trx) => {
+  let created: { entityId: string; view: any };
+  try {
+  const txResult = await this.ordersRepo.manager.transaction(async (trx) => {
       const productsRepo = trx.getRepository(Product);
       const packagesRepo = trx.getRepository(ProductPackage);
       const usersRepo = trx.getRepository(User);
@@ -1524,7 +1526,7 @@ export class ProductsService {
       // 🧷 تضمين tenantId صراحةً على الكيان
       (order as any).tenantId = (user as any).tenantId;
 
-      const saved = await ordersRepo.save<ProductOrder>(order);
+  const saved = await ordersRepo.save<ProductOrder>(order);
 
       // Phase3: منطق اللقطات المتقدم
       if (isFeatureEnabled('catalogLinking') && rootDistributor) {
@@ -1670,6 +1672,17 @@ export class ProductsService {
   try { console.log('[OrderCreate] created', { id: saved.id, orderUuid: saved.orderUuid, tenantId: (saved as any).tenantId, origin: saved.origin }); } catch {}
   return result;
     });
+    created = txResult;
+  } catch (e: any) {
+    const msg = String(e?.message || 'unknown');
+    const code = (e && (e.code || e.errno)) ? String(e.code || e.errno) : '';
+    // Foreign key violation
+    if (code === '23503' || /violates foreign key constraint\s+"fk_product_orders_tenant"/i.test(msg)) {
+      // Provide actionable guidance
+      throw new BadRequestException('TENANT_SCHEMA_MISMATCH: product_orders.tenantId FK invalid or tenant missing. Run migrations (FixProductOrdersTenantFk) and ensure user.tenantId and related tenant row exist.');
+    }
+    throw e;
+  }
 
     // محاولة إرسال تلقائي ضمن نفس المستأجر
     try {
