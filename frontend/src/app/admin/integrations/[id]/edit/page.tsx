@@ -29,7 +29,9 @@ export default function EditIntegrationPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [balance, setBalance] = useState<string | null>(null);
+  // changed: numeric balance + error message
+  const [balance, setBalance] = useState<number | null>(null);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
   const [toggling, setToggling] = useState(false);
 
@@ -55,11 +57,13 @@ export default function EditIntegrationPage() {
   const fetchBalance = useCallback(async (provider: ProviderKind, creds: Record<string, string>, integId: string) => {
     setLoadingBalance(true);
     try {
-      const { data } = await api.post<{ balance: string }>(
+      const { data } = await api.post<{ balance: number | null; error?: string; message?: string }>(
         API_ROUTES.admin.integrations.balance(integId),
         { provider, ...creds }
       );
-      setBalance(data.balance);
+      const b = typeof data?.balance === 'number' ? data.balance : null;
+      setBalance(b);
+      setBalanceError(b === null ? (data?.message || data?.error || null) : null);
     } catch (e: any) {
       const code = e?.response?.data?.code;
       if (code === 'INTEGRATION_DISABLED') {
@@ -68,6 +72,7 @@ export default function EditIntegrationPage() {
         info('تعذر جلب الرصيد');
       }
       setBalance(null);
+      try { setBalanceError(e?.response?.data?.message || e?.message || null); } catch { setBalanceError(null); }
     } finally {
       setLoadingBalance(false);
     }
@@ -77,6 +82,28 @@ export default function EditIntegrationPage() {
   useEffect(() => {
     if (!item || item.enabled === false) return;
 
+    if (item.provider === 'barakat' || item.provider === 'apstore' || item.provider === 'internal') {
+      if (item.apiToken) {
+        fetchBalance(
+          item.provider,
+          { apiToken: item.apiToken, baseUrl: item.baseUrl || '' },
+          item.id
+        );
+      }
+    } else if (item.provider === 'znet') {
+      if (item.kod && item.sifre) {
+        fetchBalance(
+          item.provider,
+          { kod: item.kod, sifre: item.sifre, baseUrl: item.baseUrl || '' },
+          item.id
+        );
+      }
+    }
+  }, [item, fetchBalance]);
+
+  // زر تحديث الرصيد يدوياً
+  const refreshNow = useCallback(() => {
+    if (!item || item.enabled === false) return;
     if (item.provider === 'barakat' || item.provider === 'apstore' || item.provider === 'internal') {
       if (item.apiToken) {
         fetchBalance(
@@ -174,8 +201,14 @@ export default function EditIntegrationPage() {
       ) : (
         <div className="mb-4 card text-text-secondary">
           لم يتم جلب الرصيد
+          {balanceError && <div className="text-[12px] text-warning mt-1">سبب: {String(balanceError)}</div>}
         </div>
       )}
+      <div className="mb-4">
+        <button onClick={refreshNow} disabled={loadingBalance || item.enabled === false} className="btn btn-secondary">
+          {loadingBalance ? 'يحدّث…' : 'تحديث الرصيد'}
+        </button>
+      </div>
 
       {/* النموذج */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 card">
@@ -212,7 +245,7 @@ export default function EditIntegrationPage() {
               item.provider === 'znet'
                 ? 'http://bayi.siteadressinstead.com'
                 : item.provider === 'internal'
-                ? 'ahmad.syrz1.com'
+                ? 'tenant.wtn4.com'
                 : 'https://api.x-store.net'
             }
           />
