@@ -210,9 +210,16 @@ export default function EditIntegrationPage() {
           جارِ جلب الرصيد…
         </div>
     ) : balance !== null ? (
-        <div className="mb-4 card border border-success/40 bg-success/10 text-success">
-      الرصيد: {balance}{currency ? ` ${currency}` : ''}
-        </div>
+        balance === 0 ? (
+          <div className="mb-4 card border border-warning/40 bg-warning/10 text-warning">
+            الرصيد: {balance}{currency ? ` ${currency}` : ''}
+            <div className="mt-1 text-xs">تحذير: الرصيد 0 — لن يتم التخزين</div>
+          </div>
+        ) : (
+          <div className="mb-4 card border border-success/40 bg-success/10 text-success">
+            الرصيد: {balance}{currency ? ` ${currency}` : ''}
+          </div>
+        )
       ) : (
         <div className="mb-4 card text-text-secondary">
           لم يتم جلب الرصيد

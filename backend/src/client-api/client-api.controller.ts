@@ -32,8 +32,13 @@ export class ClientApiController {
       if (!u) throw new Error('profile_missing_user_ctx');
       // Normalize balance (TypeORM decimal => string sometimes)
       const rawBal: any = u.balance;
-      const balanceNum = typeof rawBal === 'number' ? rawBal : Number(rawBal);
-      if (Number.isNaN(balanceNum)) throw new Error('profile_balance_nan');
+      let balanceNum: number;
+      if (typeof rawBal === 'number') balanceNum = rawBal;
+      else if (rawBal === null || rawBal === undefined || rawBal === '') balanceNum = 0;
+      else {
+        const parsed = Number(rawBal);
+        balanceNum = Number.isFinite(parsed) ? parsed : 0;
+      }
       // Currency resolution priority:
       // 1. preferredCurrencyCode (explicit user preference)
       // 2. linked currency relation code (if any)

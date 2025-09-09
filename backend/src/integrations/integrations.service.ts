@@ -190,7 +190,7 @@ export class IntegrationsService {
     const cfg = await this.get(id, tenantId);
     try {
       const driver = this.driverOf(cfg);
-      const res: any = await driver.getBalance(this.toConfig(cfg));
+    const res: any = await driver.getBalance(this.toConfig(cfg));
   const hasError = !!(res?.error || res?.missingConfig);
   const balance = typeof res?.balance === 'number' && !hasError ? res.balance : null;
   const currency = !hasError ? (res as any)?.currency ?? null : null;
@@ -205,8 +205,8 @@ export class IntegrationsService {
         });
         return { balance: null, error: res.error, missingConfig: res.missingConfig, message: res.message } as any;
       }
-  if (balance !== null) {
-        // persist cached balance
+  if (balance !== null && balance !== 0) {
+        // Persist cached balance, but avoid auto-caching zeros (require manual confirmation)
         (cfg as any).balance = balance;
         (cfg as any).balanceUpdatedAt = new Date();
         try { await this.integrationRepo.save(cfg); } catch (e) { console.error('[INTEGRATIONS][refreshBalance][CACHE_FAIL]', { id: cfg.id, err: (e as any)?.message }); }
