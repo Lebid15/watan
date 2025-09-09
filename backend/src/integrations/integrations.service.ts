@@ -50,6 +50,38 @@ export class IntegrationsService {
     private readonly codeItemRepo: Repository<CodeItem>,
   ) {}
 
+  /**
+   * Safely persist a PackageRouting row and map common schema drift DB errors
+   * (missing columns or legacy unique constraints) to a clear 4xx response
+   * instead of an opaque 500.
+   */
+  private async saveRoutingSafe(row: PackageRouting) {
+    try {
+      return await this.routingRepo.save(row);
+    } catch (e: any) {
+      const code = e?.code;
+      const msg = String(e?.message || e || '');
+      // 42703 = undefined_column (e.g., providerType/codeGroupId/tenantId not present yet)
+      if (code === '42703' || /column\s+"(providerType|codeGroupId|tenantId)"\s+of\s+relation\s+"package_routing"\s+does not exist/i.test(msg)) {
+        throw new BadRequestException(
+          'SCHEMA_UPGRADE_REQUIRED: package_routing missing columns (providerType/codeGroupId/tenantId). Please run DB migrations.'
+        );
+      }
+      // 23505 = unique_violation; help if old unique (package_id) exists without tenant scope
+      if (code === '23505' && /ux_package_routing_package/i.test(msg)) {
+        throw new BadRequestException(
+          'SCHEMA_UPGRADE_REQUIRED: legacy unique constraint on package_routing detected. Please run FixPackageRoutingTenantId migration.'
+        );
+      }
+      // 23503 = foreign_key_violation or other constraint issues
+      if (code === '23503') {
+        throw new BadRequestException('CONSTRAINT_VIOLATION: invalid reference while saving routing');
+      }
+      // Fallback: rethrow original to be handled by global filters
+      throw e;
+    }
+  }
+
   private toConfig(i: Integration) {
     return {
       id: i.id,
@@ -459,7 +491,7 @@ export class IntegrationsService {
     row.providerType = hasAnyProvider ? ('external' as any) : (row.providerType ?? ('manual' as any));
     row.codeGroupId = hasAnyProvider ? null : row.codeGroupId;
 
-    await this.routingRepo.save(row);
+  await this.saveRoutingSafe(row);
 
     return {
       packageId,
@@ -600,7 +632,7 @@ export class IntegrationsService {
       row.mode = (row.primaryProviderId || row.fallbackProviderId) ? ('auto' as any) : ('manual' as any);
     }
 
-    await this.routingRepo.save(row);
+  await this.saveRoutingSafe(row);
     return {
       packageId,
       routing: {
@@ -637,7 +669,7 @@ export class IntegrationsService {
     row.fallbackProviderId = null;
     row.mode = codeGroupId ? ('auto' as any) : ('manual' as any);
 
-    await this.routingRepo.save(row);
+  await this.saveRoutingSafe(row);
     return {
       packageId,
       routing: {
