@@ -200,7 +200,12 @@ export class InternalProvider implements ProviderDriver {
   async listProducts(cfg: IntegrationConfig): Promise<NormalizedProduct[]> {
     const base = this.buildBase(cfg);
     try {
-      const { data } = await axios.get(base + '/api/client/products', { headers: this.authHeader(cfg), timeout: 15000 });
+      // Use the same public Client API contract as balance/profile
+      // Correct path is /client/api/products (not /api/client/products)
+      const { data } = await axios.get(base + '/client/api/products', {
+        headers: { ...this.authHeader(cfg), Accept: 'application/json' },
+        timeout: 15000,
+      });
       const arr = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
       return arr.map((p: any) => ({
         externalId: String(p.id),
