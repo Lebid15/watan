@@ -607,14 +607,21 @@ export class ProductsService {
       return n;
     };
 
-    // توليد اسم المنتج الجديد مع محاولة فض تعارض الأسماء
+    // توليد اسم المنتج الجديد مع محاولة فض تعارض الأسماء (بدون فشل 409)
     const baseName = source.name?.trim() || 'منتج';
     let candidate = baseName;
-    for (let i = 0; i < 12; i++) {
+    // جرِّب لاحقة رقمية حتى 50 مرة، ثم استخدم توقيت لضمان التفرد
+    let ensured = false;
+    for (let i = 0; i < 50; i++) {
       const exists = await this.productsRepo.findOne({ where: { tenantId: targetTenantId, name: candidate } as any });
-      if (!exists) break;
+      if (!exists) { ensured = true; break; }
       candidate = `${baseName}-${i + 2}`;
-      if (i === 11) throw new ConflictException('PRODUCT_NAME_CONFLICT');
+    }
+    if (!ensured) {
+      const ts = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const tsStr = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+      candidate = `${baseName}-${tsStr}`;
     }
 
     try {
@@ -634,13 +641,35 @@ export class ProductsService {
         (newProduct as any).thumbLargeUrl = (source as any).thumbLargeUrl || undefined;
         newProduct.isActive = true;
 
-        let savedProduct: Product;
-        try {
-          savedProduct = await prodRepo.save(newProduct);
-        } catch (e: any) {
-          console.error('[CLONE][PRODUCT][ERROR]', { msg: e?.message, code: e?.code, detail: e?.detail });
-          if (e?.code === '23505') throw new ConflictException('PRODUCT_NAME_CONFLICT');
-          throw new InternalServerErrorException('CLONE_PRODUCT_FAILED');
+        let savedProduct: Product | null = null;
+        // أعد المحاولة عند تعارض الاسم (23505) بدل إرجاع 409
+        for (let attempt = 0; attempt < 10; attempt++) {
+          try {
+            newProduct.name = candidate;
+            savedProduct = await prodRepo.save(newProduct);
+            break; // success
+          } catch (e: any) {
+            const code = e?.code;
+            const detail: string | undefined = e?.detail;
+            console.error('[CLONE][PRODUCT][ERROR]', { attempt, msg: e?.message, code, detail });
+            if (code === '23505') {
+              // ولّد مرشحًا جديدًا واستمر
+              if (attempt < 7) {
+                const suffix = attempt + 2; // -2, -3, ...
+                candidate = `${baseName}-${suffix}`;
+              } else {
+                const rnd = Math.floor(Math.random() * 9000) + 1000; // 4-digits
+                candidate = `${baseName}-${Date.now()}-${rnd}`;
+              }
+              continue;
+            }
+            // أخطاء مختلفة تُعتبر فشل داخلي
+            throw new InternalServerErrorException('CLONE_PRODUCT_FAILED');
+          }
+        }
+        if (!savedProduct) {
+          // لو فشلت كل المحاولات بشكل غير متوقع
+          throw new InternalServerErrorException('CLONE_PRODUCT_NAME_RESOLUTION_FAILED');
         }
 
         const clones: ProductPackage[] = [];
@@ -664,18 +693,32 @@ export class ProductsService {
           clone.providerName = pkg.providerName || undefined;
           clone.isActive = true;
           clone.product = savedProduct;
-          try {
-            const savedClone = await pkgRepo.save(clone);
-            clones.push(savedClone);
-          } catch (e: any) {
-            const code = e?.code;
-            const detail: string | undefined = e?.detail;
-            console.error('[CLONE][PACKAGE][ERROR]', { pkgId: pkg.id, msg: e?.message, code, detail });
-            if (code === '23505') {
-              console.error('[CLONE][PACKAGE][UNEXPECTED_CONFLICT_AFTER_CHECK]', { codeVal: clone.publicCode });
-              throw new ConflictException(JSON.stringify({ code: 'PACKAGE_CONFLICT', conflicting: [clone.publicCode] }));
+          // حاول الحفظ مع إعادة المحاولة عند تعارض الكود بتوليد رقم جديد تلقائيًا
+          for (let attempt = 0; attempt < 12; attempt++) {
+            try {
+              const savedClone = await pkgRepo.save(clone);
+              clones.push(savedClone);
+              break;
+            } catch (e: any) {
+              const code = e?.code;
+              const detail: string | undefined = e?.detail;
+              console.error('[CLONE][PACKAGE][ERROR]', { pkgId: pkg.id, attempt, msg: e?.message, code, detail, codeVal: clone.publicCode });
+              if (code === '23505') {
+                // أعِد تخصيص كود جديد وتابع المحاولة
+                const desired = Number(pkg.publicCode);
+                const fallbackStart = Number.isFinite(desired) ? desired + 1 : 1;
+                const newCode = nextAvailable(fallbackStart);
+                clone.publicCode = newCode as any;
+                continue;
+              }
+              if (attempt >= 1) {
+                // بعد محاولة واحدة على الأقل اعتبرها فشل داخلي لتجنب الحلقة اللانهائية على أخطاء أخرى
+                throw new InternalServerErrorException('CLONE_PACKAGE_FAILED');
+              } else {
+                // خطأ غير متوقع؛ أعد المحاولة مرة واحدة فقط
+                continue;
+              }
             }
-            throw new InternalServerErrorException('CLONE_PACKAGE_FAILED');
           }
         }
         (savedProduct as any).packages = clones;
