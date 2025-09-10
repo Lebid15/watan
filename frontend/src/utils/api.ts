@@ -211,6 +211,25 @@ export const API_ROUTES = {
       users: `${EFFECTIVE_API_BASE_URL}/admin/reports/users`,
       providers: `${EFFECTIVE_API_BASE_URL}/admin/reports/providers`,
     },
+
+    tenants: {
+      list: (p?: { status?: 'active'|'trashed'|'all'; page?: number; limit?: number; search?: string }) => {
+        const base = `${EFFECTIVE_API_BASE_URL}/admin/tenants`;
+        if (!p) return base;
+        const qs = new URLSearchParams();
+        if (p.status) qs.set('status', p.status);
+        if (p.page) qs.set('page', String(p.page));
+        if (p.limit) qs.set('limit', String(p.limit));
+        if (p.search) qs.set('q', p.search);
+        const s = qs.toString();
+        return s ? `${base}?${s}` : base;
+      },
+      byId: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/tenants/${id}`,
+      update: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/tenants/${id}`,
+      trash: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/tenants/${id}/trash`,
+      restore: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/tenants/${id}/restore`,
+      hardDelete: (id: string, code: string) => `${EFFECTIVE_API_BASE_URL}/admin/tenants/${id}/hard?hard=true&confirm=${encodeURIComponent(code)}`,
+    },
   },
 
   billing: {

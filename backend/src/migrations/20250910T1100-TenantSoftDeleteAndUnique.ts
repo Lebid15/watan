@@ -30,6 +30,11 @@ export class TenantSoftDeleteAndUnique20250910T1100 implements MigrationInterfac
               FROM unnest(c.conkey) AS k(attnum)
               JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
             ) = ARRAY['code']::text[]
+
+              SELECT array_agg(a.attname ORDER BY a.attnum)
+              FROM unnest(c.conkey) AS k(attnum)
+              JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+            ) = ARRAY['code']
         ) LOOP
           EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', r.nspname, r.relname, r.conname);
         END LOOP;
@@ -55,6 +60,11 @@ export class TenantSoftDeleteAndUnique20250910T1100 implements MigrationInterfac
               FROM unnest(c.conkey) AS k(attnum)
               JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
             ) = ARRAY['domain']::text[]
+
+              SELECT array_agg(a.attname ORDER BY a.attnum)
+              FROM unnest(c.conkey) AS k(attnum)
+              JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+            ) = ARRAY['domain']
         ) LOOP
           EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', r.nspname, r.relname, r.conname);
         END LOOP;
