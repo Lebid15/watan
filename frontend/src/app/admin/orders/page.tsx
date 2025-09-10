@@ -58,7 +58,7 @@ const FALLBACK_IMG =
   encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="40">
       <rect width="100%" height="100%" fill="#e5e7eb"/>
-      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="#9ca3af">no img</text>
+  <span className="text-gray-400 text-xs">no img</span>
     </svg>`
   );
 
