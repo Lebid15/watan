@@ -19,6 +19,11 @@ function DevSettingsContent() {
             إرسال ملاحظة
           </Link>
         </li>
+        <li>
+          <Link href="/dev/settings/maintenance" className="text-link">
+            وضع الصيانة (تبديل + رسالة)
+          </Link>
+        </li>
       </ul>
     </div>
   );

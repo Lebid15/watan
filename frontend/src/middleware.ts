@@ -53,7 +53,15 @@ function parseHost(hostHeader: string | null) {
   return { base: apex, isSub: false, full, sub: null, apex };
 }
 
-export function middleware(req: NextRequest) {
+async function getMaintenanceState(): Promise<{ enabled: boolean; message: string } | null> {
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/api/dev/maintenance`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    return (await res.json()) as { enabled: boolean; message: string };
+  } catch { return null; }
+}
+
+export async function middleware(req: NextRequest) {
   const { nextUrl, cookies, headers } = req;
   const path = nextUrl.pathname;
 
@@ -78,6 +86,25 @@ export function middleware(req: NextRequest) {
     path.startsWith('/public') ||
     /\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|xml|woff2?|ttf|otf)$/.test(path);
   if (isAsset) return response ?? NextResponse.next();
+
+  // Maintenance overlay (app-level). Exempt: /dev/*, /maintenance, /api/webhooks/*, /api/health
+  const exemptMaint =
+    path.startsWith('/dev/') ||
+    path === '/maintenance' ||
+    path.startsWith('/api/webhooks/') ||
+    path === '/api/health';
+  if (!exemptMaint && !path.startsWith('/api/')) {
+    const bypassHeader = headers.get('x-maint-bypass')?.toLowerCase();
+    const bypassCookie = cookies.get('X-MAINT-BYPASS')?.value?.toLowerCase();
+    if (!(bypassHeader === 'allow' || bypassCookie === 'allow')) {
+      const state = await getMaintenanceState();
+      if (state?.enabled) {
+        const url = nextUrl.clone();
+        url.pathname = '/maintenance';
+        return NextResponse.rewrite(url);
+      }
+    }
+  }
 
   // only navigations
   const accept = headers.get('accept') || '';
