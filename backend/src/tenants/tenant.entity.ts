@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { TenantDomain } from './tenant-domain.entity';
 
 // NOTE: Physical table in production is currently named "tenant" (singular) due to early bootstrap
@@ -16,8 +16,9 @@ export class Tenant {
   name: string;
 
   // كود قصير فريد، يُستخدم لبناء subdomain مثل: code.example.com
-  @Column({ length: 40, unique: true })
-  @Index({ unique: true })
+  // NOTE: Drop entity-level unique; rely on DB partial unique index (code WHERE deletedAt IS NULL)
+  @Column({ length: 40 })
+  @Index()
   code: string;
 
   // مالك المتجر (اختياري الآن)
@@ -33,6 +34,11 @@ export class Tenant {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  // Soft delete marker
+  // Do not force DB type here; let TypeORM choose per driver (sqlite vs postgres)
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deleted_at?: Date | null;
 
   @OneToMany(() => TenantDomain, (d) => d.tenant)
   domains: TenantDomain[];

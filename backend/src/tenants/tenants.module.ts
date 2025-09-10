@@ -7,9 +7,10 @@ import { TenantCurrentController } from './tenant.current.controller';
 import { Tenant } from './tenant.entity';
 import { TenantDomain } from './tenant-domain.entity';
 import { User } from '../user/user.entity';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Tenant, TenantDomain, User])],
+  imports: [TypeOrmModule.forFeature([Tenant, TenantDomain, User]), AuditModule],
   providers: [TenantsService, ProvisionTenantService],
   controllers: [TenantsAdminController, TenantCurrentController],
   exports: [TenantsService],
