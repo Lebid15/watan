@@ -31,9 +31,9 @@ export default function SubdomainsPageClient(){
     (async()=>{
       try {
         const me = await Api.me();
-        const r = String((me?.data?.role || me?.data?.user?.role || '')).toLowerCase();
-        // RBAC: developer actions allowed only for admin | instance_owner
-        setAllowed(r==='admin' || r==='instance_owner');
+  const r = String((me?.data?.role || me?.data?.user?.role || '')).toLowerCase();
+  // RBAC on /dev: allow admin | instance_owner | developer
+  setAllowed(r==='admin' || r==='instance_owner' || r==='developer');
       } catch { setAllowed(false); }
       await refresh();
     })();
