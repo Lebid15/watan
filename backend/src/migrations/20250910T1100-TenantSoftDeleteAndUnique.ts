@@ -26,7 +26,7 @@ export class TenantSoftDeleteAndUnique20250910T1100 implements MigrationInterfac
           JOIN pg_namespace n ON n.oid = t.relnamespace
           WHERE t.relname = 'tenant' AND c.contype = 'u'
             AND (
-              SELECT array_agg(a.attname ORDER BY a.attnum)
+              SELECT array_agg(a.attname::text ORDER BY a.attnum)
               FROM unnest(c.conkey) AS k(attnum)
               JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
             ) = ARRAY['code']
@@ -51,7 +51,7 @@ export class TenantSoftDeleteAndUnique20250910T1100 implements MigrationInterfac
           JOIN pg_namespace n ON n.oid = t.relnamespace
           WHERE t.relname = 'tenant_domain' AND c.contype = 'u'
             AND (
-              SELECT array_agg(a.attname ORDER BY a.attnum)
+              SELECT array_agg(a.attname::text ORDER BY a.attnum)
               FROM unnest(c.conkey) AS k(attnum)
               JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
             ) = ARRAY['domain']
