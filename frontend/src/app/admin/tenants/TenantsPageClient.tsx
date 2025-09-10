@@ -175,6 +175,7 @@ export default function TenantsPageClient() {
   return (
     <div className="p-4">
       <Banner />
+  <div className="mb-3 text-xs text-gray-600">ملاحظة: يظهر زر "حذف نهائي" فقط بعد نقل المتجر إلى سلة المهملات.</div>
 
       {toast && (
         <div className={`mb-3 rounded p-2 text-sm ${toast.type==='success'?'bg-green-100 text-green-800':'bg-red-100 text-red-800'}`}>{toast.msg}</div>
@@ -200,7 +201,7 @@ export default function TenantsPageClient() {
               <th>Owner</th>
               <th>Domains</th>
               <th>Status</th>
-              <th className="text-right">Actions</th>
+              <th className="text-right">الإجراءات</th>
             </tr>
           </thead>
           <tbody>
@@ -222,14 +223,14 @@ export default function TenantsPageClient() {
           .join(', ')}{(Array.isArray(t.domains)?t.domains:[]).length>3?'…':''}</td>
                 <td>{t.deletedAt ? 'Trashed' : (t.isActive ? 'Active' : 'Inactive')}</td>
                 <td className="text-right space-x-1">
-                  <button className="btn btn-xs" onClick={()=>openEdit(t)}>Edit</button>
+                  <button className="btn btn-xs" onClick={()=>openEdit(t)}>تعديل</button>
                   {!t.deletedAt && (
-                    <button className="btn btn-xs btn-warning" onClick={()=>doTrash(t)}>Trash</button>
+                    <button className="btn btn-xs btn-warning" onClick={()=>doTrash(t)}>حذف</button>
                   )}
                   {t.deletedAt && (
                     <>
-                      <button className="btn btn-xs btn-success" onClick={()=>doRestore(t)}>Restore</button>
-                      <button className="btn btn-xs btn-error" onClick={()=>doHardDelete(t)}>Hard Delete</button>
+                      <button className="btn btn-xs btn-success" onClick={()=>doRestore(t)}>استعادة</button>
+                      <button className="btn btn-xs btn-error" onClick={()=>doHardDelete(t)}>حذف نهائي</button>
                     </>
                   )}
                 </td>
