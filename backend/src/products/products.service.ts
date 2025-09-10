@@ -569,14 +569,18 @@ export class ProductsService {
     const validPkgs = (source.packages || []).filter((p: any) => p.isActive && p.publicCode != null);
     if (validPkgs.length === 0) throw new UnprocessableEntityException('NO_ACTIVE_PACKAGES');
 
-    // كشف أكواد مكررة داخل المصدر نفسه (سيؤدي لفشل فوري في الثانية)
+    // كشف أكواد مكررة داخل المصدر نفسه (بدلاً من الفشل، سنُعيد توليد الأكواد المتعارضة أثناء النسخ)
     const pcodes = validPkgs.map((p: any) => p.publicCode);
-    const dupSet = new Set<string>();
-    const seen = new Set<string>();
-    for (const c of pcodes) { if (seen.has(c)) dupSet.add(c); else seen.add(c); }
+    const dupSet = new Set<number>();
+    const seen = new Set<number>();
+    for (const cRaw of pcodes) {
+      const c = Number(cRaw);
+      if (!Number.isFinite(c)) continue;
+      if (seen.has(c)) dupSet.add(c); else seen.add(c);
+    }
     if (dupSet.size) {
       console.warn('[CLONE][PACKAGE][SOURCE_DUPLICATES]', { duplicates: Array.from(dupSet) });
-      throw new ConflictException('SOURCE_DUPLICATE_PACKAGE_CODES');
+      // لا نرمي خطأ هنا؛ سنحل التكرارات بإسناد أكواد جديدة لاحقًا
     }
 
     // فحص التعارض داخل نفس التينانت فقط (بعد تعديل الفهارس لتكون محلية للتينانت)
@@ -585,12 +589,23 @@ export class ProductsService {
       .where('pp."tenantId" = :tid', { tid: targetTenantId })
       .andWhere('pp.publicCode IS NOT NULL')
       .getRawMany();
-    const usedTenantCodes = new Set<number>(existingTenantCodes.map(r => Number(r.publicCode)));
+    const usedTenantCodes = new Set<number>(existingTenantCodes.map(r => Number(r.publicCode)).filter((n: number) => Number.isFinite(n)));
     const sourceCodes = validPkgs.map(p => p.publicCode).filter((c: any) => c != null);
     const conflicting = sourceCodes.filter((c: any) => usedTenantCodes.has(Number(c)));
     if (conflicting.length) {
-      throw new ConflictException(JSON.stringify({ code: 'PACKAGE_CONFLICT', conflicting }));
+      console.warn('[CLONE][PACKAGE][TENANT_CODE_CONFLICTS]', { conflicting });
+      // سنتعامل مع هذه التعارضات عبر إعادة ترميز تلقائي أثناء النسخ
     }
+
+    // مولّد كود متاح فريد ضمن التينانت (يراعي الأكواد الحالية والمُسندة في نفس العملية)
+    const assigned = new Set<number>();
+    const isTaken = (num: number) => usedTenantCodes.has(num) || assigned.has(num);
+    const nextAvailable = (start: number) => {
+      let n = Number.isFinite(start) && start > 0 ? Math.floor(start) : 1;
+      while (isTaken(n)) n++;
+      assigned.add(n);
+      return n;
+    };
 
     // توليد اسم المنتج الجديد مع محاولة فض تعارض الأسماء
     const baseName = source.name?.trim() || 'منتج';
@@ -632,7 +647,15 @@ export class ProductsService {
         for (const pkg of validPkgs) {
           const clone = new ProductPackage();
           clone.tenantId = targetTenantId;
-          clone.publicCode = pkg.publicCode; // 1:1 copy الآن
+          // احتفظ بالكود إن لم يتعارض؛ وإلا اختر أقرب رقم متاح
+          const desired = Number(pkg.publicCode);
+          if (Number.isFinite(desired) && desired > 0 && !usedTenantCodes.has(desired) && !assigned.has(desired)) {
+            clone.publicCode = desired as any;
+            assigned.add(desired);
+          } else {
+            const allocated = nextAvailable(Number.isFinite(desired) ? desired : 1);
+            clone.publicCode = allocated as any;
+          }
           clone.name = pkg.name;
           clone.description = pkg.description || undefined;
           clone.imageUrl = pkg.imageUrl || undefined;
