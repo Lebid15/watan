@@ -1102,12 +1102,12 @@ export default function AdminOrdersPage() {
                     />
                   </td>
 
-                  <td className="text-center bg-bg-surface border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
+          <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     <img
                       src={logoSrc}
                       data-debug-src={logoSrc}
                       alt={o.product?.name || o.package?.name || 'logo'}
-                      className="inline-block w-12 h-10 rounded object-contain"
+            className="inline-block w-12 h-10 rounded-md object-contain"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).onerror = null;
                         e.currentTarget.src = '/images/placeholder.png';
@@ -1180,6 +1180,7 @@ export default function AdminOrdersPage() {
                     ].join(' ')}
                   >
                     <div
+                      dir="ltr"
                       className={[
                         'text-[12px] font-medium',
                         ((o as any)._usdProfitVal ?? 0) < 0 && (o as any)._usdProfitVal !== null
@@ -1187,9 +1188,12 @@ export default function AdminOrdersPage() {
                           : 'text-text-secondary',
                       ].join(' ')}
                     >
-                      {((o as any)._usdProfitVal ?? null) !== null
-                        ? `$${Number((o as any)._usdProfitVal).toFixed(2)}`
-                        : (o.profitTRY != null || o.sellTRY != null ? '$-' : '-')}
+                      {(() => {
+                        const v = (o as any)._usdProfitVal as number | null;
+                        if (v === null || v === undefined) return (o.profitTRY != null || o.sellTRY != null) ? '$-' : '-';
+                        const abs = Math.abs(Number(v)).toFixed(2);
+                        return `${v < 0 ? '-$' : '$'}${abs}`;
+                      })()}
                     </div>
                     <div className="font-semibold">{money(
                       o.profitTRY ??
