@@ -1137,7 +1137,7 @@ export default function AdminOrdersPage() {
                   </td>
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
-                    <div className="text-[10px] font-medium text-text-secondary">
+                    <div className="text-[12px] font-medium text-text-secondary">
                       {(() => {
                         // Always show USD on top:
                         // 1) If original cost is USD, show that directly.
@@ -1156,7 +1156,7 @@ export default function AdminOrdersPage() {
                   </td>
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
-                    <div className="text-[10px] font-medium text-text-secondary">
+                    <div className="text-[12px] font-medium text-text-secondary">
                       {o.sellUsdAtOrder != null ? `$${Number(o.sellUsdAtOrder).toFixed(2)}` : (o.sellTRY != null || o.sellPriceAmount != null || o.price != null ? '$-' : '-')}
                     </div>
                     <div className="font-semibold">{money(
@@ -1181,7 +1181,7 @@ export default function AdminOrdersPage() {
                   >
                     <div
                       className={[
-                        'text-[10px] font-medium',
+                        'text-[12px] font-medium',
                         ((o as any)._usdProfitVal ?? 0) < 0 && (o as any)._usdProfitVal !== null
                           ? 'text-danger'
                           : 'text-text-secondary',
