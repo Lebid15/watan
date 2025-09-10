@@ -1126,7 +1126,19 @@ export default function AdminOrdersPage() {
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
                     <div className="text-[10px] font-medium text-text-secondary">
-                      {o.costUsdAtOrder != null ? `$${Number(o.costUsdAtOrder).toFixed(2)}` : (o.costTRY != null || o.costAmount != null ? '$-' : '-')}
+                      {(() => {
+                        // Always show USD on top:
+                        // 1) If original cost is USD, show that directly.
+                        if ((o as any).costCurrency === 'USD' && (o as any).costAmount != null) {
+                          return `$${Number((o as any).costAmount).toFixed(2)}`;
+                        }
+                        // 2) Fallback to USD snapshot at order time if available.
+                        if ((o as any).costUsdAtOrder != null) {
+                          return `$${Number((o as any).costUsdAtOrder).toFixed(2)}`;
+                        }
+                        // 3) Otherwise, show placeholder when we only have TRY/other currency without a USD value.
+                        return (o.costTRY != null || o.costAmount != null) ? '$-' : '-';
+                      })()}
                     </div>
                     <div className="text-accent font-semibold">{money(o.costTRY ?? o.costAmount, o.currencyTRY ?? o.costCurrency)}</div>
                   </td>
