@@ -1102,12 +1102,12 @@ export default function AdminOrdersPage() {
                     />
                   </td>
 
-          <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
+          <td className="bg-bg-surface px-0 py-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     <img
                       src={logoSrc}
                       data-debug-src={logoSrc}
                       alt={o.product?.name || o.package?.name || 'logo'}
-            className="inline-block w-12 h-10 rounded-md object-contain"
+            className="block w-12 h-10 rounded-md object-contain"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).onerror = null;
                         e.currentTarget.src = '/images/placeholder.png';
@@ -1192,7 +1192,8 @@ export default function AdminOrdersPage() {
                         const v = (o as any)._usdProfitVal as number | null;
                         if (v === null || v === undefined) return (o.profitTRY != null || o.sellTRY != null) ? '$-' : '-';
                         const abs = Math.abs(Number(v)).toFixed(2);
-                        return `${v < 0 ? '-$' : '$'}${abs}`;
+                        // Format: sign + number + space + $
+                        return `${v < 0 ? '-' : ''}${abs} $`;
                       })()}
                     </div>
                     <div className="font-semibold">{money(
