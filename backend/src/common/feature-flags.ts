@@ -8,7 +8,8 @@ export const FEATURE_FLAGS = {
   externalApi: true,
   billingV1: boolEnv(process.env.FEATURE_BILLING_V1) ? true : billingDefault,
   // Gate admin tenant management API & UI
-  adminTenantMgmt: (process.env.ADMIN_TENANT_MGMT || 'false').toLowerCase() === 'true',
+  // Default ON unless explicitly set to a false-y value
+  adminTenantMgmt: (process.env.ADMIN_TENANT_MGMT ?? 'true').toLowerCase() === 'true',
 };
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
