@@ -1342,6 +1342,31 @@ export class ProductsService {
       (order as any).costAmount = Number(finalCostAmount.toFixed(2));
       const sell = Number((order as any).sellPriceAmount ?? (order as any).price ?? 0);
       (order as any).profitAmount = Number((sell - (order as any).costAmount).toFixed(2));
+
+      // 🔒 Update USD snapshots to keep UI profit in USD correct
+      try {
+        const sellUsdSnap = (order as any).sellUsdAtOrder != null
+          ? Number((order as any).sellUsdAtOrder)
+          : Number((order as any).price ?? 0);
+
+        let costUsdSnap = 0;
+        const cur = String(finalCostCurrency || '').toUpperCase();
+        if (!cur || cur === 'USD') {
+          costUsdSnap = Number(finalCostAmount);
+        } else {
+          // Convert provider cost to USD using tenant FX rates if available
+          const tenantId = String(effectiveTenantId || (order as any)?.user?.tenantId || '');
+          let r = 1;
+          try {
+            const row = await this.currenciesRepo.findOne({ where: { code: cur, tenantId } as any });
+            if (row && Number(row.rate) > 0) r = Number(row.rate);
+          } catch {}
+          // If r is the amount of local currency per USD (e.g., TRY=\n 40), then USD = amount / r
+          costUsdSnap = r && r > 0 ? Number(finalCostAmount) / r : Number(finalCostAmount);
+        }
+        (order as any).costUsdAtOrder = Number(costUsdSnap.toFixed(4));
+        (order as any).profitUsdAtOrder = Number((sellUsdSnap - Number((order as any).costUsdAtOrder)).toFixed(4));
+      } catch {}
       await this.ordersRepo.save(order);
 
       // log success

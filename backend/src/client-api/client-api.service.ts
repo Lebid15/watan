@@ -289,7 +289,9 @@ export class ClientApiService {
       ...(order as any)?.providerMessage
         ? { note: (order as any).providerMessage, message: (order as any).providerMessage }
         : (order as any)?.lastMessage
-        ? { note: (order as any).lastMessage, message: (order as any).lastMessage }
+  ? { note: (order as any).lastMessage, message: (order as any).lastMessage }
+  : (order as any)?.manualNote
+  ? { note: (order as any).manualNote, message: (order as any).manualNote }
         : {},
       ...((order as any)?.pinCode ? { pin: (order as any).pinCode } : {}),
     };

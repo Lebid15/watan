@@ -489,8 +489,16 @@ export class ProductOrdersAdminController {
       (order as any).manualNote = note.slice(0, 500);
       await this.orderRepo.save(order);
       await this.productsService.addOrderNote(order.id, 'admin', `Manual ${status}: ${note}`);
+      // Surface admin note to requester via providerMessage/lastMessage
+      await this.orderRepo.update({ id: order.id } as any, {
+        providerMessage: note.slice(0, 250),
+        lastMessage: `Manual ${status}: ${note.slice(0, 200)}`,
+      } as any);
     } else {
       await this.productsService.addOrderNote(order.id, 'admin', `Manual ${status}`);
+      await this.orderRepo.update({ id: order.id } as any, {
+        lastMessage: `Manual ${status}`,
+      } as any);
     }
 
     const updated = await this.productsService.updateOrderStatus(id, status);
@@ -693,6 +701,17 @@ export class ProductOrdersAdminController {
 
     const sell = Number((order as any).sellPriceAmount ?? (order as any).price ?? 0);
     (order as any).profitAmount = Number((sell - (order as any).costAmount).toFixed(2));
+
+    // 🔒 Maintain USD snapshots for correct USD profit in UI
+    try {
+      const sellUsdSnap = (order as any).sellUsdAtOrder != null
+        ? Number((order as any).sellUsdAtOrder)
+        : Number((order as any).price ?? 0);
+      if (String(finalCostCurrency || '').toUpperCase() === 'USD') {
+        (order as any).costUsdAtOrder = Number(finalCostAmount.toFixed(4));
+        (order as any).profitUsdAtOrder = Number((sellUsdSnap - Number((order as any).costUsdAtOrder)).toFixed(4));
+      }
+    } catch {}
 
     if (note) (order as any).manualNote = note.slice(0, 500);
 
