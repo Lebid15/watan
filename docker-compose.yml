@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: watan
       POSTGRES_PASSWORD: changeme
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - /mnt/HC_Volume_103376794/postgres:/var/lib/postgresql/data
     expose:
       - "5432"
     healthcheck:
