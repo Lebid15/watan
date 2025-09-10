@@ -31,9 +31,16 @@ export default function SubdomainsPageClient(){
     (async()=>{
       try {
         const me = await Api.me();
-  const r = String((me?.data?.role || me?.data?.user?.role || '')).toLowerCase();
-  // RBAC on /dev: allow admin | instance_owner | developer
-  setAllowed(r==='admin' || r==='instance_owner' || r==='developer');
+        const r = String((me?.data?.role || me?.data?.user?.role || '')).toLowerCase();
+        const email = String(me?.data?.email || me?.data?.user?.email || '');
+        // Allow via role OR explicit developer email whitelist
+        const devEmails = (process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || '')
+          .split(',')
+          .map(s=>s.trim().toLowerCase())
+          .filter(Boolean);
+  const isWhitelisted = !!email && devEmails.includes(email.toLowerCase());
+        // RBAC on /dev: allow admin | instance_owner | developer | tenant_owner | whitelisted email
+  setAllowed(Boolean(r==='admin' || r==='instance_owner' || r==='developer' || r==='tenant_owner' || isWhitelisted));
       } catch { setAllowed(false); }
       await refresh();
     })();
@@ -51,7 +58,9 @@ export default function SubdomainsPageClient(){
   return <div className="p-4 space-y-6"> <h1 className="text-2xl font-bold">Subdomains / المتاجر</h1>
     <div className="bg-white rounded-xl p-4 shadow"><h2 className="font-semibold mb-3">إنشاء متجر جديد</h2><div className="flex flex-col sm:flex-row gap-3"><input className="border rounded p-2 w-full" placeholder="اسم المتجر" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><input className="border rounded p-2 w-full" placeholder="الكود (للـ subdomain)" value={form.code} onChange={e=> setForm({...form, code:e.target.value.toLowerCase()})}/></div><div className="flex flex-col sm:flex-row gap-3 mt-3"><input className="border rounded p-2 w-full" placeholder="بريد مالك المتجر (Admin)" value={form.ownerEmail} onChange={e=> setForm({...form, ownerEmail:e.target.value})}/><input className="border rounded p-2 w-full" placeholder="اسم المالك (اختياري)" value={form.ownerName} onChange={e=> setForm({...form, ownerName:e.target.value})}/><button className="bg-black text-white rounded px-4" onClick={createTenant} disabled={creating}>{creating? '...':'إنشاء'}</button></div>{lastCreated && <div className="mt-3 text-sm bg-green-50 border border-green-200 rounded p-3"><div>تم الإنشاء ✅</div>{lastCreated.name && <div>المتجر: <b>{lastCreated.name}</b></div>}{lastCreated.domain && <div>النطاق الافتراضي: <a className="text-blue-600 underline" href={asUrl(lastCreated.domain)} target="_blank" rel="noreferrer">{lastCreated.domain}</a></div>}{lastCreated.email && <div>مشرف المتجر: <b>{lastCreated.email}</b></div>}{lastCreated.password && <div>كلمة السر المؤقتة (Dev فقط) <code className="px-1.5 py-0.5 rounded bg-white border">{lastCreated.password}</code></div>}</div>}</div>
     <div className="bg-white rounded-xl p-4 shadow"><h2 className="font-semibold mb-3">كل المتاجر</h2>{loading? <div>Loading...</div>: <div className="overflow-x-auto"><table className="w-full text-sm min-w-[820px]"><thead><tr className="text-right border-b"><th className="py-2">الاسم</th><th>الكود</th><th>النطاقات</th><th>إضافة نطاق</th><th>إدارة</th></tr></thead><tbody>{items.map(t=> <tr key={t.id} className="border-b align-top"><td className="py-2">{t.name}</td><td className="font-mono">{t.code}</td><td><div className="flex items-center gap-2"><button className="underline" onClick={()=>loadDomains(t.id)}>تحديث</button><span className="text-xs text-gray-500">({(domains[t.id]||[]).length})</span></div><ul className="mt-2 space-y-1">{(domains[t.id]||[]).map(d=> <li key={d.id} className="flex items-center gap-2"><a className="text-blue-600 underline" href={asUrl(d.domain)} target="_blank" rel="noreferrer" title={d.type==='custom'? 'Custom Domain':'Subdomain'}>{d.domain}</a>{d.isPrimary && <span className="text-xs px-2 py-0.5 bg-green-100 rounded">Primary</span>}{!d.isPrimary && <button className="text-xs underline" onClick={()=>setPrimary(t.id,d.id)}>اجعله أساسيًا</button>}{!d.isVerified && <span className="text-xs px-2 py-0.5 bg-yellow-100 rounded">غير مُتحقق</span>}</li>)}</ul></td><td>{newDomain?.tenantId===t.id? <div className="flex flex-col sm:flex-row gap-2"><select className="border rounded p-2" value={newDomain.type} onChange={e=> setNewDomain({...newDomain!, type:e.target.value as any})}><option value="subdomain">Subdomain</option><option value="custom">Custom</option></select><input className="border rounded p-2" placeholder="domain أو sub.example.com" value={newDomain.domain} onChange={e=> setNewDomain({...newDomain!, domain:e.target.value})}/><button className="bg-black text-white rounded px-3" onClick={addDomain}>إضافة</button><button className="rounded px-3 border" onClick={()=> setNewDomain(null)}>إلغاء</button></div>: <button className="rounded px-3 border" onClick={()=> setNewDomain({ tenantId:t.id, type:'subdomain', domain:'' })}>+ نطاق</button>}</td><td><div className="flex flex-col gap-2">
-            {allowed ? (
+            {allowed === null ? (
+              <span className="text-[11px] text-gray-400">...</span>
+            ) : allowed ? (
               <>
                 <div className="flex flex-wrap gap-2">
                   <button className="rounded px-3 py-1 border text-xs" onClick={()=>openEdit(t)}>تعديل</button>
