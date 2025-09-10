@@ -1,5 +1,5 @@
 import {
-  Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne,
+  Column, CreateDateColumn, DeleteDateColumn, Entity, Index, JoinColumn, ManyToOne,
   PrimaryGeneratedColumn, UpdateDateColumn
 } from 'typeorm';
 import { Tenant } from './tenant.entity';
@@ -7,7 +7,7 @@ import { Tenant } from './tenant.entity';
 export type DomainType = 'subdomain' | 'custom';
 
 @Entity('tenant_domain')
-@Index(['domain'], { unique: true })
+@Index(['domain'])
 export class TenantDomain {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -38,4 +38,9 @@ export class TenantDomain {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  // Soft delete marker
+  // Let TypeORM map to appropriate column type per driver
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deleted_at?: Date | null;
 }
