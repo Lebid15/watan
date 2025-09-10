@@ -1056,7 +1056,7 @@ export default function AdminOrdersPage() {
                 <input type="checkbox" checked={allShownSelected} onChange={(e) => toggleSelectAll(e.target.checked)} />
               </th>
 
-              <th className="text-sm text-center border-b border border-border">لوغو</th>
+              <th className="px-0 py-1 text-sm text-center border-b border border-border w-12">لوغو</th>
 
               <th className="p-2 text-center border-b border border-border">رقم الطلب</th>
               <th className="p-2 text-center border-b border border-border">المستخدم</th>
@@ -1102,12 +1102,12 @@ export default function AdminOrdersPage() {
                     />
                   </td>
 
-          <td className="bg-bg-surface px-0 py-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
+          <td className="bg-bg-surface px-0 py-1 w-12 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     <img
                       src={logoSrc}
                       data-debug-src={logoSrc}
                       alt={o.product?.name || o.package?.name || 'logo'}
-            className="block w-12 h-10 rounded-md object-contain"
+            className="block w-full h-10 rounded-md object-cover"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).onerror = null;
                         e.currentTarget.src = '/images/placeholder.png';
