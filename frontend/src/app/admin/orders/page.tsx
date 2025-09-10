@@ -1094,7 +1094,7 @@ export default function AdminOrdersPage() {
                     })();
                     return null;
                   })()}
-                  <td className="bg-bg-surface p-1 text-center border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
+                  <td className="bg-bg-surface px-0 py-1 text-center border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     <input
                       type="checkbox"
                       checked={selected.has(o.id)}
@@ -1180,7 +1180,7 @@ export default function AdminOrdersPage() {
                     ].join(' ')}
                   >
                     <div
-                      dir="ltr"
+                      dir="rtl"
                       className={[
                         'text-[12px] font-medium',
                         ((o as any)._usdProfitVal ?? 0) < 0 && (o as any)._usdProfitVal !== null
@@ -1192,7 +1192,7 @@ export default function AdminOrdersPage() {
                         const v = (o as any)._usdProfitVal as number | null;
                         if (v === null || v === undefined) return (o.profitTRY != null || o.sellTRY != null) ? '$-' : '-';
                         const abs = Math.abs(Number(v)).toFixed(2);
-                        // Format: sign + number + space + $
+                        // RTL visual order like TRY: minus, then number, then symbol
                         return `${v < 0 ? '-' : ''}${abs} $`;
                       })()}
                     </div>
