@@ -54,6 +54,7 @@ services:
       # Unified toggle for selective verbose logging (set to 1 only temporarily when needed)
       DEBUG: "0"
       FEATURE_BILLING_V1: "true"
+  ADMIN_TENANT_MGMT: "true"
     expose:
       - "3000"
     volumes:
