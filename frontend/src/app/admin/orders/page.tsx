@@ -1082,6 +1082,18 @@ export default function AdminOrdersPage() {
 
               return (
                 <tr key={o.id} className="group">
+                  {(() => {
+                    // احسب ربح الدولار لتمييز اللون عند السالب
+                    // نفضّل اللقطة المحفوظة، ثم الفرق بين لقطة البيع والشراء
+                    (o as any)._usdProfitVal = ((): number | null => {
+                      if (o.profitUsdAtOrder != null) return Number(o.profitUsdAtOrder);
+                      if (o.sellUsdAtOrder != null && o.costUsdAtOrder != null) {
+                        return Number(o.sellUsdAtOrder) - Number(o.costUsdAtOrder);
+                      }
+                      return null;
+                    })();
+                    return null;
+                  })()}
                   <td className="bg-bg-surface p-1 text-center border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     <input
                       type="checkbox"
@@ -1167,12 +1179,17 @@ export default function AdminOrdersPage() {
                         : '',
                     ].join(' ')}
                   >
-                    <div className="text-[10px] font-medium text-text-secondary">
-                      {o.profitUsdAtOrder != null
-                        ? `$${Number(o.profitUsdAtOrder).toFixed(2)}`
-                        : (o.sellUsdAtOrder != null && o.costUsdAtOrder != null
-                            ? `$${Number((Number(o.sellUsdAtOrder) - Number(o.costUsdAtOrder))).toFixed(2)}`
-                            : (o.profitTRY != null || o.sellTRY != null ? '$-' : '-'))}
+                    <div
+                      className={[
+                        'text-[10px] font-medium',
+                        ((o as any)._usdProfitVal ?? 0) < 0 && (o as any)._usdProfitVal !== null
+                          ? 'text-danger'
+                          : 'text-text-secondary',
+                      ].join(' ')}
+                    >
+                      {((o as any)._usdProfitVal ?? null) !== null
+                        ? `$${Number((o as any)._usdProfitVal).toFixed(2)}`
+                        : (o.profitTRY != null || o.sellTRY != null ? '$-' : '-')}
                     </div>
                     <div className="font-semibold">{money(
                       o.profitTRY ??
