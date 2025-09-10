@@ -226,7 +226,7 @@ export class ClientApiService {
     this.validateQuantity(meta || undefined, opts.quantity);
     this.validateParams(meta || undefined, opts.rawQuery || {});
     // Use unified productsService path (now supports idempotency + origin)
-    const unified = await this.productsService.createOrder({
+  const unified = await this.productsService.createOrder({
       productId: product.id,
       packageId: pkg.id,
       quantity: opts.quantity,
@@ -239,6 +239,15 @@ export class ClientApiService {
 
     const reused = (unified as any).reused === true;
 
+    // Try to include provider note/pin if available immediately after auto-dispatch
+    let orderRow: ProductOrder | null = null;
+    try {
+      orderRow = await this.ordersRepo.findOne({ where: { id: unified.id, tenantId: opts.tenantId } as any });
+    } catch {}
+    const noteMsg: string | null =
+      ((orderRow as any)?.providerMessage as any) || ((orderRow as any)?.lastMessage as any) || null;
+    const pin: string | null = ((orderRow as any)?.pinCode as any) || null;
+
     return {
       reused,
       id: unified.id,
@@ -249,6 +258,9 @@ export class ClientApiService {
       unit_price_usd: unified.unitPriceUSD,
       created_at: unified.createdAt,
       origin: (unified as any).origin || 'client_api',
+      // Optional extras for integrators: note/message + pin when present
+      ...(noteMsg ? { note: String(noteMsg).slice(0, 500), message: String(noteMsg).slice(0, 500) } : {}),
+      ...(pin ? { pin } : {}),
     };
   }
 
@@ -273,6 +285,13 @@ export class ClientApiService {
       status: this.mapInternalStatus(order.status),
       quantity: order.quantity,
       created_at: order.createdAt?.toISOString?.() || new Date().toISOString(),
+      // Include provider note/message and PIN if available to help integrators
+      ...(order as any)?.providerMessage
+        ? { note: (order as any).providerMessage, message: (order as any).providerMessage }
+        : (order as any)?.lastMessage
+        ? { note: (order as any).lastMessage, message: (order as any).lastMessage }
+        : {},
+      ...((order as any)?.pinCode ? { pin: (order as any).pinCode } : {}),
     };
   }
 }
