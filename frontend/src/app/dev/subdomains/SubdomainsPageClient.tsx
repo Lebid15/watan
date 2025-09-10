@@ -14,7 +14,14 @@ export default function SubdomainsPageClient(){
   const [lastReset,setLastReset]=useState<{ tenantId:string; email?:string; password?:string }|null>(null);
   const [domains,setDomains]=useState<Record<string,Domain[]>>({});
   const [newDomain,setNewDomain]=useState<{ tenantId:string; type:'subdomain'|'custom'; domain:string }|null>(null);
-  const refresh=async()=>{ setLoading(true); try { const { data }=await api.get<Tenant[]>(`${API_BASE_URL}/admin/tenants`); setItems(data); } finally { setLoading(false);} };
+  const refresh=async()=>{
+    setLoading(true);
+    try {
+      const { data } = await api.get<any>(`${API_BASE_URL}/admin/tenants`);
+      const payload = (data && typeof data==='object' && !Array.isArray(data) && data.data) ? data.data : data;
+      const items: Tenant[] = Array.isArray(payload) ? payload : (Array.isArray(payload?.items) ? payload.items : []);
+      setItems(items);
+    } finally { setLoading(false);} };
   const loadDomains=async(tenantId:string)=>{ const { data }=await api.get<Domain[]>(`${API_BASE_URL}/admin/tenants/${tenantId}/domains`); setDomains(m=>({...m,[tenantId]:data})); };
   useEffect(()=>{ refresh(); },[]);
   async function createTenant(){ if(!form.name || !form.code) return alert('أدخل الاسم والكود'); setCreating(true); try { const payload={ name:form.name.trim(), code:form.code.trim().toLowerCase(), ownerEmail: form.ownerEmail.trim()||undefined, ownerName: form.ownerName.trim()||undefined }; const { data }=await api.post<CreateTenantResp>(`${API_BASE_URL}/admin/tenants`, payload); setForm({ name:'', code:'', ownerEmail:'', ownerName:'' }); setLastCreated({ email:data.ownerEmail||undefined, password:data.ownerTempPassword, domain:data.defaultDomain, name:data.tenant?.name }); await refresh(); } catch(e:any){ alert(e?.response?.data?.message || 'فشل الإنشاء'); } finally { setCreating(false);} }
