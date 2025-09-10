@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import api, { API_ROUTES, Api } from '@/utils/api';
 
 type Tenant = {
@@ -53,6 +54,7 @@ function useFeatureFlagAdminTenants() {
 }
 
 export default function TenantsPageClient() {
+  const searchParams = useSearchParams();
   const { allowed } = useFeatureFlagAdminTenants();
   const [status, setStatus] = useState<'active'|'trashed'|'all'>('active');
   const [search, setSearch] = useState('');
@@ -86,7 +88,15 @@ export default function TenantsPageClient() {
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { if (allowed) load(); }, [allowed, status, page, limit]);
+  // Initialize search from ?q= or ?select= (tenantId => code filter can be typed by user after landing)
+  useEffect(() => {
+    const q = searchParams?.get('q') || '';
+    if (q && !search) setSearch(q);
+    // don't call load yet; let the effect below handle first fetch
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  useEffect(() => { if (allowed) load(); }, [allowed, status, page, limit, /* search intentionally on manual Search */]);
 
   function showToast(type: 'success'|'error', msg: string) {
     setToast({ type, msg });
