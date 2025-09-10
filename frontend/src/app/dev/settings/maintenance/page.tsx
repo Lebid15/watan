@@ -2,13 +2,13 @@
 import { useEffect, useState } from 'react';
 
 async function getState() {
-  const r = await fetch('/api/dev/maintenance', { cache: 'no-store' });
+  const r = await fetch('/_internal/dev/maintenance', { cache: 'no-store' });
   if (!r.ok) throw new Error('failed');
   return r.json();
 }
 
 async function setState(enabled: boolean, message: string) {
-  const r = await fetch('/api/dev/maintenance', {
+  const r = await fetch('/_internal/dev/maintenance', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled, message }),

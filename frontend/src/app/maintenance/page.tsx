@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 async function fetchState() {
   try {
-    const r = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/api/dev/maintenance`, { cache: 'no-store' });
+  const r = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/_internal/dev/maintenance`, { cache: 'no-store' });
     if (!r.ok) return null;
     return r.json();
   } catch { return null; }
