@@ -74,11 +74,12 @@ export default function TenantsPageClient() {
     try {
       const url = API_ROUTES.admin.tenants.list({ status, page, limit, search: search.trim() || undefined });
       const res = await api.get(url.replace('/api/tenants?', '/api/tenants?')); // keep as is
-      const body = res.data;
-      // Service returns {items,total,page,limit} or raw array; normalize
-      const norm: Paged<Tenant> = Array.isArray(body)
-        ? { items: body, total: body.length, page, limit }
-        : { items: body.items || [], total: body.total || 0, page: body.page || page, limit: body.limit || limit };
+  const body = res.data;
+  // Service returns {items,total,page,limit} or raw array; normalize defensively
+  const payload: any = body && typeof body === 'object' && !Array.isArray(body) && body.data ? body.data : body;
+  let items: any = Array.isArray(payload) ? payload : (Array.isArray(payload?.items) ? payload.items : []);
+  const total: number = (typeof payload?.total === 'number') ? payload.total : (Array.isArray(items) ? items.length : 0);
+  const norm: Paged<Tenant> = { items, total, page: payload?.page || page, limit: payload?.limit || limit };
       setData(norm);
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Failed to load');
@@ -207,14 +208,18 @@ export default function TenantsPageClient() {
               <tr><td colSpan={6} className="py-6 text-center">Loading...</td></tr>
             ) : error ? (
               <tr><td colSpan={6} className="py-6 text-center text-red-600">{error}</td></tr>
-            ) : data.items.length === 0 ? (
+            ) : (!Array.isArray(data.items) || data.items.length === 0) ? (
               <tr><td colSpan={6} className="py-6 text-center text-gray-500">No tenants</td></tr>
-            ) : data.items.map((t) => (
+      ) : (Array.isArray(data.items) ? data.items : []).map((t: any) => (
               <tr key={t.id} className={!t.isActive ? 'opacity-70' : ''}>
                 <td>{t.name}</td>
                 <td><span className="font-mono">{t.code}</span></td>
                 <td>{t.ownerName ? `${t.ownerName} <${t.ownerEmail||''}>` : (t.ownerEmail||'-')}</td>
-                <td>{(t.domains||[]).slice(0,3).map(d=>d.domain).join(', ')}{(t.domains||[]).length>3?'…':''}</td>
+        <td>{(Array.isArray(t.domains)?t.domains:[])
+          .slice(0,3)
+          .map((d:any)=> typeof d === 'string' ? d : d?.domain)
+          .filter(Boolean)
+          .join(', ')}{(Array.isArray(t.domains)?t.domains:[]).length>3?'…':''}</td>
                 <td>{t.deletedAt ? 'Trashed' : (t.isActive ? 'Active' : 'Inactive')}</td>
                 <td className="text-right space-x-1">
                   <button className="btn btn-xs" onClick={()=>openEdit(t)}>Edit</button>
