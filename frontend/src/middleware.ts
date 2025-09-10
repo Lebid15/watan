@@ -87,16 +87,26 @@ export async function middleware(req: NextRequest) {
     /\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|xml|woff2?|ttf|otf)$/.test(path);
   if (isAsset) return response ?? NextResponse.next();
 
-  // Maintenance overlay (app-level). Exempt: /dev/*, /maintenance, /api/webhooks/*, /api/health
+  // Maintenance overlay (app-level). Exempt: /dev/*, /dev-maintenance, /maintenance, /api/webhooks/*, /api/health
   const exemptMaint =
     path.startsWith('/dev/') ||
+    path === '/dev-maintenance' ||
     path === '/maintenance' ||
     path.startsWith('/api/webhooks/') ||
     path === '/api/health';
   if (!exemptMaint && !path.startsWith('/api/')) {
     const bypassHeader = headers.get('x-maint-bypass')?.toLowerCase();
     const bypassCookie = cookies.get('X-MAINT-BYPASS')?.value?.toLowerCase();
+    // Fast-path via cookie set by /dev-maintenance (cross-subdomain domain=.wtn4.com)
+    const maintCookie = cookies.get('MAINT_ON')?.value;
+    const isMaintOn = maintCookie === '1';
     if (!(bypassHeader === 'allow' || bypassCookie === 'allow')) {
+      if (isMaintOn) {
+        const url = nextUrl.clone();
+        url.pathname = '/maintenance';
+        return NextResponse.rewrite(url);
+      }
+      // Fallback to API state (first request before cookie lands)
       const state = await getMaintenanceState();
       if (state?.enabled) {
         const url = nextUrl.clone();

@@ -7,7 +7,15 @@ let STATE: { enabled: boolean; message: string; updatedAt: string } = {
 };
 
 export async function GET() {
-  return NextResponse.json({ enabled: STATE.enabled, message: STATE.message, updatedAt: STATE.updatedAt });
+  const res = NextResponse.json({ enabled: STATE.enabled, message: STATE.message, updatedAt: STATE.updatedAt });
+  // Mirror cookie on GET for idempotence
+  const domain = process.env.NEXT_PUBLIC_APEX_DOMAIN || 'wtn4.com';
+  if (STATE.enabled) {
+    res.cookies.set('MAINT_ON', '1', { path: '/', sameSite: 'lax', httpOnly: false, domain: `.${domain}` });
+  } else {
+    res.cookies.set('MAINT_ON', '', { path: '/', maxAge: 0, domain: `.${domain}` });
+  }
+  return res;
 }
 
 export async function POST(req: NextRequest) {
@@ -18,7 +26,14 @@ export async function POST(req: NextRequest) {
       ? String(body.message).slice(0, 5000)
       : STATE.message;
     STATE = { enabled, message, updatedAt: new Date().toISOString() };
-    return NextResponse.json(STATE);
+    const res = NextResponse.json(STATE);
+    const domain = process.env.NEXT_PUBLIC_APEX_DOMAIN || 'wtn4.com';
+    if (enabled) {
+      res.cookies.set('MAINT_ON', '1', { path: '/', sameSite: 'lax', httpOnly: false, domain: `.${domain}` });
+    } else {
+      res.cookies.set('MAINT_ON', '', { path: '/', maxAge: 0, domain: `.${domain}` });
+    }
+    return res;
   } catch {
     return NextResponse.json({ error: 'Bad Request' }, { status: 400 });
   }
