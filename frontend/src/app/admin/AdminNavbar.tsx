@@ -25,6 +25,7 @@ export default function AdminNavbar() {
     { name: 'المنتجات', href: '/admin/products' },
     { name: 'الطلبات', href: '/admin/orders' },
     { name: 'المستخدمون', href: '/admin/users' },
+  { name: 'المستأجرون', href: '/admin/tenants' },
     {
       name: 'الدفعات',
       subItems: [
