@@ -55,7 +55,7 @@ function parseHost(hostHeader: string | null) {
 
 async function getMaintenanceState(): Promise<{ enabled: boolean; message: string } | null> {
   try {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/_internal/dev/maintenance`, { cache: 'no-store' });
+    const res = await fetch(`/dev-maintenance`, { cache: 'no-store' });
     if (!res.ok) return null;
     return (await res.json()) as { enabled: boolean; message: string };
   } catch { return null; }
