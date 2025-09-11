@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+NGINX_NAME=${NGINX_CONTAINER_NAME:-watan-nginx}
 MODE=${1:-}
 MESSAGE=${2:-"يرجى الانتظار لدينا صيانة على الموقع وسنعود فور الانتهاء."}
 if [[ -z "$MODE" || ! "$MODE" =~ ^(on|off)$ ]]; then
@@ -41,9 +42,9 @@ EOF
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker CLI not available in container" >&2; exit 3;
 fi
-NGINX_CID=$(docker ps --format '{{.Names}}' | grep -E '^watan-nginx$' || true)
+NGINX_CID=$(docker ps --format '{{.Names}}' | grep -E "^${NGINX_NAME}$" || true)
 if [[ -z "$NGINX_CID" ]]; then
-  echo "nginx container not found" >&2; exit 4;
+  echo "nginx container '$NGINX_NAME' not found" >&2; exit 4;
 fi
 # Copy artifacts
 docker cp "$TMP_MODE" "$NGINX_CID":/etc/nginx/conf.d/mode.conf
