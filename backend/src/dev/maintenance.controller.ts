@@ -25,14 +25,30 @@ export class DevMaintenanceController {
     const args = [script, mode];
     if (message) args.push(message);
     const output: string[] = [];
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn('bash', args, { cwd: process.cwd() });
-      child.stdout.on('data', d => output.push(String(d)));
-      child.stderr.on('data', d => output.push(String(d)));
-      child.on('error', reject);
-      child.on('close', code => code === 0 ? resolve() : reject(new Error('exit '+code)));
-    });
-    return { ok: true, mode, output: output.join('').trim() };
+    let exitCode = 0;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('bash', args, { cwd: process.cwd() });
+        child.stdout.on('data', d => output.push(String(d)));
+        child.stderr.on('data', d => output.push(String(d)));
+        child.on('error', reject);
+        child.on('close', code => {
+          exitCode = code ?? 0;
+          return code === 0 ? resolve() : reject(new Error('exit '+code));
+        });
+      });
+      return { ok: true, mode, output: output.join('').trim() };
+    } catch (e:any) {
+      const full = output.join('').trim();
+      // Surface script failure details as 400 instead of generic 500
+      throw new BadRequestException({
+        ok: false,
+        mode,
+        error: e?.message || 'script failed',
+        exitCode,
+        output: full.slice(0, 4000)
+      });
+    }
   }
 
   @Get('maintenance-status')
