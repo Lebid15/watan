@@ -2,13 +2,15 @@
 import { useEffect, useState } from 'react';
 
 async function getState() {
-  const r = await fetch('/dev-maintenance', { cache: 'no-store' });
-  if (!r.ok) throw new Error('failed');
-  return r.json();
+  // Backend doesn't yet expose state file; approximate by probing /maintenance to see if rewrite occurs.
+  try {
+    const r = await fetch('/maintenance', { method: 'HEAD', cache: 'no-store' });
+    return { enabled: r.ok }; // heuristic
+  } catch { return { enabled: false }; }
 }
 
 async function setState(enabled: boolean, message: string) {
-  const r = await fetch('/dev-maintenance', {
+  const r = await fetch('/api/dev/toggle-nginx-maint', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled, message }),
@@ -30,7 +32,6 @@ export default function DevMaintenanceSettingsPage() {
       try {
         const s = await getState();
         setEnabled(Boolean(s.enabled));
-        if (s.message) setMessage(String(s.message));
       } catch {}
       setLoading(false);
     })();
@@ -63,7 +64,7 @@ export default function DevMaintenanceSettingsPage() {
         <div className="space-y-4 max-w-3xl">
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={enabled} onChange={(e)=>setEnabled(e.target.checked)} />
-            <span>تفعيل وضع الصيانة (Frontend)</span>
+            <span>تفعيل وضع الصيانة (Nginx عالمي)</span>
           </label>
 
           <div>
