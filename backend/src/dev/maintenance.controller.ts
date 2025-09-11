@@ -7,7 +7,7 @@ import * as fs from 'fs';
 
 interface ToggleDto { enabled: boolean; message?: string }
 
-@Controller('api/dev')
+@Controller('dev')
 export class DevMaintenanceController {
   @Post('toggle-nginx-maint')
   @Roles(UserRole.DEVELOPER)
