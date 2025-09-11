@@ -112,7 +112,7 @@ services:
       - ./nginx/templates-empty:/etc/nginx/templates:ro
       - ./certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx
-       - ./nginx:/opt/nginx-shared:rw
+      - ./nginx:/opt/nginx-shared:rw
     restart: unless-stopped
 
 volumes:
