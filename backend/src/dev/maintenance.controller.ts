@@ -1,4 +1,4 @@
-import { Body, Controller, Post, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Post, Get, BadRequestException } from '@nestjs/common';
 import { UserRole } from '../auth/user-role.enum';
 import { Roles } from '../auth/roles.decorator';
 import { spawn } from 'child_process';
@@ -32,6 +32,30 @@ export class DevMaintenanceController {
       child.on('close', code => code === 0 ? resolve() : reject(new Error('exit '+code)));
     });
     return { ok: true, mode, output: output.join('').trim() };
+  }
+
+  @Get('maintenance-status')
+  @Roles(UserRole.DEVELOPER)
+  async status() {
+    const file = '/etc/nginx/conf.d/mode.dynamic.conf';
+    let enabled = false;
+    try {
+      if (fs.existsSync(file)) {
+        const txt = fs.readFileSync(file, 'utf8').toLowerCase();
+        if (txt.includes('on')) enabled = true;
+      }
+    } catch {}
+    let message = 'نقوم حالياً بأعمال صيانة. سنعود قريباً.';
+    let updatedAt = null as string | null;
+    try {
+      const mf = '/etc/nginx/conf.d/maintenance.message.json';
+      if (fs.existsSync(mf)) {
+        const parsed = JSON.parse(fs.readFileSync(mf,'utf8'));
+        if (parsed?.message) message = String(parsed.message);
+        if (parsed?.updatedAt) updatedAt = String(parsed.updatedAt);
+      }
+    } catch {}
+    return { enabled, message, updatedAt };
   }
 
   @Post('maintenance-message')

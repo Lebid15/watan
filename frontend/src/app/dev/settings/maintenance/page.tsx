@@ -2,10 +2,10 @@
 import { useEffect, useState } from 'react';
 
 async function getState() {
-  // Backend doesn't yet expose state file; approximate by probing /maintenance to see if rewrite occurs.
   try {
-    const r = await fetch('/maintenance', { method: 'HEAD', cache: 'no-store' });
-    return { enabled: r.ok }; // heuristic
+    const r = await fetch('/api/dev/maintenance-status', { cache: 'no-store' });
+    if (!r.ok) throw 0;
+    return r.json();
   } catch { return { enabled: false }; }
 }
 
@@ -42,10 +42,11 @@ export default function DevMaintenanceSettingsPage() {
     setError('');
     setOk('');
     try {
-      const s = await setState(enabled, message);
-      setOk('تم الحفظ');
-      setEnabled(Boolean(s.enabled));
-      if (s.message) setMessage(String(s.message));
+  await setState(enabled, message);
+  const fresh = await getState();
+  setEnabled(Boolean(fresh.enabled));
+  if (fresh.message) setMessage(String(fresh.message));
+  setOk('تم الحفظ');
     } catch {
       setError('فشل الحفظ');
     } finally {

@@ -9,7 +9,7 @@ async function fetchState() {
 }
 
 export default async function MaintenancePage() {
-  const res = await fetch(`/dev-maintenance`, { cache: 'no-store' }).catch(() => null as any);
+  const res = await fetch(`/api/dev/maintenance-status`, { cache: 'no-store' }).catch(() => null as any);
   let message = 'نقوم حالياً بأعمال صيانة. سنعود قريباً.';
   if (res && res.ok) {
     try {
