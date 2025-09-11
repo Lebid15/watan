@@ -12,12 +12,12 @@ TMP_MODE=$(mktemp)
 if [[ "$MODE" == "on" ]]; then
   cat > "$TMP_MODE" <<EOF
 # runtime override generated
-map "on" $maintenance_mode { default on; }
+set \$maintenance_switch on;
 EOF
 else
   cat > "$TMP_MODE" <<EOF
 # runtime override generated
-map "off" $maintenance_mode { default off; }
+set \$maintenance_switch off;
 EOF
 fi
 # Prepare message JSON
