@@ -106,8 +106,9 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/maintenance.conf:/etc/nginx/conf.d/maintenance.conf:ro
-      - ./nginx/mode.conf.template:/etc/nginx/templates/mode.conf.template:ro
-      - ./nginx/maintenance.html:/usr/share/nginx/html/maintenance.html:ro
+  - ./nginx/mode.conf.template:/etc/nginx/templates/mode.conf.template:ro
+  # Make maintenance page writable so toggle script can regenerate it dynamically
+  - ./nginx/maintenance.html:/usr/share/nginx/html/maintenance.html
       - ./certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx
     restart: unless-stopped
