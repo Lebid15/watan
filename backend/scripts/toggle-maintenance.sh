@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# (Enforced LF via .gitattributes; avoid CRLF to prevent /usr/bin/env^M issues on alpine)
 set -euo pipefail
 NGINX_NAME=${NGINX_CONTAINER_NAME:-watan-nginx}
 MODE=${1:-}
