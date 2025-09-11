@@ -32,6 +32,7 @@ export default function DevMaintenanceSettingsPage() {
       try {
         const s = await getState();
         setEnabled(Boolean(s.enabled));
+        if (s.message) setMessage(String(s.message));
       } catch {}
       setLoading(false);
     })();
