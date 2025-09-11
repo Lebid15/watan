@@ -17,7 +17,8 @@ EOF
 mv "$MSGFILE.tmp" "$MSGFILE"
 CID=$(docker ps --format '{{.Names}}' | grep -E '^watan-nginx$' || true)
 if [[ -n "$CID" ]]; then
-  docker cp "$SRC" "$CID":/etc/nginx/conf.d/mode.dynamic.conf
+  # Overwrite active mode.conf directly so nginx uses it (no separate include needed)
+  docker cp "$SRC" "$CID":/etc/nginx/conf.d/mode.conf
   docker cp "$MSGFILE" "$CID":/etc/nginx/conf.d/maintenance.message.json || true
   docker exec "$CID" nginx -t
   docker exec "$CID" nginx -s reload

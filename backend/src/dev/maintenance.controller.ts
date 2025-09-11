@@ -37,7 +37,8 @@ export class DevMaintenanceController {
   @Get('maintenance-status')
   @Roles(UserRole.DEVELOPER)
   async status() {
-    const file = '/etc/nginx/conf.d/mode.dynamic.conf';
+  // We now overwrite mode.conf directly when toggling
+  const file = '/etc/nginx/conf.d/mode.conf';
     let enabled = false;
     try {
       if (fs.existsSync(file)) {
