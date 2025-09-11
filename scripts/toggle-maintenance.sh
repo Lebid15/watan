@@ -1,3 +1,25 @@
+#!/bin/sh
+# Toggle global maintenance mode by copying predefined mode.on/off.conf
+# Usage: ./scripts/toggle-maintenance.sh on|off
+set -e
+if [ $# -lt 1 ]; then
+  echo "Usage: $0 on|off" >&2; exit 1; fi
+MODE=$1
+if [ "$MODE" != "on" ] && [ "$MODE" != "off" ]; then
+  echo "Mode must be 'on' or 'off'" >&2; exit 1; fi
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SRC="$ROOT_DIR/nginx/mode.$MODE.conf"
+DEST="$ROOT_DIR/nginx/mode.conf"
+if [ ! -f "$SRC" ]; then echo "Missing $SRC" >&2; exit 1; fi
+cp "$SRC" "$DEST"
+echo "Wrote $DEST => $(grep maintenance_switch "$DEST" || true)"
+if command -v docker >/dev/null 2>&1; then
+  (cd "$ROOT_DIR" && docker compose exec nginx nginx -t && docker compose exec nginx nginx -s reload)
+  echo "Reloaded nginx with maintenance $MODE"
+else
+  echo "Docker not found - file updated only"
+fi
 #!/usr/bin/env bash
 set -euo pipefail
 MODE=${1:-}
