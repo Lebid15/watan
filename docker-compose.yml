@@ -108,11 +108,11 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/maintenance.conf:/etc/nginx/conf.d/maintenance.conf:ro
-      - ./nginx/mode.conf:/etc/nginx/mode_switch.inc
       - ./nginx/maintenance.html:/usr/share/nginx/html/maintenance.html
       - ./nginx/templates-empty:/etc/nginx/templates:ro
       - ./certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx
+       - ./nginx:/opt/nginx-shared:rw
     restart: unless-stopped
 
 volumes:
