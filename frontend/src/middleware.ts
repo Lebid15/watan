@@ -53,9 +53,12 @@ function parseHost(hostHeader: string | null) {
   return { base: apex, isSub: false, full, sub: null, apex };
 }
 
-async function getMaintenanceState(): Promise<{ enabled: boolean; message: string } | null> {
+async function getMaintenanceStateAbs(req: NextRequest): Promise<{ enabled: boolean; message: string } | null> {
   try {
-    const res = await fetch(`/dev-maintenance`, { cache: 'no-store' });
+    const url = req.nextUrl.clone();
+    url.pathname = '/dev-maintenance';
+    url.search = '';
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return null;
     return (await res.json()) as { enabled: boolean; message: string };
   } catch { return null; }
@@ -106,8 +109,8 @@ export async function middleware(req: NextRequest) {
         url.pathname = '/maintenance';
         return NextResponse.rewrite(url);
       }
-      // Fallback to API state (first request before cookie lands)
-      const state = await getMaintenanceState();
+  // Fallback to API state (first request before cookie lands)
+  const state = await getMaintenanceStateAbs(req);
       if (state?.enabled) {
         const url = nextUrl.clone();
         url.pathname = '/maintenance';
