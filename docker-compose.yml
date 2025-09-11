@@ -52,14 +52,14 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       JWT_SECRET: "${JWT_SECRET}"
       PUBLIC_TENANT_BASE_DOMAIN: "wtn4.com"
-      # Unified toggle for selective verbose logging (set to 1 only temporarily when needed)
       DEBUG: "0"
       FEATURE_BILLING_V1: "true"
     expose:
       - "3000"
     volumes:
       - backend_logs:/app/logs
-      - /var/run/docker.sock:/var/run/docker.sock # allow maintenance script to reload nginx
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./nginx:/opt/nginx-shared
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,17 +108,14 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/maintenance.conf:/etc/nginx/conf.d/maintenance.conf:ro
-      - ./nginx/mode.conf.template:/etc/nginx/templates/mode.conf.template:ro
-      # Make maintenance page writable so toggle script can regenerate it dynamically
+      - ./nginx/mode.conf:/etc/nginx/conf.d/mode.conf
       - ./nginx/maintenance.html:/usr/share/nginx/html/maintenance.html
+      - ./nginx/templates-empty:/etc/nginx/templates:ro
       - ./certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx
     restart: unless-stopped
 
-
 volumes:
-  pg_data:
   backend_logs:
   frontend_logs:
   nginx_logs:
-  # (Optional) redis persistence volume could be added later

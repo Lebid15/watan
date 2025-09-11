@@ -54,8 +54,8 @@ export class DevMaintenanceController {
   @Get('maintenance-status')
   @Roles(UserRole.DEVELOPER)
   async status() {
-  // We now overwrite mode.conf directly when toggling
-  const file = '/etc/nginx/conf.d/mode.conf';
+  // We now overwrite mode.conf in shared nginx folder (bind mounted)
+  const file = '/opt/nginx-shared/mode.conf';
     let enabled = false;
     try {
       if (fs.existsSync(file)) {
@@ -66,7 +66,7 @@ export class DevMaintenanceController {
     let message = 'نقوم حالياً بأعمال صيانة. سنعود قريباً.';
     let updatedAt = null as string | null;
     try {
-      const mf = '/etc/nginx/conf.d/maintenance.message.json';
+  const mf = '/opt/nginx-shared/maintenance.message.json';
       if (fs.existsSync(mf)) {
         const parsed = JSON.parse(fs.readFileSync(mf,'utf8'));
         if (parsed?.message) message = String(parsed.message);
@@ -79,7 +79,7 @@ export class DevMaintenanceController {
   @Post('maintenance-message')
   @Roles(UserRole.DEVELOPER)
   async message(@Body() body: { message: string }) {
-    const file = '/etc/nginx/conf.d/maintenance.message.json';
+  const file = '/opt/nginx-shared/maintenance.message.json';
     let message = body?.message || '';
     message = message.trim().slice(0, 5000) || 'نقوم حالياً بأعمال صيانة. سنعود قريباً.';
     const json = { message, updatedAt: new Date().toISOString() };
