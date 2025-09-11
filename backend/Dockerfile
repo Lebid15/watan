@@ -19,6 +19,12 @@ ENV NODE_ENV=production
 # Copy everything from build stage (includes node_modules, dist, and source for rebuilds)
 COPY --from=base /app /app
 
+# Install bash (needed for script) and docker CLI so backend can control nginx container.
+RUN apk add --no-cache bash docker-cli
+
+# Ensure maintenance toggle script is executable
+RUN chmod +x /app/scripts/toggle-maintenance.sh || true
+
 # Remove potential cached env file
 RUN rm -f .env || true
 

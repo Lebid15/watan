@@ -17,7 +17,8 @@ export class DevMaintenanceController {
     }
     const mode = body.enabled ? 'on' : 'off';
     const message = (body.message && body.message.trim()) ? body.message.trim().slice(0, 5000) : undefined;
-    const script = join(process.cwd(), 'scripts', 'toggle-maintenance.sh');
+  // Use backend-local script (copies directly into nginx container)
+  const script = join(process.cwd(), 'scripts', 'toggle-maintenance.sh');
     if (!fs.existsSync(script)) {
       throw new BadRequestException('script missing');
     }
