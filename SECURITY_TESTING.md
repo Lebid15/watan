@@ -157,7 +157,7 @@ ORIGIN=https://wtn4.com bash scripts/security/rate_limit_probe.sh
 
 ## 16. Hardening Roadmap (Next)
 1. Implement auth endpoint rate limiting (nginx or nest middleware).
-2. Enforce CSP (nonce-based) + remove unsafe-inline.
+2. Enforce CSP (nonce-based) + remove unsafe-inline (currently transitional CSP added at edge for frontend; API locked down with restrictive CSP).
 3. Add HSTS & evaluate preload submission.
 4. Add per-tenant encryption at rest review (DB level).
 5. Expand Semgrep custom rules for: missing tenant filter, raw response leak, overly broad CORS.
@@ -165,4 +165,10 @@ ORIGIN=https://wtn4.com bash scripts/security/rate_limit_probe.sh
 
 ## 17. Acceptance Criteria Mapping
 Each Release Gate (Section 10) ties to Test Matrix green results within SLA windows; deviations require CTO sign-off recorded in report.
+
+## 18. Recent Changes (Sep 2025)
+- Added baseline security headers (HSTS, CSP, Referrer-Policy, Permissions-Policy, X-Frame-Options, X-Content-Type-Options) in Nginx HTTPS blocks.
+- CSP is currently permissive for frontend ('unsafe-inline') pending migration to nonces.
+- API CSP locked to default-src 'none' to minimize attack surface.
+- SARIF uploads enabled for Semgrep and gitleaks to integrate with GitHub code scanning.
 
