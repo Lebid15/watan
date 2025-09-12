@@ -7,7 +7,9 @@ import MobileZoomFrame from '@/components/MobileZoomFrame';
 import api, { API_ROUTES } from '@/utils/api';
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
-  const DESIGN_WIDTH = 1280;
+  // Legacy fixed design support: if env NEXT_PUBLIC_LEGACY_ADMIN_FIXED_WIDTH=1 we keep old 1280px behaviour.
+  const LEGACY = process.env.NEXT_PUBLIC_LEGACY_ADMIN_FIXED_WIDTH === '1';
+  const DESIGN_WIDTH = 1280; // kept only for legacy mode or max-width reference.
   const [authReady, setAuthReady] = useState(false);
   const router = useRouter();
   const search = useSearchParams();
@@ -74,13 +76,25 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
 
   if (!authReady) return null;
 
+  // Responsive container: fluid width with a comfortable max, allow content to wrap and avoid horizontal pinch.
+  // We wrap main vertical layout in flex column so inner scroll areas can use min-h-0 if needed later.
   const inner = (
-    <div className="mx-auto" style={{ width: DESIGN_WIDTH, minWidth: DESIGN_WIDTH, minHeight: '100vh', overflowX: 'auto' }}>
-      <div className="bg-[var(--toppage)] text-gray-100">
+    <div
+      className={
+        'flex flex-col min-h-screen mx-auto ' +
+        (LEGACY
+          ? ''
+          : 'w-full max-w-[1280px] px-4 md:px-6')
+      }
+      style={LEGACY ? { width: DESIGN_WIDTH, minWidth: DESIGN_WIDTH, minHeight: '100vh', overflowX: 'auto' } : undefined}
+    >
+      <div className="bg-[var(--toppage)] text-gray-100 w-full">
         <AdminTopBar alertMessage={alertMessage} onLogout={handleLogout} />
       </div>
       <AdminNavbar />
-      <div className="p-">{children}</div>
+      <div className={LEGACY ? 'p-' : 'py-4'}>
+        {children}
+      </div>
     </div>
   );
 

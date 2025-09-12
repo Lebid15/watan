@@ -1047,8 +1047,10 @@ export default function AdminOrdersPage() {
       )}
 
       {/* الجدول */}
-      <div className="overflow-auto rounded-lg border border-border">
-        <table className="min-w-[1080px] w-full border-separate border-spacing-y-1 border-spacing-x-0 bg-bg-surface">
+      <div className="rounded-lg border border-border">
+        {/* Responsive table: remove enforced min width; allow horizontal scroll only if content truly overflows. */}
+        <div className="overflow-x-auto">
+        <table className="w-full border-separate border-spacing-y-1 border-spacing-x-0 bg-bg-surface text-xs sm:text-sm">
           <thead>
             <tr className="bg-bg-surface-alt sticky top-0 z-10">
               <th className="text-center border-b border border-border">
@@ -1236,6 +1238,7 @@ export default function AdminOrdersPage() {
           </tbody>
 
         </table>
+        </div>
       </div>
 
       {/* زر تحميل المزيد */}
