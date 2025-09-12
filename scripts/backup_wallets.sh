@@ -13,8 +13,11 @@ OUTFILE="$BACKUP_DIR/wallets_${STAMP}.sql.gz"
 METAFILE="$BACKUP_DIR/wallets_${STAMP}.meta"
 
 # Pre-flight: count rows (attempt to bypass RLS for diagnostic only)
-USER_COUNT=$(docker compose exec -T "$SERVICE" bash -lc 'export PGPASSWORD="$POSTGRES_PASSWORD"; psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -tAc "SET row_security=off; SELECT count(*) FROM public.users;" 2>/dev/null' | tr -d '[:space:]' || echo "?")
-DEPOSIT_COUNT=$(docker compose exec -T "$SERVICE" bash -lc 'export PGPASSWORD="$POSTGRES_PASSWORD"; psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=0 -tAc "SET row_security=off; SELECT count(*) FROM public.deposit;" 2>/dev/null' | tr -d '[:space:]' || echo "?")
+# Use -q (quiet) to suppress command tags like SET, then extract first pure numeric line.
+USER_COUNT=$(docker compose exec -T "$SERVICE" bash -lc 'export PGPASSWORD="$POSTGRES_PASSWORD"; psql -qAt -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SET row_security=off; SELECT count(*) FROM public.users;" 2>/dev/null' | awk ' /^[0-9]+$/ {print; exit}' || true)
+DEPOSIT_COUNT=$(docker compose exec -T "$SERVICE" bash -lc 'export PGPASSWORD="$POSTGRES_PASSWORD"; psql -qAt -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SET row_security=off; SELECT count(*) FROM public.deposit;" 2>/dev/null' | awk ' /^[0-9]+$/ {print; exit}' || true)
+[ -z "$USER_COUNT" ] && USER_COUNT="?"
+[ -z "$DEPOSIT_COUNT" ] && DEPOSIT_COUNT="?"
 
 # Dump only users and deposit tables (include data + schema)
 docker compose exec -T "$SERVICE" bash -lc 'export PGPASSWORD="$POSTGRES_PASSWORD"; pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -t public.users -t public.deposit "$POSTGRES_DB"' | gzip -9 > "$OUTFILE"
