@@ -20,7 +20,13 @@ DEPOSIT_COUNT=$(docker compose exec -T "$SERVICE" bash -lc 'export PGPASSWORD="$
 docker compose exec -T "$SERVICE" bash -lc 'export PGPASSWORD="$POSTGRES_PASSWORD"; pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -t public.users -t public.deposit "$POSTGRES_DB"' | gzip -9 > "$OUTFILE"
 
 # Post-flight: detect if users COPY section has rows when count suggested >0
-COPY_ROWS=$(gunzip -c "$OUTFILE" | awk '/^COPY public\.users /{in=1;next} /^\\\./{in=0} in{c++} END{print c+0}')
+# (previous awk one-liner broke on some awk variants due to missing separator)
+COPY_ROWS=$(gunzip -c "$OUTFILE" | awk '
+	/^COPY public\.users / { in_section=1; next }
+	/^\\\.$/ { in_section=0 }
+	in_section { c++ }
+	END { print c+0 }
+' 2>/dev/null || echo 0)
 
 WARN_MSG=""
 if [ "$USER_COUNT" != "?" ] && [ "$USER_COUNT" -gt 0 ] && [ "$COPY_ROWS" -eq 0 ]; then
