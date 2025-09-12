@@ -36,6 +36,10 @@ export interface StorePreviewFrameProps {
   dimensionChangeTolerance?: number;
   /** Cap maximum scale (default 1 so we don't upscale beyond natural size). */
   maxScaleCap?: number;
+  /** Persist the first (or reduced) baseline scale across remounts for same host (sessionStorage). */
+  persistBaseline?: boolean;
+  /** Optional custom storage key (else derived from host). */
+  baselineStorageKey?: string;
   /**
    * Optional override to decide if an origin is allowed (testing / staging extension)
    * Default logic: https protocol AND (host endsWith .wtn4.com OR host === wtn4.com) AND host !== api.wtn4.com
@@ -62,6 +66,8 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
   lockInitialScale = false,
   dimensionChangeTolerance = 8,
   maxScaleCap = 1,
+  persistBaseline = false,
+  baselineStorageKey,
   allowOriginPredicate,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -76,6 +82,7 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
   const lastDimsRef = useRef({ w: 0, h: 0 });
   const pendingRecalcRef = useRef<number | null>(null);
   const baselineScaleRef = useRef<number | null>(null); // locked initial scale
+  const baselineLoadedRef = useRef(false);
 
   // Debounce util using window.setTimeout so we can clear it
   const debounce = useCallback((fn: () => void, delay: number) => {
@@ -100,18 +107,48 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
     const viewW = rect.width;
     const viewH = rect.height;
     if (viewW <= 0 || viewH <= 0) return;
+
+    // Attempt to load existing baseline once before first calculation
+    if (persistBaseline && !baselineLoadedRef.current && baselineScaleRef.current == null) {
+      try {
+        const host = new URL(src).hostname;
+        const key = baselineStorageKey || `spf:baseline:${host}`;
+        const val = sessionStorage.getItem(key);
+        if (val) {
+          const parsed = parseFloat(val);
+            if (isFinite(parsed) && parsed > 0 && parsed < 5) {
+              baselineScaleRef.current = parsed;
+            }
+        }
+      } catch {}
+      baselineLoadedRef.current = true;
+    }
     let newScale = computeFit(viewW, viewH, storeW, storeH);
     if (maxScaleCap > 0 && newScale > maxScaleCap) newScale = maxScaleCap;
 
     if (baselineScaleRef.current == null) {
       // first time establishing baseline
       baselineScaleRef.current = newScale;
+      if (persistBaseline) {
+        try {
+          const host = new URL(src).hostname;
+          const key = baselineStorageKey || `spf:baseline:${host}`;
+          sessionStorage.setItem(key, String(baselineScaleRef.current));
+        } catch {}
+      }
     } else {
       const lock = lockInitialScale || fitStrategy === 'once';
       if (lock) {
         // allow only downscale if content grew (newScale smaller). Never upscale above baseline.
         if (newScale < baselineScaleRef.current) {
           baselineScaleRef.current = newScale; // content got larger -> accept smaller scale to keep full fit
+          if (persistBaseline) {
+            try {
+              const host = new URL(src).hostname;
+              const key = baselineStorageKey || `spf:baseline:${host}`;
+              sessionStorage.setItem(key, String(baselineScaleRef.current));
+            } catch {}
+          }
         }
         newScale = Math.min(newScale, baselineScaleRef.current);
       }
