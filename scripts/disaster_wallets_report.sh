@@ -18,6 +18,8 @@ USER_ID_COL=${USER_ID_COL:-id}
 BALANCE_COL=${BALANCE_COL:-balance}
 # Try to include a human readable identifier (name/full_name/username/email)
 USER_NAME_COL=${USER_NAME_COL:-}
+# Email column (if exists)
+EMAIL_COL=${EMAIL_COL:-}
 # Default currency column often currency_id; fall back from currency -> currency_id -> literal 'N/A'
 CURRENCY_COL=${CURRENCY_COL:-currency}
 UPDATED_AT_COL=${UPDATED_AT_COL:-updated_at}
@@ -149,11 +151,18 @@ else
   CURRENCY_COL="" # will use literal
 fi
 
-name_detect=$(docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='${TABLE_USERS}' AND column_name IN ('name','full_name','username','email') ORDER BY CASE column_name WHEN 'name' THEN 1 WHEN 'full_name' THEN 2 WHEN 'username' THEN 3 WHEN 'email' THEN 4 END LIMIT 1;" 2>/dev/null | tr -d '[:space:]') || true
+name_detect=$(docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='${TABLE_USERS}' AND column_name IN ('name','full_name','username') ORDER BY CASE column_name WHEN 'name' THEN 1 WHEN 'full_name' THEN 2 WHEN 'username' THEN 3 END LIMIT 1;" 2>/dev/null | tr -d '[:space:]') || true
 if [ -n "$name_detect" ]; then
   USER_NAME_COL="$name_detect"
 else
   USER_NAME_COL=""
+fi
+
+email_detect=$(docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='${TABLE_USERS}' AND column_name='email' LIMIT 1;" 2>/dev/null | tr -d '[:space:]') || true
+if [ -n "$email_detect" ]; then
+  EMAIL_COL="$email_detect"
+else
+  EMAIL_COL=""
 fi
 
 if [ -n "$CURRENCY_COL" ]; then
@@ -168,6 +177,13 @@ else
   select_user_name="'UNKNOWN'::text as user_name"
 fi
 
+if [ -n "$EMAIL_COL" ]; then
+  select_email="u.${EMAIL_COL} as email"
+else
+  # If no separate email but user_name empty and email column absent, still provide placeholder
+  select_email="'UNKNOWN'::text as email"
+fi
+
 # Verify users table exists; if not attempt raw extraction from dump
 if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='${TABLE_USERS}';" | grep -q 1; then
   echo "[WARN] users table not found after restore – falling back to direct dump parsing." >&2
@@ -175,8 +191,9 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc 
   gunzip -c "$selected_file" | awk "/^COPY ${TABLE_USERS} /,/^\\\\.$/" > "$tmp_tsv" || true
   if grep -q '^COPY' "$tmp_tsv"; then
     # Remove first (COPY ...) line and last line containing single dot
-    sed '1d;$d' "$tmp_tsv" | awk -F'\t' '{print $1","$2","$3","$4}' | {
-      echo "user_id,balance,currency,updated_at"; cat -; } > "$OUTPUT"
+    # Simple fallback cannot map name/email reliably; output placeholders
+    sed '1d;$d' "$tmp_tsv" | awk -F'\t' '{print $1",UNKNOWN,UNKNOWN,"$2","$3","$4}' | {
+      echo "user_id,user_name,email,balance,currency,updated_at"; cat -; } > "$OUTPUT"
     rm -f "$tmp_tsv"
     ls -l "$OUTPUT"
     echo "[DONE] Report ready (dump parsing mode): $OUTPUT (source time $selected_time UTC)"
@@ -188,15 +205,15 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc 
   fi
 fi
 
-query="COPY (SELECT u.${USER_ID_COL} as user_id, ${select_user_name}, u.${BALANCE_COL} as balance, ${select_currency}, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
+query="COPY (SELECT u.${USER_ID_COL} as user_id, ${select_user_name}, ${select_email}, u.${BALANCE_COL} as balance, ${select_currency}, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
 
 if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$query" > "$OUTPUT" 2>/dev/null; then
   echo "[WARN] Query failed – attempting minimal column subset (id,balance,updated_at)." >&2
-  fallback_query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER" # name & currency missing
+  fallback_query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER" # name, email & currency missing
   if docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$fallback_query" > "$OUTPUT.tmp" 2>/dev/null; then
     { IFS= read -r header; # header: user_id,balance,updated_at
-      echo "user_id,user_name,balance,currency,updated_at";
-      awk -F',' -v uname="UNKNOWN" 'NR>1{print $1","uname","$2",N/A,"$3}' "$OUTPUT.tmp"; } > "$OUTPUT" || true
+      echo "user_id,user_name,email,balance,currency,updated_at";
+      awk -F',' -v uname="UNKNOWN" -v uemail="UNKNOWN" 'NR>1{print $1","uname","uemail","$2",N/A,"$3}' "$OUTPUT.tmp"; } > "$OUTPUT" || true
     rm -f "$OUTPUT.tmp"
     ls -l "$OUTPUT"
     echo "[DONE] Report ready (fallback query): $OUTPUT (source time $selected_time UTC)"
@@ -205,7 +222,7 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$
   else
     echo "[WARN] Both SQL extraction paths failed – switching to raw dump parsing." >&2
     # Raw dump parsing: derive column positions from COPY line and output mapped CSV
-    gunzip -c "$selected_file" | awk -v userIdPref="${USER_ID_COL}" -v balPref="${BALANCE_COL}" -v currPref="${CURRENCY_COL}" -v updPref="${UPDATED_AT_COL}" -v nameCandidates="name,full_name,username,email" '
+    gunzip -c "$selected_file" | awk -v userIdPref="${USER_ID_COL}" -v balPref="${BALANCE_COL}" -v currPref="${CURRENCY_COL}" -v updPref="${UPDATED_AT_COL}" -v nameCandidates="name,full_name,username" -v emailCol="email" '
       BEGIN{copy=0; haveHeader=0}
       /^COPY public\.users / {
         line=$0
@@ -225,19 +242,22 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$
         # Determine name column
         split(nameCandidates,nc,",")
         uname=""; for(ni=1;ni<=length(nc);ni++){ if(nc[ni] in pos){ uname=nc[ni]; break } }
+        # Determine email column
+        emailField=""; if(emailCol in pos){ emailField=emailCol }
         # Store chosen names
-        chosen_id=uid; chosen_name=uname; chosen_bal=bal; chosen_curr=curr; chosen_upd=upd;
-        print "user_id,user_name,balance,currency,updated_at"; haveHeader=1; copy=1; next
+        chosen_id=uid; chosen_name=uname; chosen_email=emailField; chosen_bal=bal; chosen_curr=curr; chosen_upd=upd;
+        print "user_id,user_name,email,balance,currency,updated_at"; haveHeader=1; copy=1; next
       }
       copy && /^\\\.$/ {exit}
       copy {
         nfs=split($0,f,"\t")
         id = (chosen_id in pos)? f[pos[chosen_id]]:""
         username = (chosen_name!="" && chosen_name in pos)? f[pos[chosen_name]]:"UNKNOWN"
+        emailVal = (chosen_email!="" && chosen_email in pos)? f[pos[chosen_email]]:"UNKNOWN"
         balance = (chosen_bal in pos)? f[pos[chosen_bal]]:"0"
         currency = (chosen_curr!="" && chosen_curr in pos)? f[pos[chosen_curr]]:"N/A"
         updated = (chosen_upd in pos)? f[pos[chosen_upd]]:""
-        print id "," username "," balance "," currency "," updated
+        print id "," username "," emailVal "," balance "," currency "," updated
       }
     ' > "$OUTPUT" || true
     if [ -s "$OUTPUT" ]; then
