@@ -6,13 +6,19 @@ set -euo pipefail
 # and place outputs under gold/<version>/data.
 # Assumptions: running on infra host (self-hosted runner) that has docker compose and access to postgres service & backup scripts.
 # Inputs:
-#   VERSION (required) e.g. v1.0.0-gold
+#   VERSION env OR first CLI arg (required) e.g. v1.0.0-gold
 #   POSTGRES_SERVICE (default: postgres)
 #   COMPOSE_DIR (default: current repo root)
 #   TMP_RESTORE_DB (default: watan_gold_verify)
 #   GOLD_BASE (default: gold)
 
-VERSION=${VERSION:?VERSION required (e.g. v1.0.0-gold)}
+if [ $# -ge 1 ] && [ -z "${VERSION:-}" ]; then
+  VERSION=$1
+fi
+if [ -z "${VERSION:-}" ]; then
+  echo "Usage: VERSION=<tag> $0  OR  $0 <tag> (e.g. v1.0.0-gold)" >&2
+  exit 1
+fi
 POSTGRES_SERVICE=${POSTGRES_SERVICE:-postgres}
 COMPOSE_DIR=${COMPOSE_DIR:-$(pwd)}
 TMP_RESTORE_DB=${TMP_RESTORE_DB:-watan_gold_verify}
