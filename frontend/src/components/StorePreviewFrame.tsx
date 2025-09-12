@@ -23,6 +23,20 @@ export interface StorePreviewFrameProps {
   background?: string;                    // Container background (default transparent)
   border?: boolean;                       // Show a subtle border
   /**
+   * Strategy for fitting:
+   *  - 'contain': scale = min(widthFit, heightFit) (default behavior)
+   *  - 'height': scale = viewH / scrollHeight
+   *  - 'width': scale = viewW / scrollWidth
+   *  - 'once': first like 'contain' then lock (no upscale later). Downscale allowed if content grows.
+   */
+  fitStrategy?: 'contain' | 'height' | 'width' | 'once';
+  /** Lock first computed scale (acts like 'once' if true). */
+  lockInitialScale?: boolean;
+  /** Ignore minor dimension changes below this delta (px) to avoid flicker. Default 8. */
+  dimensionChangeTolerance?: number;
+  /** Cap maximum scale (default 1 so we don't upscale beyond natural size). */
+  maxScaleCap?: number;
+  /**
    * Optional override to decide if an origin is allowed (testing / staging extension)
    * Default logic: https protocol AND (host endsWith .wtn4.com OR host === wtn4.com) AND host !== api.wtn4.com
    */
@@ -44,6 +58,10 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
   fallbackTimeoutMs = 2000,
   background = "transparent",
   border = true,
+  fitStrategy = 'contain',
+  lockInitialScale = false,
+  dimensionChangeTolerance = 8,
+  maxScaleCap = 1,
   allowOriginPredicate,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -57,6 +75,7 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
   const fallbackTimerRef = useRef<number | null>(null);
   const lastDimsRef = useRef({ w: 0, h: 0 });
   const pendingRecalcRef = useRef<number | null>(null);
+  const baselineScaleRef = useRef<number | null>(null); // locked initial scale
 
   // Debounce util using window.setTimeout so we can clear it
   const debounce = useCallback((fn: () => void, delay: number) => {
@@ -67,6 +86,13 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
     }, delay);
   }, []);
 
+  const computeFit = useCallback((viewW: number, viewH: number, contentW: number, contentH: number) => {
+    if (fitStrategy === 'height') return viewH / contentH;
+    if (fitStrategy === 'width') return viewW / contentW;
+    // 'contain' and 'once' behave initially the same
+    return Math.min(viewW / contentW, viewH / contentH);
+  }, [fitStrategy]);
+
   const recalcScale = useCallback(() => {
     if (!containerRef.current) return;
     if (!isPositiveFinite(storeW) || !isPositiveFinite(storeH)) return;
@@ -74,9 +100,26 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
     const viewW = rect.width;
     const viewH = rect.height;
     if (viewW <= 0 || viewH <= 0) return;
-    const s = Math.min(viewW / storeW, viewH / storeH);
-    setScale(s > 0 ? s : 1);
-  }, [storeW, storeH]);
+    let newScale = computeFit(viewW, viewH, storeW, storeH);
+    if (maxScaleCap > 0 && newScale > maxScaleCap) newScale = maxScaleCap;
+
+    if (baselineScaleRef.current == null) {
+      // first time establishing baseline
+      baselineScaleRef.current = newScale;
+    } else {
+      const lock = lockInitialScale || fitStrategy === 'once';
+      if (lock) {
+        // allow only downscale if content grew (newScale smaller). Never upscale above baseline.
+        if (newScale < baselineScaleRef.current) {
+          baselineScaleRef.current = newScale; // content got larger -> accept smaller scale to keep full fit
+        }
+        newScale = Math.min(newScale, baselineScaleRef.current);
+      }
+    }
+    if (newScale <= 0 || !isFinite(newScale)) return;
+    if (Math.abs(newScale - scale) < 0.0005) return; // negligible diff
+    setScale(newScale);
+  }, [storeW, storeH, computeFit, lockInitialScale, fitStrategy, maxScaleCap, scale]);
 
   // Default predicate for wtn4 domains
   const defaultAllow = useCallback((origin: string) => {
@@ -112,7 +155,12 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
       const data: DimensionsMsg = ev.data;
       if (!data || data.type !== 'storeDimensions') return;
       if (!isPositiveFinite(data.scrollWidth) || !isPositiveFinite(data.scrollHeight)) return;
-      if (lastDimsRef.current.w === data.scrollWidth && lastDimsRef.current.h === data.scrollHeight) return;
+      const dw = Math.abs(lastDimsRef.current.w - data.scrollWidth!);
+      const dh = Math.abs(lastDimsRef.current.h - data.scrollHeight!);
+      if (dw < dimensionChangeTolerance && dh < dimensionChangeTolerance) {
+        // ignore tiny noise changes
+        return;
+      }
       lastDimsRef.current = { w: data.scrollWidth!, h: data.scrollHeight! };
       setStoreW(data.scrollWidth!);
       setStoreH(data.scrollHeight!);
@@ -124,7 +172,7 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [isAllowed]);
+  }, [isAllowed, dimensionChangeTolerance]);
 
   // Recompute scale when dimensions update
   useEffect(() => {
@@ -215,8 +263,8 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-pointer-lock allow-downloads"
         />
       </div>
-      <div className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/40 text-white pointer-events-none select-none">
-        {fallbackUsed ? 'fallback-width-fit' : showDims ? `${Math.round(scale * 100)}%` : 'waiting-size'}
+      <div className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/50 text-white pointer-events-none select-none font-mono">
+        {fallbackUsed ? 'fallback-width-fit' : showDims ? `${Math.round(scale * 100)}%${(fitStrategy==='once'||lockInitialScale)?'*':''}` : 'waiting-size'}
       </div>
     </div>
   );
