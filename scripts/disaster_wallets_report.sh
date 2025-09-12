@@ -139,14 +139,55 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$
   echo "[WARN] Query failed – attempting minimal column subset (id,balance,updated_at)." >&2
   fallback_query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
   if docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$fallback_query" > "$OUTPUT.tmp" 2>/dev/null; then
-    # Insert placeholder currency column
     { IFS= read -r header; echo "${header%,updated_at},currency,updated_at"; awk -F',' 'NR>1{print $1","$2",N/A,"$3}' "$OUTPUT.tmp"; } > "$OUTPUT" || true
     rm -f "$OUTPUT.tmp"
+    ls -l "$OUTPUT"
+    echo "[DONE] Report ready (fallback query): $OUTPUT (source time $selected_time UTC)"
+    exit 0
   else
-    echo "[FAIL] Both primary and fallback queries failed." >&2
-    exit 1
+    echo "[WARN] Both SQL extraction paths failed – switching to raw dump parsing." >&2
+    # Raw dump parsing: derive column positions from COPY line and output mapped CSV
+    gunzip -c "$selected_file" | awk -v userIdPref="${USER_ID_COL}" -v balPref="${BALANCE_COL}" -v currPref="${CURRENCY_COL}" -v updPref="${UPDATED_AT_COL}" '
+      BEGIN{copy=0; haveHeader=0}
+      /^COPY public\.users / {
+        line=$0
+        sub(/^COPY public.users \(/,"",line)
+        sub(/\) FROM stdin;.*/,"",line)
+        gsub(/ /,"",line)
+        n=split(line, cols, ",")
+        for(i=1;i<=n;i++){pos[cols[i]]=i}
+        # Determine balance column
+        bal=balPref; if(!(bal in pos)){candidates[1]="balance";candidates[2]="wallet_balance";candidates[3]="current_balance";candidates[4]="amount";candidates[5]="total_balance"; for(ci=1;ci<=5;ci++){ if(candidates[ci] in pos){ bal=candidates[ci]; break } }}
+        # Determine currency column
+        curr=""; if(currPref!="" && currPref in pos){curr=currPref} else if("currency" in pos){curr="currency"} else if("currency_id" in pos){curr="currency_id"}
+        # Determine updated_at column
+        upd=updPref; if(!(upd in pos)){alts[1]="updated_at";alts[2]="updatedAt";alts[3]="modified_at";alts[4]="created_at"; for(ai=1;ai<=4;ai++){ if(alts[ai] in pos){ upd=alts[ai]; break } }}
+        # Determine id column
+        uid=userIdPref; if(!(uid in pos)){ if("id" in pos){uid="id"} }
+        # Store chosen names
+        chosen_id=uid; chosen_bal=bal; chosen_curr=curr; chosen_upd=upd;
+        print "user_id,balance,currency,updated_at"; haveHeader=1; copy=1; next
+      }
+      copy && /^\\\.$/ {exit}
+      copy {
+        nfs=split($0,f,"\t")
+        id = (chosen_id in pos)? f[pos[chosen_id]]:""
+        balance = (chosen_bal in pos)? f[pos[chosen_bal]]:"0"
+        currency = (chosen_curr!="" && chosen_curr in pos)? f[pos[chosen_curr]]:"N/A"
+        updated = (chosen_upd in pos)? f[pos[chosen_upd]]:""
+        print id "," balance "," currency "," updated
+      }
+    ' > "$OUTPUT" || true
+    if [ -s "$OUTPUT" ]; then
+      ls -l "$OUTPUT"
+      echo "[DONE] Report ready (raw dump parsing): $OUTPUT (source time $selected_time UTC)"
+      exit 0
+    else
+      echo "[FAIL] Raw dump parsing produced empty output." >&2
+      exit 1
+    fi
   fi
+else
+  ls -l "$OUTPUT"
+  echo "[DONE] Report ready: $OUTPUT (source time $selected_time UTC)"
 fi
-
-ls -l "$OUTPUT"
-echo "[DONE] Report ready: $OUTPUT (source time $selected_time UTC)"
