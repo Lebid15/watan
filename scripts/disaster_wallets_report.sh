@@ -7,7 +7,7 @@
 set -euo pipefail
 
 BACKUP_DIR=${BACKUP_DIR:-/mnt/HC_Volume_103376794/backups}
-TARGET_HHMM=${TARGET_HHMM:-1105}        # Desired time (UTC) in HHMM
+TARGET_HHMM=${TARGET_HHMM:-1105}        # Desired time (UTC) in HHMM (numeric compare forced base10)
 SERVICE=${SERVICE:-postgres}            # docker-compose service name
 TMP_DB=${TMP_DB:-watan_dr_wallets}
 OUTPUT=${OUTPUT:-wallet_balances.csv}
@@ -16,6 +16,7 @@ TABLE_DEPOSIT=${TABLE_DEPOSIT:-deposit}
 # Column names assumptions (adjust if schema differs)
 USER_ID_COL=${USER_ID_COL:-id}
 BALANCE_COL=${BALANCE_COL:-balance}
+# Default currency column often currency_id; fall back from currency -> currency_id -> literal 'N/A'
 CURRENCY_COL=${CURRENCY_COL:-currency}
 UPDATED_AT_COL=${UPDATED_AT_COL:-updated_at}
 
@@ -42,9 +43,10 @@ for f in $candidates; do
   base=$(basename "$f")
   hhmm=$(echo "$base" | sed -E 's/^wallets_[0-9]{4}-[0-9]{2}-[0-9]{2}_([0-9]{4})\.sql\.gz$/\1/')
   [ -z "$hhmm" ] && continue
-  if [ "$hhmm" -le "$TARGET_HHMM" ]; then
-    delta=$(( TARGET_HHMM - hhmm ))
-    if [ $delta -lt $selected_delta ]; then
+  # Force base 10 to avoid octal interpretation of leading zero times (e.g. 0805)
+  if (( 10#$hhmm <= 10#$TARGET_HHMM )); then
+    delta=$(( 10#$TARGET_HHMM - 10#$hhmm ))
+    if (( delta < selected_delta )); then
       selected_delta=$delta
       selected_file=$f
       selected_time=$hhmm
@@ -79,13 +81,58 @@ fi
 docker compose exec -T $SERVICE createdb -U "$POSTGRES_USER" "$TMP_DB"
 
 echo "[INFO] Restoring wallets backup into $TMP_DB ..."
-gunzip -c "$selected_file" | docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" >/dev/null
+if ! gunzip -c "$selected_file" | docker compose exec -T $SERVICE psql -v ON_ERROR_STOP=0 -U "$POSTGRES_USER" -d "$TMP_DB" >/dev/null 2>&1; then
+  echo "[WARN] Restore reported errors (likely missing dependent types); continuing to attempt users table extraction." >&2
+fi
 
 echo "[INFO] Generating balances CSV -> $OUTPUT"
-# Attempt a simple join or single table extraction depending on schema availability.
-query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, u.${CURRENCY_COL} as currency, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
+## Detect correct currency column (currency -> currency_id -> literal)
+currency_detect=$(docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='${TABLE_USERS}' AND column_name IN ('currency','currency_id') ORDER BY 1 LIMIT 1;" 2>/dev/null | tr -d '[:space:]') || true
+if [ -n "$currency_detect" ]; then
+  CURRENCY_COL="$currency_detect"
+else
+  CURRENCY_COL="" # will use literal
+fi
 
-docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$query" > "$OUTPUT"
+if [ -n "$CURRENCY_COL" ]; then
+  select_currency="u.${CURRENCY_COL} as currency"
+else
+  select_currency="'N/A'::text as currency"
+fi
+
+# Verify users table exists; if not attempt raw extraction from dump
+if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='${TABLE_USERS}';" | grep -q 1; then
+  echo "[WARN] users table not found after restore – falling back to direct dump parsing." >&2
+  tmp_tsv=$(mktemp)
+  gunzip -c "$selected_file" | awk '/^COPY ${TABLE_USERS} /,/^\\\./' > "$tmp_tsv" || true
+  if grep -q '^COPY' "$tmp_tsv"; then
+    # Remove first (COPY ...) line and last line containing single dot
+    sed '1d;$d' "$tmp_tsv" | awk -F'\t' '{print $1","$2","$3","$4}' | {
+      echo "user_id,balance,currency,updated_at"; cat -; } > "$OUTPUT"
+    rm -f "$tmp_tsv"
+    ls -l "$OUTPUT"
+    echo "[DONE] Report ready (dump parsing mode): $OUTPUT (source time $selected_time UTC)"
+    exit 0
+  else
+    echo "[FAIL] Could not parse users data from dump." >&2
+    exit 1
+  fi
+fi
+
+query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, ${select_currency}, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
+
+if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$query" > "$OUTPUT" 2>/dev/null; then
+  echo "[WARN] Query failed – attempting minimal column subset (id,balance,updated_at)." >&2
+  fallback_query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
+  if docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$fallback_query" > "$OUTPUT.tmp" 2>/dev/null; then
+    # Insert placeholder currency column
+    { IFS= read -r header; echo "${header%,updated_at},currency,updated_at"; awk -F',' 'NR>1{print $1","$2",N/A,"$3}' "$OUTPUT.tmp"; } > "$OUTPUT" || true
+    rm -f "$OUTPUT.tmp"
+  else
+    echo "[FAIL] Both primary and fallback queries failed." >&2
+    exit 1
+  fi
+fi
 
 ls -l "$OUTPUT"
 echo "[DONE] Report ready: $OUTPUT (source time $selected_time UTC)"
