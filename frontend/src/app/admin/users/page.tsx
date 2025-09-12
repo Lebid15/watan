@@ -204,7 +204,8 @@ export default function AdminUsersPage() {
                   {/** <th className="border border-border p-2">البريد الإلكتروني</th> */}
                   <th className="border border-border p-2">الرصيد</th>
                   <th className="border border-border p-2">الحالة</th>
-                  <th className="border border-border p-2">إجراءات</th>
+                  {/* تقليل الحشو في ترويسة الإجراءات */}
+                  <th className="border border-border px-2 py-1">إجراءات</th>
                 </tr>
               </thead>
               <tbody>
@@ -237,31 +238,31 @@ export default function AdminUsersPage() {
                           title={isActive ? 'نشط' : 'غير نشط'}
                         />
                       </td>
-                      <td className="border border-border px-2 py-1">
-                        <div className="flex justify-center gap-2">
+                      <td className="border border-border px-1.5 py-1">
+                        <div className="flex justify-center gap-1.5">
                           <button
                             onClick={() => openTopup(u)}
-                            className="bg-success text-text-inverse px-3 py-1 rounded hover:brightness-110"
+                            className="bg-success text-text-inverse px-2.5 py-0.5 rounded hover:brightness-110 text-sm"
                             title="إضافة إلى الرصيد"
                           >
                             +
                           </button>
                           <button
                             onClick={() => handleReset2FA(u.id)}
-                            className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                            className="bg-red-600 text-white px-2.5 py-0.5 rounded hover:bg-red-700 text-[11px]"
                             title="إعادة تعيين المصادقة الثنائية"
                           >
                             Reset 2FA
                           </button>
                           <Link
                             href={`/admin/users/${u.id}`}
-                            className="bg-primary text-primary-contrast px-3 py-1 rounded hover:bg-primary-hover"
+                            className="bg-primary text-primary-contrast px-2.5 py-0.5 rounded hover:bg-primary-hover text-sm"
                           >
                             تعديل
                           </Link>
                           <button
                             onClick={() => handleDelete(u.id)}
-                            className="bg-danger text-text-inverse px-3 py-1 rounded hover:brightness-110"
+                            className="bg-danger text-text-inverse px-2.5 py-0.5 rounded hover:brightness-110 text-sm"
                           >
                             حذف
                           </button>

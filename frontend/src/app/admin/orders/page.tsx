@@ -1064,7 +1064,8 @@ export default function AdminOrdersPage() {
               <th className="p-2 text-center border-b border border-border">التكلفة</th>
               <th className="p-2 text-center border-b border border-border">السعر</th>
               <th className="p-2 text-center border-b border border-border">الربح</th>
-              <th className="p-2 text-center border-b border border-border">الحالة</th>
+              {/* تقليل الحشو لعمود الحالة */}
+              <th className="px-1.5 py-1 text-center border-b border border-border">الحالة</th>
               <th className="p-2 text-center border-b border border-border">API</th>
             </tr>
           </thead>
@@ -1203,7 +1204,8 @@ export default function AdminOrdersPage() {
                     )}</div>
                   </td>
 
-                  <td className="bg-bg-surface p-2 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
+                  {/* تقليل الحشو في خلية الحالة */}
+                  <td className="bg-bg-surface px-1.5 py-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     <div className="flex items-center justify-center">
                       <StatusDot status={o.status} onClick={() => openDetails(o)} />
                     </div>

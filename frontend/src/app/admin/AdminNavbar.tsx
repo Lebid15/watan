@@ -192,12 +192,12 @@ export default function AdminNavbar() {
           </div>
 
           {/* كبسولة أيقونات مختصرة */}
-          <div className="inline-flex items-center gap-2">
-            <div className="inline-flex items-center gap-5 bg-[rgb(var(--color-bg-surface))] text-[rgb(var(--color-text-primary))] border border-[rgb(var(--color-border))] rounded-md px-2 md:px-3 py-1 w-max">
+          <div className="inline-flex items-center gap-1.5">
+            <div className="inline-flex items-center gap-3 bg-[rgb(var(--color-bg-surface))] text-[rgb(var(--color-text-primary))] border border-[rgb(var(--color-border))] rounded-md px-1.5 md:px-2.5 py-1 w-max">
               {/* الطلبات */}
               <Link
                 href="/admin/orders"
-                className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/10"
+                className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/15"
                 title={pendingCount > 0 ? `الطلبات (${pendingCount} جديد)` : 'الطلبات'}
               >
                 <FiList
@@ -209,7 +209,7 @@ export default function AdminNavbar() {
               {/* الدفعات (إيداعات) */}
               <Link
                 href="/admin/payments/deposits"
-                className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/10"
+                className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/15"
                 title={
                   pendingDepositsCount > 0 ? `طلبات الإيداع (${pendingDepositsCount} جديد)` : 'الدفعات'
                 }
@@ -225,7 +225,7 @@ export default function AdminNavbar() {
               {/* المستخدمون */}
               <Link
                 href="/admin/users"
-                className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/10"
+                className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/15"
                 title="المستخدمون"
               >
                 <FiUsers size={22} />
@@ -234,7 +234,7 @@ export default function AdminNavbar() {
               {/* إعدادات API للمنتجات */}
               <Link
                 href="/admin/products/api-settings"
-                className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/10"
+                className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/15"
                 title="الإعدادات"
               >
                 <FiShare2 size={22} />
