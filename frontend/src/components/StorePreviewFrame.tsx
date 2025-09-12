@@ -16,13 +16,17 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
  *  - Ignore unexpected message shapes.
  */
 export interface StorePreviewFrameProps {
-  src: string;                            // URL of the store subdomain
-  allowedOrigins: string[];               // e.g. ["https://shop1.example.com", "https://shop2.example.com"]
+  src: string;                            // URL of the store (subdomain or root)
   className?: string;                     // Optional container classes
   debounceMs?: number;                    // Debounce resize/orientation recalculation (default 100)
   fallbackTimeoutMs?: number;             // Time to wait before fallback (default 2000)
   background?: string;                    // Container background (default transparent)
   border?: boolean;                       // Show a subtle border
+  /**
+   * Optional override to decide if an origin is allowed (testing / staging extension)
+   * Default logic: https protocol AND (host endsWith .wtn4.com OR host === wtn4.com) AND host !== api.wtn4.com
+   */
+  allowOriginPredicate?: (origin: string, url: URL) => boolean;
 }
 
 interface DimensionsMsg {
@@ -35,12 +39,12 @@ const isPositiveFinite = (n: unknown): n is number => typeof n === 'number' && i
 
 export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
   src,
-  allowedOrigins,
   className = "",
   debounceMs = 100,
   fallbackTimeoutMs = 2000,
   background = "transparent",
   border = true,
+  allowOriginPredicate,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null); // scaling wrapper
@@ -74,20 +78,44 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
     setScale(s > 0 ? s : 1);
   }, [storeW, storeH]);
 
+  // Default predicate for wtn4 domains
+  const defaultAllow = useCallback((origin: string) => {
+    try {
+      const url = new URL(origin);
+      if (url.protocol !== 'https:') return false;
+      const host = url.hostname.toLowerCase();
+      if (host === 'api.wtn4.com') return false; // explicit exclusion
+      if (host === 'wtn4.com') return true; // root allowed
+      if (host.endsWith('.wtn4.com')) return true; // any subdomain
+      // Staging pattern (e.g., wtn4-stg.com or stg.wtn4.com) can be extended here if needed
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const isAllowed = useCallback((origin: string) => {
+    try {
+      const url = new URL(origin);
+      if (allowOriginPredicate) return allowOriginPredicate(origin, url);
+    } catch {
+      return false;
+    }
+    return defaultAllow(origin);
+  }, [allowOriginPredicate, defaultAllow]);
+
   // Handle messages from store frame
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
       const origin = ev.origin;
-      if (!allowedOrigins.includes(origin)) return; // security filter
+      if (!isAllowed(origin)) return; // dynamic security filter
       const data: DimensionsMsg = ev.data;
       if (!data || data.type !== 'storeDimensions') return;
       if (!isPositiveFinite(data.scrollWidth) || !isPositiveFinite(data.scrollHeight)) return;
-      // Update only if dimensions changed (avoid needless recalcs)
       if (lastDimsRef.current.w === data.scrollWidth && lastDimsRef.current.h === data.scrollHeight) return;
       lastDimsRef.current = { w: data.scrollWidth!, h: data.scrollHeight! };
       setStoreW(data.scrollWidth!);
       setStoreH(data.scrollHeight!);
-      // Cancel fallback if we got the real message
       if (fallbackTimerRef.current) {
         window.clearTimeout(fallbackTimerRef.current);
         fallbackTimerRef.current = null;
@@ -96,7 +124,7 @@ export const StorePreviewFrame: React.FC<StorePreviewFrameProps> = ({
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [allowedOrigins]);
+  }, [isAllowed]);
 
   // Recompute scale when dimensions update
   useEffect(() => {

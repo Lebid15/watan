@@ -44,28 +44,50 @@
 > لاحقاً استبدل `'*'` بقائمة origins للأب إن أردت تشديد الأمان (مثال: `parent.postMessage(..., 'https://admin.example.com')`).
 
 ## 2. في لوحة الإدارة (الأب)
-استخدم المكوّن `StorePreviewFrame` الذي أُضيف في `frontend/src/components/StorePreviewFrame.tsx`.
+استخدم المكوّن `StorePreviewFrame` في `frontend/src/components/StorePreviewFrame.tsx`.
 
-مثال استعمال:
+لم نعد نمرّر `allowedOrigins`؛ بدلاً من ذلك هناك تحقق **ديناميكي داخلي**:
+
+الشروط المقبولة للرسالة:
+- البروتوكول: `https:`
+- اسم المضيف (host):
+  - يساوي `wtn4.com` (الجذر) أو
+  - ينتهي بـ `.wtn4.com` (أي متجر فرعي) 
+- مرفوض صراحةً: `api.wtn4.com`
+
+يمكن تمرير دالة اختيارية `allowOriginPredicate` لتوسيع القاعدة (مثلاً بيئة staging أو نطاقات إضافية):
+
+مثال استعمال أساسي:
 ```tsx
 import StorePreviewFrame from '@/components/StorePreviewFrame';
 
 export default function TenantStorePreview() {
-  const allowed = [
-    'https://store1.example.com',
-    'https://store2.example.com',
-  ];
   return (
     <div className="h-screen p-2">
       <StorePreviewFrame
-        src="https://store1.example.com" 
-        allowedOrigins={allowed}
+        src="https://example1.wtn4.com" 
         className="w-full h-full"
         fallbackTimeoutMs={2000}
       />
     </div>
   );
 }
+```
+
+مثال يضيف نطاق Staging مخصص (إن افترضنا نطاقًا مثل `wtn4-stg.com`):
+```tsx
+<StorePreviewFrame
+  src="https://shop-a.wtn4-stg.com"
+  allowOriginPredicate={(origin, url) => {
+    const host = url.hostname.toLowerCase();
+    if (host === 'api.wtn4.com') return false;
+    if (host === 'wtn4.com' || host.endsWith('.wtn4.com')) return true;
+    // السماح بنطاق staging التجريبي
+    if (host === 'wtn4-stg.com' || host.endsWith('.wtn4-stg.com')) return true;
+    return false;
+  }}
+  className="w-full h-full"
+/>
 ```
 
 ## 3. آلية العمل
@@ -79,9 +101,9 @@ export default function TenantStorePreview() {
    - Orientation change.
 
 ## 4. الأمان
-- المكوّن يتحقق من `origin` للرسالة (`allowedOrigins`).
+- المكوّن يتحقق ديناميكياً من `origin` (دومينات wtn4 المسموح بها مع استثناء api.wtn4.com).
 - تجاهل أي رسالة بلا `type=storeDimensions` أو قيم غير رقمية موجبة.
-- يفضّل في المتجر استبدال `'*'` عند الاستقرار.
+- في سكربت المتجر غيّر لاحقاً الوجهة الثانية لـ `postMessage` من `'*'` إلى نطاق لوحة الإدارة إن أردت تشديداً.
 
 ## 5. معايير القبول (Validation Checklist)
 - لا يوجد سكرول أفقي داخل صفحة المعاينة (تحقق عبر DevTools).
@@ -104,7 +126,7 @@ export default function TenantStorePreview() {
 ## 8. استكشاف أخطاء
 | المشكلة | السبب المحتمل | الحل |
 |---------|----------------|------|
-| بقاء حالة waiting-size | رسائل محجوبة أو origin غير مطابق | أضف origin الصحيح للائحة allowedOrigins أو افحص console | 
+| بقاء حالة waiting-size | رسائل محجوبة أو origin غير مطابق | تحقق أن المتجر على https وأن الدومين يدخل ضمن wtn4 المسموح واستبعد api | 
 | flicker في الارتفاع | تغييرات DOM سريعة | زد Debounce إلى 150-180ms | 
 | عدم عمل pinch | إطار حاوي يغطي الإطار | تأكد أن `pointer-events` غير معطلة على iframe | 
 | أبعاد خاطئة (صغيرة) | عنصر root لديه overflow مخفي | أزل overflow-x المخفي من html/body في المتجر | 
