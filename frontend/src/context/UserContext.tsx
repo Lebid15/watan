@@ -72,14 +72,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const DISABLE_FALLBACK = process.env.NEXT_PUBLIC_DISABLE_USER_FALLBACK === '1';
+
   const loadOnce = useCallback(async () => {
     if (typeof window === 'undefined') return;
     const path = window.location.pathname;
     if (path === '/login') { setLoading(false); setUser(null); return; }
     const token = localStorage.getItem('token');
     if (!token) { setLoading(false); setUser(null); return; }
-    const fallback = decodeTokenFallback();
-    if (fallback) setUser(prev => prev || fallback); // paint fallback only if no existing user
+    const fallback = DISABLE_FALLBACK ? null : decodeTokenFallback();
+    if (fallback) {
+      setUser(prev => prev || fallback); // paint fallback only if no existing user
+      try { console.info('[Diag][UserProvider] applied fallback user'); } catch {}
+    } else if (DISABLE_FALLBACK) {
+      try { console.info('[Diag][UserProvider] fallback disabled via env flag'); } catch {}
+    }
     try {
       const res = await Api.me();
       applyProfileResponse(res.data);
