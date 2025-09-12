@@ -31,6 +31,7 @@
 #   HEALTH_PATH (default /api/health)
 #   BACKEND_SERVICE (default backend)
 #   BACKEND_CONTAINER (default watan-backend)
+#   CLEAN_CONFLICTING (1 => remove any stale containers matching backend pattern before up)
 #
 set -euo pipefail
 SSH_TARGET=${SSH_TARGET:-syr1-vps}
@@ -45,6 +46,7 @@ MIGRATION_CMD=${MIGRATION_CMD:-node dist/data-source.js migration:run}
 HEALTH_PATH=${HEALTH_PATH:-/api/health}
 BACKEND_SERVICE=${BACKEND_SERVICE:-backend}
 BACKEND_CONTAINER=${BACKEND_CONTAINER:-watan-backend}
+CLEAN_CONFLICTING=${CLEAN_CONFLICTING:-0}
 COLOR=${COLOR:-true}
 
 ce(){ if [ "$COLOR" = true ]; then printf "\033[%sm%s\033[0m\n" "$1" "$2"; else echo "$2"; fi; }
@@ -118,6 +120,14 @@ else
 fi
 
 log "4) docker compose up -d $SERVICES"
+if [ "$CLEAN_CONFLICTING" = 1 ]; then
+  log "[cleanup] removing conflicting containers for $BACKEND_CONTAINER"
+  # Remove exact named container
+  docker rm -f "$BACKEND_CONTAINER" 2>/dev/null || true
+  # Remove any prefixed variants (e.g., hash_watan-backend)
+  docker ps -a --format '{{.ID}} {{.Names}}' | awk -v pat="_${BACKEND_CONTAINER}$" '($2 ~ pat){print $1}' | xargs -r docker rm -f || true
+fi
+
 if ! docker compose up -d $SERVICES; then
   if command -v docker-compose >/dev/null 2>&1; then docker-compose up -d $SERVICES; else fail "up failed"; fi
 fi
