@@ -29,7 +29,7 @@ produce_summary() {
     if(rows==0){exit 0}
     printf "Wallet Balances Summary\n";
     printf "Generated: %s UTC\n", strftime("%Y-%m-%d %H:%M:%S", systime());
-    printf "Source Backup Time: %s UTC\n", ENVIRON["selected_time"];
+    sbt=ENVIRON["selected_time"]; if(sbt=="") sbt="UNKNOWN"; printf "Source Backup Time: %s UTC\n", sbt;
     printf "Users (rows): %d\n", rows;
     printf "Active (non-zero) users: %d\n", activeUsers;
     printf "Total Balance: %.2f\n", sum;
@@ -110,6 +110,11 @@ if [ -z "$selected_file" ]; then
   exit 1
 fi
 
+# Fallback derive time if still empty
+if [ -z "$selected_time" ]; then
+  selected_time=$(basename "$selected_file" | sed -E 's/^wallets_[0-9]{4}-[0-9]{2}-[0-9]{2}_([0-9]{4})\.sql\.gz$/\1/') || true
+fi
+
 echo "[INFO] Selected wallets backup: $selected_file (time $selected_time UTC)"
 
 # Drop & recreate temp DB
@@ -142,7 +147,7 @@ fi
 if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='${TABLE_USERS}';" | grep -q 1; then
   echo "[WARN] users table not found after restore – falling back to direct dump parsing." >&2
   tmp_tsv=$(mktemp)
-  gunzip -c "$selected_file" | awk "/^COPY ${TABLE_USERS} /,/^\\\\\\.$/" > "$tmp_tsv" || true
+  gunzip -c "$selected_file" | awk "/^COPY ${TABLE_USERS} /,/^\\\\.$/" > "$tmp_tsv" || true
   if grep -q '^COPY' "$tmp_tsv"; then
     # Remove first (COPY ...) line and last line containing single dot
     sed '1d;$d' "$tmp_tsv" | awk -F'\t' '{print $1","$2","$3","$4}' | {
