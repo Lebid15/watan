@@ -16,31 +16,41 @@ TABLE_DEPOSIT=${TABLE_DEPOSIT:-deposit}
 # Column names assumptions (adjust if schema differs)
 USER_ID_COL=${USER_ID_COL:-id}
 BALANCE_COL=${BALANCE_COL:-balance}
+# Try to include a human readable identifier (name/full_name/username/email)
+USER_NAME_COL=${USER_NAME_COL:-}
 # Default currency column often currency_id; fall back from currency -> currency_id -> literal 'N/A'
 CURRENCY_COL=${CURRENCY_COL:-currency}
 UPDATED_AT_COL=${UPDATED_AT_COL:-updated_at}
 
 # Produce a human-friendly summary from the generated CSV (if present)
 produce_summary() {
-  local csv="$1"; shift
-  local bktime="$1"; shift || true
+  local csv="${1}"; shift
+  local bktime="${1}"; shift || true
   local summary_file="${csv%.csv}.summary.txt"
   [ ! -s "$csv" ] && return 0
-  awk -F',' -v bkt="$bktime" 'NR==1{next} {rows++; bal=$2; gsub(/\r/,"",bal); if(bal==""||bal=="\\N") bal=0; sum+=bal; if(min==""||bal<min){min=bal; minUser=$1} if(max==""||bal>max){max=bal; maxUser=$1} if($3=="N/A"||$3=="\\N") unkCur++ ; if($3 ~ /^[0-9a-fA-F-]{36}$/) uuidCur++ ; if($2!="0" && $2!="0.00" && $2!="0.0") activeUsers++ } END { 
-    if(rows==0){exit 0}
-    if(bkt=="") bkt="UNKNOWN";
-    printf "Wallet Balances Summary\n";
-    printf "Generated: %s UTC\n", strftime("%Y-%m-%d %H:%M:%S", systime());
-    printf "Source Backup Time: %s UTC\n", bkt;
-    printf "Users (rows): %d\n", rows;
-    printf "Active (non-zero) users: %d\n", activeUsers;
-    printf "Total Balance: %.2f\n", sum;
-    printf "Average Balance: %.2f\n", (rows? sum/rows:0);
-    printf "Max Balance: %.2f (user_id=%s)\n", max, maxUser;
-    printf "Min Balance: %.2f (user_id=%s)\n", min, minUser;
-    printf "Unknown / Null currency rows: %d\n", unkCur;
-    if(uuidCur>0) printf "Currency values that look like UUIDs (likely currency_id pending lookup): %d\n", uuidCur;
-  }' "$csv" > "$summary_file" 2>/dev/null || true
+  awk -F',' -v bkt="$bktime" 'NR==1{ 
+      for(i=1;i<=NF;i++){h[$i]=i}
+      ibal = ("balance" in h)? h["balance"]:2
+      icur = ("currency" in h)? h["currency"]:( (NF>=4)?4:3 )
+      iid = ("user_id" in h)? h["user_id"]:1
+      next
+    }
+    {rows++; bal=$ibal; gsub(/\r/,"",bal); if(bal==""||bal=="\\N") bal=0; sum+=bal; if(min==""||bal<min){min=bal; minUser=$iid} if(max==""||bal>max){max=bal; maxUser=$iid} curVal=$icur; if(curVal=="N/A"||curVal=="\\N") unkCur++ ; if(curVal ~ /^[0-9a-fA-F-]{36}$/) uuidCur++ ; if(bal!="0" && bal!="0.00" && bal!="0.0") activeUsers++ }
+    END {
+      if(rows==0){exit 0}
+      if(bkt=="") bkt="UNKNOWN";
+      printf "Wallet Balances Summary\n";
+      printf "Generated: %s UTC\n", strftime("%Y-%m-%d %H:%M:%S", systime());
+      printf "Source Backup Time: %s UTC\n", bkt;
+      printf "Users (rows): %d\n", rows;
+      printf "Active (non-zero) users: %d\n", activeUsers;
+      printf "Total Balance: %.2f\n", sum;
+      printf "Average Balance: %.2f\n", (rows? sum/rows:0);
+      printf "Max Balance: %.2f (user_id=%s)\n", max, maxUser;
+      printf "Min Balance: %.2f (user_id=%s)\n", min, minUser;
+      printf "Unknown / Null currency rows: %d\n", unkCur;
+      if(uuidCur>0) printf "Currency values that look like UUIDs (likely currency_id pending lookup): %d\n", uuidCur;
+    }' "$csv" > "$summary_file" 2>/dev/null || true
   if [ -s "$summary_file" ]; then
     echo "[INFO] Summary written: $summary_file" >&2
   fi
@@ -131,7 +141,7 @@ if ! gunzip -c "$selected_file" | docker compose exec -T $SERVICE psql -v ON_ERR
 fi
 
 echo "[INFO] Generating balances CSV -> $OUTPUT"
-## Detect correct currency column (currency -> currency_id -> literal)
+## Detect correct currency column (currency -> currency_id -> literal) and user name column
 currency_detect=$(docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='${TABLE_USERS}' AND column_name IN ('currency','currency_id') ORDER BY 1 LIMIT 1;" 2>/dev/null | tr -d '[:space:]') || true
 if [ -n "$currency_detect" ]; then
   CURRENCY_COL="$currency_detect"
@@ -139,10 +149,23 @@ else
   CURRENCY_COL="" # will use literal
 fi
 
+name_detect=$(docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT column_name FROM information_schema.columns WHERE table_name='${TABLE_USERS}' AND column_name IN ('name','full_name','username','email') ORDER BY CASE column_name WHEN 'name' THEN 1 WHEN 'full_name' THEN 2 WHEN 'username' THEN 3 WHEN 'email' THEN 4 END LIMIT 1;" 2>/dev/null | tr -d '[:space:]') || true
+if [ -n "$name_detect" ]; then
+  USER_NAME_COL="$name_detect"
+else
+  USER_NAME_COL=""
+fi
+
 if [ -n "$CURRENCY_COL" ]; then
   select_currency="u.${CURRENCY_COL} as currency"
 else
   select_currency="'N/A'::text as currency"
+fi
+
+if [ -n "$USER_NAME_COL" ]; then
+  select_user_name="u.${USER_NAME_COL} as user_name"
+else
+  select_user_name="'UNKNOWN'::text as user_name"
 fi
 
 # Verify users table exists; if not attempt raw extraction from dump
@@ -165,13 +188,15 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc 
   fi
 fi
 
-query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, ${select_currency}, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
+query="COPY (SELECT u.${USER_ID_COL} as user_id, ${select_user_name}, u.${BALANCE_COL} as balance, ${select_currency}, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
 
 if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$query" > "$OUTPUT" 2>/dev/null; then
   echo "[WARN] Query failed – attempting minimal column subset (id,balance,updated_at)." >&2
-  fallback_query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER"
+  fallback_query="COPY (SELECT u.${USER_ID_COL} as user_id, u.${BALANCE_COL} as balance, u.${UPDATED_AT_COL} as updated_at FROM ${TABLE_USERS} u ORDER BY u.${USER_ID_COL}) TO STDOUT WITH CSV HEADER" # name & currency missing
   if docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$fallback_query" > "$OUTPUT.tmp" 2>/dev/null; then
-    { IFS= read -r header; echo "${header%,updated_at},currency,updated_at"; awk -F',' 'NR>1{print $1","$2",N/A,"$3}' "$OUTPUT.tmp"; } > "$OUTPUT" || true
+    { IFS= read -r header; # header: user_id,balance,updated_at
+      echo "user_id,user_name,balance,currency,updated_at";
+      awk -F',' -v uname="UNKNOWN" 'NR>1{print $1","uname","$2",N/A,"$3}' "$OUTPUT.tmp"; } > "$OUTPUT" || true
     rm -f "$OUTPUT.tmp"
     ls -l "$OUTPUT"
     echo "[DONE] Report ready (fallback query): $OUTPUT (source time $selected_time UTC)"
@@ -180,7 +205,7 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$
   else
     echo "[WARN] Both SQL extraction paths failed – switching to raw dump parsing." >&2
     # Raw dump parsing: derive column positions from COPY line and output mapped CSV
-    gunzip -c "$selected_file" | awk -v userIdPref="${USER_ID_COL}" -v balPref="${BALANCE_COL}" -v currPref="${CURRENCY_COL}" -v updPref="${UPDATED_AT_COL}" '
+    gunzip -c "$selected_file" | awk -v userIdPref="${USER_ID_COL}" -v balPref="${BALANCE_COL}" -v currPref="${CURRENCY_COL}" -v updPref="${UPDATED_AT_COL}" -v nameCandidates="name,full_name,username,email" '
       BEGIN{copy=0; haveHeader=0}
       /^COPY public\.users / {
         line=$0
@@ -197,18 +222,22 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$
         upd=updPref; if(!(upd in pos)){alts[1]="updated_at";alts[2]="updatedAt";alts[3]="modified_at";alts[4]="created_at"; for(ai=1;ai<=4;ai++){ if(alts[ai] in pos){ upd=alts[ai]; break } }}
         # Determine id column
         uid=userIdPref; if(!(uid in pos)){ if("id" in pos){uid="id"} }
+        # Determine name column
+        split(nameCandidates,nc,",")
+        uname=""; for(ni=1;ni<=length(nc);ni++){ if(nc[ni] in pos){ uname=nc[ni]; break } }
         # Store chosen names
-        chosen_id=uid; chosen_bal=bal; chosen_curr=curr; chosen_upd=upd;
-        print "user_id,balance,currency,updated_at"; haveHeader=1; copy=1; next
+        chosen_id=uid; chosen_name=uname; chosen_bal=bal; chosen_curr=curr; chosen_upd=upd;
+        print "user_id,user_name,balance,currency,updated_at"; haveHeader=1; copy=1; next
       }
       copy && /^\\\.$/ {exit}
       copy {
         nfs=split($0,f,"\t")
         id = (chosen_id in pos)? f[pos[chosen_id]]:""
+        username = (chosen_name!="" && chosen_name in pos)? f[pos[chosen_name]]:"UNKNOWN"
         balance = (chosen_bal in pos)? f[pos[chosen_bal]]:"0"
         currency = (chosen_curr!="" && chosen_curr in pos)? f[pos[chosen_curr]]:"N/A"
         updated = (chosen_upd in pos)? f[pos[chosen_upd]]:""
-        print id "," balance "," currency "," updated
+        print id "," username "," balance "," currency "," updated
       }
     ' > "$OUTPUT" || true
     if [ -s "$OUTPUT" ]; then
