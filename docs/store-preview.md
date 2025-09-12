@@ -114,6 +114,8 @@ export default function TenantStorePreview() {
 | `lockInitialScale` | boolean | إذا true تتصرف مثل `once` حتى لو اخترت `contain`. |
 | `dimensionChangeTolerance` | رقم (px) | تجاهل التغيرات الصغيرة في الأبعاد (< هذا الرقم) لمنع flicker. افتراضي 8. |
 | `maxScaleCap` | رقم | حد أعلى للـ scale (افتراضياً 1 لمنع التكبير فوق الحجم الطبيعي). |
+| `persistBaseline` | boolean | حفظ أول (أو أصغر) scale محقَّق في sessionStorage بحسب نطاق المتجر لضمان ثبات التصغير بعد تنقلات متعددة أو إعادة تحميل لوحة الإدارة. |
+| `baselineStorageKey` | string | مفتاح مخصص بديل لتخزين baseline (إلا سيُشتق من اسم المضيف). |
 
 مثال يثبت أول Scale ويمنع إعادة التكبير:
 ```tsx
@@ -121,6 +123,7 @@ export default function TenantStorePreview() {
   src="https://example1.wtn4.com"
   fitStrategy="once"
   lockInitialScale
+  persistBaseline
   className="w-full h-full"
 />
 ```
