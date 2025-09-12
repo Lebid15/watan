@@ -22,14 +22,16 @@ UPDATED_AT_COL=${UPDATED_AT_COL:-updated_at}
 
 # Produce a human-friendly summary from the generated CSV (if present)
 produce_summary() {
-  local csv="$1"
+  local csv="$1"; shift
+  local bktime="$1"; shift || true
   local summary_file="${csv%.csv}.summary.txt"
   [ ! -s "$csv" ] && return 0
-  awk -F',' 'NR==1{next} {rows++; bal=$2; gsub(/\r/,"",bal); if(bal==""||bal=="\\N") bal=0; sum+=bal; if(min==""||bal<min){min=bal; minUser=$1} if(max==""||bal>max){max=bal; maxUser=$1} if($3=="N/A"||$3=="\\N") unkCur++ ; if($3 ~ /^[0-9a-fA-F-]{36}$/) uuidCur++ ; if($2!="0" && $2!="0.00" && $2!="0.0") activeUsers++ } END { 
+  awk -F',' -v bkt="$bktime" 'NR==1{next} {rows++; bal=$2; gsub(/\r/,"",bal); if(bal==""||bal=="\\N") bal=0; sum+=bal; if(min==""||bal<min){min=bal; minUser=$1} if(max==""||bal>max){max=bal; maxUser=$1} if($3=="N/A"||$3=="\\N") unkCur++ ; if($3 ~ /^[0-9a-fA-F-]{36}$/) uuidCur++ ; if($2!="0" && $2!="0.00" && $2!="0.0") activeUsers++ } END { 
     if(rows==0){exit 0}
+    if(bkt=="") bkt="UNKNOWN";
     printf "Wallet Balances Summary\n";
     printf "Generated: %s UTC\n", strftime("%Y-%m-%d %H:%M:%S", systime());
-    sbt=ENVIRON["selected_time"]; if(sbt=="") sbt="UNKNOWN"; printf "Source Backup Time: %s UTC\n", sbt;
+    printf "Source Backup Time: %s UTC\n", bkt;
     printf "Users (rows): %d\n", rows;
     printf "Active (non-zero) users: %d\n", activeUsers;
     printf "Total Balance: %.2f\n", sum;
@@ -38,7 +40,7 @@ produce_summary() {
     printf "Min Balance: %.2f (user_id=%s)\n", min, minUser;
     printf "Unknown / Null currency rows: %d\n", unkCur;
     if(uuidCur>0) printf "Currency values that look like UUIDs (likely currency_id pending lookup): %d\n", uuidCur;
-  }' selected_time="$selected_time" "$csv" > "$summary_file" 2>/dev/null || true
+  }' "$csv" > "$summary_file" 2>/dev/null || true
   if [ -s "$summary_file" ]; then
     echo "[INFO] Summary written: $summary_file" >&2
   fi
@@ -155,7 +157,7 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc 
     rm -f "$tmp_tsv"
     ls -l "$OUTPUT"
     echo "[DONE] Report ready (dump parsing mode): $OUTPUT (source time $selected_time UTC)"
-    produce_summary "$OUTPUT"
+  produce_summary "$OUTPUT" "$selected_time"
     exit 0
   else
     echo "[FAIL] Could not parse users data from dump." >&2
@@ -173,7 +175,7 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$
     rm -f "$OUTPUT.tmp"
     ls -l "$OUTPUT"
     echo "[DONE] Report ready (fallback query): $OUTPUT (source time $selected_time UTC)"
-    produce_summary "$OUTPUT"
+  produce_summary "$OUTPUT" "$selected_time"
     exit 0
   else
     echo "[WARN] Both SQL extraction paths failed – switching to raw dump parsing." >&2
@@ -212,7 +214,7 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$
     if [ -s "$OUTPUT" ]; then
       ls -l "$OUTPUT"
       echo "[DONE] Report ready (raw dump parsing): $OUTPUT (source time $selected_time UTC)"
-      produce_summary "$OUTPUT"
+  produce_summary "$OUTPUT" "$selected_time"
       exit 0
     else
       echo "[FAIL] Raw dump parsing produced empty output." >&2
@@ -222,5 +224,5 @@ if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -c "$
 else
   ls -l "$OUTPUT"
   echo "[DONE] Report ready: $OUTPUT (source time $selected_time UTC)"
-  produce_summary "$OUTPUT"
+  produce_summary "$OUTPUT" "$selected_time"
 fi
