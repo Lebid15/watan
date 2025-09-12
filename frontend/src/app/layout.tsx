@@ -9,29 +9,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ar" dir="rtl" data-theme="dark1" suppressHydrationWarning>
       <head>
         <title>Watan Store</title>
-        {/**
-         * Viewport Strategy (Responsive Refactor):
-         * - Previous behavior forced backoffice (/admin & /dev) to a desktop canvas: width=1280.
-         *   That caused mobile devices to render a large, scaled‑down snapshot requiring pinch zoom to read.
-         * - New default: Always use a responsive viewport: width=device-width, initial-scale=1, viewport-fit=cover.
-         * - Optional temporary legacy fallback: set NEXT_PUBLIC_LEGACY_ADMIN_FIXED_WIDTH=1 (build/runtime env)
-         *   to keep the old 1280px forced width ONLY for /admin & /dev while migrating individual pages.
-         * - We still inject via script so we can branch on pathname without waiting for a client hydration pass.
-         */}
+        {/* Viewport: enforce desktop width for backoffice (/admin & /dev), otherwise standard responsive */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){
-              var legacy = ${JSON.stringify(process.env.NEXT_PUBLIC_LEGACY_ADMIN_FIXED_WIDTH === '1')};
-              var path = window.location.pathname;
-              var isBackoffice = path.startsWith('/admin') || path.startsWith('/dev');
-              var viewport = document.createElement('meta');
-              viewport.name = 'viewport';
-              if (isBackoffice && legacy) {
-                viewport.content = 'width=1280, initial-scale=1';
-              } else {
-                viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
-              }
-              document.head.appendChild(viewport);
+              try {
+                var path = window.location.pathname;
+                var isBackoffice = path.startsWith('/admin') || path.startsWith('/dev');
+                var viewport = document.createElement('meta');
+                viewport.name = 'viewport';
+                viewport.content = isBackoffice ? 'width=1280, initial-scale=1' : 'width=device-width, initial-scale=1, viewport-fit=cover';
+                document.head.appendChild(viewport);
+              } catch(e) {}
             })();`,
           }}
         />

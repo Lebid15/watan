@@ -6,7 +6,6 @@ import MainHeader from '@/components/layout/MainHeader';
 import BottomNav from '@/components/layout/BottomNav';
 import { UserProvider } from '../context/UserContext';
 import { ToastProvider } from '@/context/ToastContext';
-import ClientErrorBoundary from '@/components/ClientErrorBoundary';
 import ThemeFab from '@/components/ThemeFab';
 
 // مؤقتاً: I18nProvider محلي فقط لتغليف children بدون منطق ترجمة
@@ -76,16 +75,6 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
     router.replace(dest);
   }, [pathname, router]);
 
-  // Basic diagnostic log once on mount
-  useEffect(()=>{
-    try {
-      // react version accessible via require cache in dev, but safe guard.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const v = (React as any)?.version || 'unknown';
-      const host = typeof window !== 'undefined' ? window.location.host : 'ssr';
-      console.info('[Diag] ClientRoot mount',{ react:v, pathname, host, isBackoffice, hasRoleAreaLayout });
-    } catch {}
-  }, [pathname, isBackoffice, hasRoleAreaLayout]);
 
   return (
     <ToastProvider>
@@ -93,17 +82,15 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
         <UserProvider>
           {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <ThemeFab />}
           {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <MainHeader />}
-          <ClientErrorBoundary>
-            <main
-              className={`${
-                !hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout
-                  ? 'pb-20 pt-20'
-                  : ''
-              } relative z-0`}
-            >
-              {children}
-            </main>
-          </ClientErrorBoundary>
+          <main
+            className={`${
+              !hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout
+                ? 'pb-20 pt-20'
+                : ''
+            } relative z-0`}
+          >
+            {children}
+          </main>
           {!hideHeaderFooter && !isBackoffice && !hasRoleAreaLayout && <BottomNav />}
         </UserProvider>
       </I18nProvider>

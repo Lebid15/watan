@@ -1,6 +1,5 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import ClientErrorBoundary from '@/components/ClientErrorBoundary';
 import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 
@@ -13,19 +12,6 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
 
   useEffect(()=>{ refreshProfile(); },[]); // ensure fresh user
 
-  useEffect(()=>{
-    try {
-      // Log minimal diagnostics for tenant pages
-      // Avoid leaking sensitive user data.
-      console.info('[Diag][TenantLayout] mount', {
-        react: (React as any)?.version || 'unknown',
-        pathname,
-        hasUser: !!user,
-        loading,
-      });
-    } catch {}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(()=>{
     if (loading) return;
@@ -46,9 +32,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
   },[user, loading, router, pathname]);
 
   if (!ready) return null; // suppress flash
-  return <ClientErrorBoundary>
-    <div className="max-w-7xl mx-auto p-4 space-y-6">
-      {children}
-    </div>
-  </ClientErrorBoundary>;
+  return <div className="max-w-7xl mx-auto p-4 space-y-6">
+    {children}
+  </div>;
 }
