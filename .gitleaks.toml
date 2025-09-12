@@ -1,0 +1,7 @@
+# Minimal gitleaks config allowing some known test fixtures while blocking broad patterns.
+title = "watan gitleaks config"
+
+[rules.allowlist]
+description = "Allow test fixture fake keys"
+paths = ["test/", "frontend/test/", "backend/test/"]
+commits = []

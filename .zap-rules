@@ -1,0 +1,4 @@
+# ZAP rules overrides (baseline). Adjust as security posture hardens.
+# Format: <alertid> <ACTION>
+10054 IGNORE # Cookie without SameSite attribute
+10063 WARN   # CSP Header Not Set (expect to fix later, keep as WARN for visibility)

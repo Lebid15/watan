@@ -56,7 +56,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build image
-        run: docker build -t watan-${{ matrix.component }}:ci ./ ${{ matrix.component }}
+        run: |
+          if [ "${{ matrix.component }}" = "backend" ]; then
+            docker build -t watan-backend:ci ./backend
+          else
+            docker build -t watan-frontend:ci ./frontend
+          fi
       - name: Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -65,6 +70,39 @@ jobs:
           exit-code: '0'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH,MEDIUM'
+
+  k6-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install k6
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gnupg2 ca-certificates
+          curl -s https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -y && sudo apt-get install -y k6
+      - name: Run login smoke
+        run: |
+          EMAIL="${SMOKE_TEST_EMAIL:-}" PASSWORD="${SMOKE_TEST_PASSWORD:-}" k6 run scripts/security/k6-login-smoke.js || true
+
+  ffuf-discovery:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffuf
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffuf || sudo snap install ffuf || true
+      - name: Run ffuf (API)
+        run: BASE=https://api.staging.wtn4.com WORDLIST=/usr/share/wordlists/dirb/common.txt ./scripts/security/ffuf_discovery.sh || true
+      - name: Archive ffuf results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffuf-results
+          path: ffuf-results.json
 
   zap-baseline:
     if: github.event_name == 'workflow_dispatch'
@@ -76,6 +114,13 @@ jobs:
           target: 'https://staging.wtn4.com'
           rules_file_name: '.zap-rules'
           cmd_options: '-a'
+      - name: Upload ZAP report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: |
+            report_html.html
+            zap_scan.log
 
   aggregate:
     runs-on: ubuntu-latest

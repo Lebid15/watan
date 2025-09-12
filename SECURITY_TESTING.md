@@ -33,6 +33,16 @@ Out of scope (initial phase): billing provider external systems, email/SMS vendo
 
 (Provide wordlists and k6 scripts under scripts/security/ later.)
 
+### 3.1 Custom Script Wrappers
+- Semgrep wrapper: `scripts/security/run_semgrep.sh`
+- Secrets scan: `scripts/security/run_gitleaks.sh`
+- ZAP Baseline: `scripts/security/zap_baseline.sh` (env: TARGET=https://staging.wtn4.com)
+- Login smoke (k6): `scripts/security/k6-login-smoke.js`
+- ffuf discovery: `scripts/security/ffuf_discovery.sh`
+- Rate limit probe: `scripts/security/rate_limit_probe.sh`
+
+All scripts produce artifacts (JSON / text) to review; integrate into CI gradually.
+
 ## 4. Multi-Tenant Isolation Checklist
 - A user from tenant A cannot access product/order/user of tenant B by ID mutation.
 - X-Tenant-Host header removal leads to 400/403 (not leakage fallback).
@@ -88,3 +98,71 @@ A build may ship to a merchant only if:
 
 ---
 Generated initial baseline; iterate per finding.
+
+## 12. Threat Model (High-Level)
+| Asset | Primary Threats (STRIDE) | Existing Controls | Planned Controls |
+|-------|--------------------------|-------------------|------------------|
+| Tenant Data (Products/Orders) | Tampering, Information Disclosure | Tenant ID scoping in queries, X-Tenant-Host header required | Additional Semgrep rule enforcement, DB row-level validation audits |
+| Auth Tokens (JWT) | Spoofing, Replay | Signed (HS/RS), expiry | Add jti + redis blacklist for logout, rate limiting |
+| Admin / Dev Endpoints | Elevation of Privilege | Role guards, path restrictions | Fine-grained permission matrix, IP allowlist (optional) |
+| Maintenance Mode Bypass | Abuse / Availability | Cookie + host scoping | Signed maintenance bypass token with expiry |
+| CI/CD Pipeline | Tampering | GitHub protected branches | Add dependency signing / SLSA provenance |
+| Secrets in Repo | Information Disclosure | gitleaks scan | Pre-commit hook, secret rotation SOP |
+
+## 13. Test Matrix & Cadence
+| Area | Tool / Script | Frequency | Gating? |
+|------|---------------|-----------|---------|
+| Dependency (npm) | npm audit | On PR + Daily | Warn (fail on Critical) |
+| Container Vulns | Trivy | Daily + Release | Fail on Critical/High |
+| SAST | Semgrep (auto + custom) | On PR | Fail on ERROR rules |
+| Secrets | gitleaks | On PR + Weekly full | Fail on findings |
+| DAST (baseline) | ZAP baseline | Weekly + Pre-release | Report only (phase 1) |
+| Tenant Isolation | tenant_isolation_check.sh | Pre-release | Fail if WARN present |
+| Fuzz Discovery | ffuf | On demand (dispatch) | Report only |
+| Load/Auth Smoke | k6 login smoke | Dispatch / Pre-release | Fail if >5% errors |
+| Rate Limit Probe | rate_limit_probe.sh | Monthly | Report (until implemented) |
+
+## 14. Reporting Template
+Create `SECURITY_REPORT.md` per release with sections:
+```
+Release: <version>
+Date: <date>
+
+Summary:
+- Pass/Fail metrics
+
+Findings Table:
+| ID | Severity | Area | Description | Status | Owner | ETA |
+|----|----------|------|-------------|--------|-------|-----|
+
+Exceptions / Accepted Risks:
+- <risk id>: justification, expiry date
+
+Artifacts:
+- Trivy summary: artifacts/trivy-*.txt
+- Semgrep: semgrep.sarif (uploaded)
+- ZAP: zap-report.html
+```
+
+## 15. Local Execution Reference
+Examples (PowerShell):
+```
+bash scripts/security/run_semgrep.sh
+bash scripts/security/run_gitleaks.sh
+TARGET=https://staging.wtn4.com bash scripts/security/zap_baseline.sh
+API_BASE=https://api.wtn4.com EMAIL=demo@example.com PASSWORD=bad k6 run scripts/security/k6-login-smoke.js
+BASE=https://api.wtn4.com bash scripts/security/ffuf_discovery.sh
+ORIGIN=https://wtn4.com bash scripts/security/rate_limit_probe.sh
+```
+
+## 16. Hardening Roadmap (Next)
+1. Implement auth endpoint rate limiting (nginx or nest middleware).
+2. Enforce CSP (nonce-based) + remove unsafe-inline.
+3. Add HSTS & evaluate preload submission.
+4. Add per-tenant encryption at rest review (DB level).
+5. Expand Semgrep custom rules for: missing tenant filter, raw response leak, overly broad CORS.
+6. Introduce ZAP full scan (authenticated context export) in staging nightly.
+
+## 17. Acceptance Criteria Mapping
+Each Release Gate (Section 10) ties to Test Matrix green results within SLA windows; deviations require CTO sign-off recorded in report.
+

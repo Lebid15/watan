@@ -1,0 +1,22 @@
+rules:
+  - id: no-raw-sql-tenant-bypass
+    patterns:
+      - pattern: |
+          $DB.query($Q, ...)
+      - pattern-not: |
+          $DB.query($Q, [$TENANT, ...])
+    message: "Raw SQL query appears without explicit tenant scoping variable. Ensure tenant isolation."
+    languages: [typescript, javascript]
+    severity: WARNING
+
+  - id: dangerous-eval
+    pattern: eval($X)
+    message: "Avoid eval; potential code injection risk."
+    languages: [typescript, javascript]
+    severity: ERROR
+
+  - id: insecure-random
+    pattern: Math.random()
+    message: "Insecure randomness for security-sensitive operations; use crypto.randomUUID / crypto.getRandomValues."
+    languages: [typescript, javascript]
+    severity: WARNING
