@@ -80,13 +80,15 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   // We always render at DESIGN_WIDTH (desktop layout). If viewport narrower, we scale the entire canvas.
   // Scale is persisted per session to reduce jank between navigations.
   const SCALE_KEY = 'adminGlobalScaleV1';
+  const DISABLE_SCALE = process.env.NEXT_PUBLIC_DISABLE_ADMIN_SCALE === '1';
   const [scale, setScale] = useState(1);
   const scaledOuterRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
   // Compute & persist scale
   useEffect(() => {
-    const compute = () => {
+  if (DISABLE_SCALE) return; // skip scale logic entirely
+  const compute = () => {
       const w = window.innerWidth;
       // Only scale down if viewport < design width; never upscale.
       let next = w < DESIGN_WIDTH ? +(w / DESIGN_WIDTH).toFixed(4) : 1;
@@ -110,7 +112,8 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
 
   // ResizeObserver to adjust the outer wrapper height to scaled content height.
   useEffect(() => {
-    if (!canvasRef.current || !scaledOuterRef.current) return;
+  if (DISABLE_SCALE) return; // no observer needed
+  if (!canvasRef.current || !scaledOuterRef.current) return;
     const ro = new ResizeObserver(entries => {
       for (const e of entries) {
         const h = e.contentRect.height;
@@ -137,7 +140,11 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     </div>
   );
 
-  const inner = (
+  const inner = DISABLE_SCALE ? (
+    <div className="w-full overflow-y-auto overflow-x-auto" dir="rtl">
+      {canvas}
+    </div>
+  ) : (
     <div
       ref={scaledOuterRef}
       className="relative w-full overflow-y-auto overflow-x-hidden" 
