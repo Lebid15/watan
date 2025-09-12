@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
+  push:
+    tags:
+      - 'v*-gold'
   schedule:
     - cron: '0 3 * * *'
 
@@ -88,7 +91,8 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM'
 
   k6-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    # Run on manual dispatch or gold tag push
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') && endsWith(github.ref, '-gold')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
