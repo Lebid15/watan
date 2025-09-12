@@ -25,6 +25,14 @@ if [ ! -d "$BACKUP_DIR" ]; then
   exit 2
 fi
 
+# Auto-detect Postgres credentials from container if not exported on host
+if [ -z "${POSTGRES_USER:-}" ]; then
+  POSTGRES_USER=$(docker compose exec -T "$SERVICE" bash -lc 'echo -n "$POSTGRES_USER"' 2>/dev/null || echo postgres)
+fi
+if [ -z "${POSTGRES_DB:-}" ]; then
+  POSTGRES_DB=$(docker compose exec -T "$SERVICE" bash -lc 'echo -n "$POSTGRES_DB"' 2>/dev/null || echo "$POSTGRES_USER")
+fi
+
 # Pick target date (today by default) override with DATE=YYYY-MM-DD
 DATE=${DATE:-$(date -u +%Y-%m-%d)}
 pattern="wallets_${DATE}_*.sql.gz"
@@ -39,20 +47,26 @@ fi
 selected_file=""
 selected_delta=99999
 selected_time=""
-for f in $candidates; do
-  base=$(basename "$f")
-  hhmm=$(echo "$base" | sed -E 's/^wallets_[0-9]{4}-[0-9]{2}-[0-9]{2}_([0-9]{4})\.sql\.gz$/\1/')
-  [ -z "$hhmm" ] && continue
-  # Force base 10 to avoid octal interpretation of leading zero times (e.g. 0805)
-  if (( 10#$hhmm <= 10#$TARGET_HHMM )); then
-    delta=$(( 10#$TARGET_HHMM - 10#$hhmm ))
-    if (( delta < selected_delta )); then
-      selected_delta=$delta
-      selected_file=$f
-      selected_time=$hhmm
+if [ "${TARGET_HHMM,,}" = "latest" ]; then
+  # Simply pick the lexicographically last (newest) file
+  selected_file=$(ls -1 ${BACKUP_DIR}/${pattern} | sort | tail -n1)
+  selected_time=$(basename "$selected_file" | sed -E 's/^wallets_[0-9]{4}-[0-9]{2}-[0-9]{2}_([0-9]{4})\.sql\.gz$/\1/')
+else
+  for f in $candidates; do
+    base=$(basename "$f")
+    hhmm=$(echo "$base" | sed -E 's/^wallets_[0-9]{4}-[0-9]{2}-[0-9]{2}_([0-9]{4})\.sql\.gz$/\1/')
+    [ -z "$hhmm" ] && continue
+    # Force base 10 to avoid octal interpretation of leading zero times (e.g. 0805)
+    if (( 10#$hhmm <= 10#$TARGET_HHMM )); then
+      delta=$(( 10#$TARGET_HHMM - 10#$hhmm ))
+      if (( delta < selected_delta )); then
+        selected_delta=$delta
+        selected_file=$f
+        selected_time=$hhmm
+      fi
     fi
-  fi
-done
+  done
+fi
 
 # If none earlier/equal choose the earliest after target
 if [ -z "$selected_file" ]; then
@@ -75,8 +89,8 @@ fi
 echo "[INFO] Selected wallets backup: $selected_file (time $selected_time UTC)"
 
 # Drop & recreate temp DB
-if docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d postgres -c "SELECT 1 FROM pg_database WHERE datname='${TMP_DB}'" | grep -q 1; then
-  docker compose exec -T $SERVICE dropdb -U "$POSTGRES_USER" "$TMP_DB"
+if docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d postgres -c "SELECT 1 FROM pg_database WHERE datname='${TMP_DB}'" >/dev/null 2>&1; then
+  docker compose exec -T $SERVICE dropdb -U "$POSTGRES_USER" "$TMP_DB" || true
 fi
 docker compose exec -T $SERVICE createdb -U "$POSTGRES_USER" "$TMP_DB"
 
@@ -104,7 +118,7 @@ fi
 if ! docker compose exec -T $SERVICE psql -U "$POSTGRES_USER" -d "$TMP_DB" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='${TABLE_USERS}';" | grep -q 1; then
   echo "[WARN] users table not found after restore – falling back to direct dump parsing." >&2
   tmp_tsv=$(mktemp)
-  gunzip -c "$selected_file" | awk '/^COPY ${TABLE_USERS} /,/^\\\./' > "$tmp_tsv" || true
+  gunzip -c "$selected_file" | awk "/^COPY ${TABLE_USERS} /,/^\\\\\\.$/" > "$tmp_tsv" || true
   if grep -q '^COPY' "$tmp_tsv"; then
     # Remove first (COPY ...) line and last line containing single dot
     sed '1d;$d' "$tmp_tsv" | awk -F'\t' '{print $1","$2","$3","$4}' | {
