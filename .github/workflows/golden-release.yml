@@ -16,6 +16,8 @@ permissions:
 
 env:
   GOLD_DIR: gold
+  OWNER: ${{ toLower(github.repository_owner) }}
+  REGISTRY: ghcr.io
 
 jobs:
   tag:
@@ -62,8 +64,9 @@ jobs:
       - name: Build image
         run: |
           TAG="${{ github.event.inputs.version }}"
-          IMAGE="ghcr.io/${{ github.repository_owner }}/watan-${{ matrix.component }}:${TAG}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.OWNER }}/watan-${{ matrix.component }}:${TAG}"
           DOCKERFILE="./${{ matrix.component }}/Dockerfile"
+          echo "[info] Building $IMAGE (owner lowercase)"
           docker build -f "$DOCKERFILE" -t "$IMAGE" "./${{ matrix.component }}"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
       - name: Extract digest
