@@ -15,9 +15,9 @@ export class IdempotentRequest {
   @Column('uuid', { nullable: true })
   sourceGlobalProductId: string | null;
 
-  @Column({ type: 'jsonb' })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb' })
   resultJson: any;
 
-  @Column({ type: 'timestamptz', default: () => 'NOW()' })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 }
