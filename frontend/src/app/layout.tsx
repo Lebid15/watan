@@ -2,8 +2,6 @@
 // as a static layout chunk (fixing 404s like /_next/static/css/app/layout.css).
 // All client-only logic moved to ClientRoot.
 import '../styles/globals.css';
-// Viewport now fixed to device-width (desktop forced width meta was removed after revert decision).
-// Any future attempt to simulate desktop via scaling should live in admin-only layout, not here.
 import ClientRoot from './ClientRoot';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -11,8 +9,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ar" dir="rtl" data-theme="dark1" suppressHydrationWarning>
       <head>
         <title>Watan Store</title>
-        {/* ثابت: جعل التطبيق يعمل بنهج mobile-first */}
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        {/* Viewport: enforce desktop width for backoffice (/admin & /dev), otherwise standard responsive */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){
+              try {
+                var path = window.location.pathname;
+                var isBackoffice = path.startsWith('/admin') || path.startsWith('/dev');
+                var viewport = document.createElement('meta');
+                viewport.name = 'viewport';
+                viewport.content = isBackoffice ? 'width=1280, initial-scale=1' : 'width=device-width, initial-scale=1, viewport-fit=cover';
+                document.head.appendChild(viewport);
+              } catch(e) {}
+            })();`,
+          }}
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){

@@ -1,5 +1,3 @@
-// NOTE: This dashboard page kept after reverting experimental scaling/viewport changes.
-// Mobile-first adjustments for header remain (text-sm default, md: upscale).
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -34,8 +32,7 @@ export default function AdminDashboardPageClient() {
 
   return (
     <div>
-      {/* الهيدر: جعل الموبايل هو الافتراضي (أصغر) ثم الحفاظ على القيم الأصلية على الشاشات >= md */}
-      <h1 className="text-sm md:text-lg p-3 md:p-5 font-bold mb-2 md:mb-3">لوحة تحكم المشرف</h1>
+      <h1 className="text-lg p-5 font-bold mb-3">لوحة تحكم المشرف</h1>
       <div className="space-y-2">
         <p>مرحباً، {user?.fullName || user?.email}</p>
         <p>هنا سنقدم جميع التعلميات الخاصة بالموضع87</p>
