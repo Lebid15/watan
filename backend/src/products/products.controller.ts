@@ -240,8 +240,11 @@ export class ProductsController {
   async delete(@Req() req: Request, @Param('id') id: string): Promise<{ message: string }> {
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
     const role = (req as any).user?.roleFinal || (req as any).user?.role;
-    console.log('[PRODUCTS] delete tenantId=', tenantId, 'productId=', id, 'role=', role);
-    await this.productsService.delete({ tenantId, role }, id);
+    const roleLower = (role || '').toLowerCase();
+    // السماح بالحذف العالمي عند غياب tenantId إذا كان الدور مطور أو مالك مثيل
+    const allowGlobal = (!tenantId && (roleLower === 'developer' || roleLower === 'instance_owner')) ? true : false;
+    console.log('[PRODUCTS] delete tenantId=', tenantId, 'productId=', id, 'role=', role, 'allowGlobal=', allowGlobal);
+    await this.productsService.delete({ tenantId, role, allowGlobal }, id);
     return { message: 'تم حذف المنتج بنجاح' };
   }
 
