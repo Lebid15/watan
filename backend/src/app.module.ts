@@ -111,7 +111,10 @@ import { MuhammedModule } from './muhammed/muhammed.module';
         } catch (_) { if (forceDev) needSsl = false; }
 
         const autoEnv = process.env.AUTO_MIGRATIONS;
-        const migrationsRun = autoEnv === 'false' ? false : (autoEnv === 'true' ? true : isProd);
+        // Allow explicit override for tests requiring real Postgres migrations
+        const migrationsRun = process.env.TYPEORM_MIGRATIONS_RUN === 'true'
+          ? true
+          : (autoEnv === 'false' ? false : (autoEnv === 'true' ? true : isProd));
         return {
           type: 'postgres',
           url: databaseUrl,
