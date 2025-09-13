@@ -28,7 +28,10 @@ describe('Errors (e2e)', () => {
       dev = await ds.getRepository(User).findOne({ where: { role: 'developer' } as any });
     }
     if (!dev) throw new Error('Developer bootstrap failed');
-    token = jwt.sign({ sub: dev.id, id: dev.id, role: 'developer' }, jwtConstants.secret, { expiresIn: '1h' });
+    token = jwt.sign({ sub: dev.id, id: dev.id, role: 'developer', totpVerified: true }, jwtConstants.secret, { expiresIn: '1h' });
+    // Seed developer user for auth
+    await ds.query(`INSERT INTO tenant (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, ['err-tenant-000000000000000000000000', 'Err Tenant', 'errtenant', null, 1, new Date().toISOString(), new Date().toISOString()]);
+    await ds.query(`INSERT INTO users (id, role, email, password, isActive, username) VALUES (?,?,?,?,?,?)`, ['dev-user-error', 'developer', 'dev@example.com', 'x', 1, 'dev']);
   });
 
   afterAll(async () => {

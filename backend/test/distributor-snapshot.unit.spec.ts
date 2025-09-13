@@ -11,10 +11,14 @@ import { Currency } from '../src/currencies/currency.entity';
 import { OrderDispatchLog } from '../src/products/order-dispatch-log.entity';
 import { PackageRouting } from '../src/integrations/package-routing.entity';
 import { PackageMapping } from '../src/integrations/package-mapping.entity';
+import { PackageCost } from '../src/integrations/package-cost.entity';
 import { DistributorPackagePrice, DistributorUserPriceGroup } from '../src/distributor/distributor-pricing.entities';
+import { IdempotentRequest } from '../src/products/idempotent-request.entity';
+import { PricingService } from '../src/products/pricing.service';
 import { IntegrationsService } from '../src/integrations/integrations.service';
 import { NotificationsService } from '../src/notifications/notifications.service';
 import { AccountingPeriodsService } from '../src/accounting/accounting-periods.service';
+import { ClientApiWebhookEnqueueService } from '../src/client-api/client-api-webhook.enqueue.service';
 
 // Lightweight in-memory style mocks
 function repoMock() { return { findOne: jest.fn(), find: jest.fn(), save: jest.fn(x=>x), create: jest.fn(x=>x), update: jest.fn(), count: jest.fn(), manager: { query: jest.fn(), transaction: async (fn:any)=> fn({ getRepository: (e:any)=> repoMock() }) } }; }
@@ -35,17 +39,21 @@ describe('Distributor snapshot unit', () => {
         { provide: getRepositoryToken(ProductPackage), useValue: (pkgRepo = repoMock()) },
         { provide: getRepositoryToken(PackagePrice), useValue: (priceRepo = repoMock()) },
         { provide: getRepositoryToken(PriceGroup), useValue: repoMock() },
+  { provide: getRepositoryToken(IdempotentRequest), useValue: repoMock() },
         { provide: getRepositoryToken(User), useValue: (userRepo = repoMock()) },
         { provide: getRepositoryToken(ProductOrder), useValue: (orderRepo = repoMock()) },
         { provide: getRepositoryToken(Currency), useValue: (currencyRepo = repoMock()) },
         { provide: getRepositoryToken(OrderDispatchLog), useValue: repoMock() },
         { provide: getRepositoryToken(PackageRouting), useValue: repoMock() },
         { provide: getRepositoryToken(PackageMapping), useValue: repoMock() },
+  { provide: getRepositoryToken(PackageCost), useValue: repoMock() },
         { provide: getRepositoryToken(DistributorPackagePrice), useValue: (distPkgPriceRepo = repoMock()) },
         { provide: getRepositoryToken(DistributorUserPriceGroup), useValue: (distUserGroupRepo = repoMock()) },
   { provide: IntegrationsService, useValue: { list: jest.fn(), placeOrder: jest.fn(), checkOrders: jest.fn(), get: jest.fn() }},
   { provide: NotificationsService, useValue: { orderStatusChanged: jest.fn() } },
   { provide: AccountingPeriodsService, useValue: { assertApprovedMonthOpen: jest.fn() } },
+  { provide: PricingService, useValue: { getEffectiveUnitPrice: jest.fn(), validateQuantity: jest.fn(), quoteUnitOrder: jest.fn() } },
+  { provide: ClientApiWebhookEnqueueService, useValue: { enqueue: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(ProductsService);

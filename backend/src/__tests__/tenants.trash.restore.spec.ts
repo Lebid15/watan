@@ -8,7 +8,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantsModule } from '../tenants/tenants.module';
 import { Tenant } from '../tenants/tenant.entity';
 import { TenantDomain } from '../tenants/tenant-domain.entity';
-import { User } from '../user/user.entity';
 import { DataSource } from 'typeorm';
 import { TenantsService } from '../tenants/tenants.service';
 
@@ -19,7 +18,7 @@ describe('Tenants trash/restore/hard-delete', () => {
   beforeAll(async () => {
     const mod = await Test.createTestingModule({
       imports: [
-        TypeOrmModule.forRoot({ type: 'sqlite', database: ':memory:', dropSchema: true, synchronize: true, entities: [Tenant, TenantDomain, User] }),
+        TypeOrmModule.forRoot({ type: 'sqlite', database: ':memory:', dropSchema: true, synchronize: true, entities: [Tenant, TenantDomain] }),
         TenantsModule,
       ],
     }).compile();

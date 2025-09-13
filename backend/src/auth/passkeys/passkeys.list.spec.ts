@@ -3,8 +3,9 @@ import { PasskeysService } from './passkeys.service';
 const mk = () => {
   process.env.RP_ID = 'syrz1.com';
   process.env.PASSKEYS_STRICT = 'true';
+  process.env.PASSKEYS_FORCE_ENABLED = 'true';
   const repo: any = {
-    find: jest.fn(async () => [{ id: '1', deviceType: 'multiDevice', createdAt: new Date('2025-01-01'), lastUsedAt: null }]),
+    find: jest.fn(async () => [{ id: '1', deviceType: 'multiDevice', createdAt: new Date('2025-01-01'), lastUsedAt: null, userId: 'user-x' }]),
   };
   const challenges: any = {};
   const audit: any = { log: jest.fn(async () => {}) };

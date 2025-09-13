@@ -43,7 +43,7 @@ d('Orders E2E (Postgres)', () => {
   authHeader = {}; // Adjust if real auth required.
   });
 
-  afterAll(async () => { await app.close(); });
+  afterAll(async () => { try { if (ds?.isInitialized) await ds.destroy(); } catch {} await app.close(); });
 
   it('creates unit order successfully (quantity=2.5)', async () => {
     const res = await request(app.getHttpServer())

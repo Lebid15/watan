@@ -15,9 +15,10 @@ export class MuhammedDaily {
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
   value?: string | null; // keep as string to avoid float issues
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  // Use generic 'datetime' for sqlite in tests to avoid unsupported 'timestamptz'
+  @CreateDateColumn({ name: 'created_at', type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz' })
   updatedAt!: Date;
 }

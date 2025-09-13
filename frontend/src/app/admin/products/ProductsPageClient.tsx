@@ -5,7 +5,7 @@ import { API_ROUTES } from '@/utils/api';
 import api from '@/utils/api';
 import { buildImageVariants } from '@/utils/imageVariants';
 
-interface Product { id: string; name: string; imageUrl?: string|null; thumbSmallUrl?: string|null; isActive?: boolean; imageSource?: 'catalog'|'custom'|null; useCatalogImage?: boolean; }
+interface Product { id: string; name: string; imageUrl?: string|null; thumbSmallUrl?: string|null; isActive?: boolean; imageSource?: 'catalog'|'custom'|null; useCatalogImage?: boolean; supportsCounter?: boolean; }
 interface GlobalProductAvailable { id: string; name: string; packagesActiveCount: number; }
 
 export default function ProductsPageClient(){
@@ -25,7 +25,29 @@ export default function ProductsPageClient(){
   const productsUrl = `${apiBase}/products?all=1`;
 
   async function fetchProducts(){
-    try { const res=await fetch(productsUrl,{cache:'no-store'}); if(!res.ok) throw new Error('fetch products failed'); const data=await res.json(); setProducts(Array.isArray(data)?data:[]);} catch { setProducts([]);} }
+    try {
+      const res=await fetch(productsUrl,{cache:'no-store'});
+      if(!res.ok) throw new Error('fetch products failed');
+      const data=await res.json();
+      setProducts(Array.isArray(data)?data:[]);
+    } catch {
+      setProducts([]);
+    }
+  }
+
+  async function toggleSupportsCounter(id: string){
+    setProducts(prev=> prev.map(p=> p.id===id ? { ...p, supportsCounter: !p.supportsCounter } : p));
+    try {
+      const target = products.find(p=>p.id===id);
+      const nextVal = !(target?.supportsCounter);
+      const res = await api.patch(`/admin/products/${id}/supports-counter`, { supportsCounter: nextVal }, { validateStatus:()=>true });
+      if(res.status>=400){ throw new Error(res.data?.message||'فشل تحديث العداد'); }
+    } catch(e:any){
+      // rollback
+      setProducts(prev=> prev.map(p=> p.id===id ? { ...p, supportsCounter: !p.supportsCounter } : p));
+      alert(e?.message||'خطأ غير متوقع');
+    }
+  }
   useEffect(()=>{ fetchProducts(); },[]);
 
   function pickImageField(p:Product){ return p.imageUrl||null; }
@@ -59,19 +81,26 @@ export default function ProductsPageClient(){
 
       {filtered.length===0 ? <p className='px-2 md:px-4 text-[rgb(var(--color-text-secondary))]'>لا توجد منتجات.</p> : (
         <div className='grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-3 md:gap-4 px-2 md:px-4 py-2'>
-          {filtered.map(product=>{ const available=product.isActive!==false; const baseImg=product.thumbSmallUrl||product.imageUrl; const imageSrc=getImageSrc(product); const variants=buildImageVariants(imageSrc); const imgSource=resolveImageSource(product); const badgeColor=imgSource==='catalog'?'bg-blue-600':imgSource==='custom'?'bg-emerald-600':'bg-gray-400'; const labelMap:any={catalog:'Catalog',custom:'Custom',none:'None'}; const isSelected=selected.has(product.id); return (
-            <Link key={product.id} href={available?`/admin/products/${product.id}`:'#'} className={`group flex flex-col items-center select-none ${available?'cursor-pointer':'opacity-40 pointer-events-none'} ${isSelected?'ring-2 ring-primary':''}`}> 
+          {filtered.map(product=>{ const available=product.isActive!==false; const baseImg=product.thumbSmallUrl||product.imageUrl; const imageSrc=getImageSrc(product); const variants=buildImageVariants(imageSrc); const imgSource=resolveImageSource(product); const badgeColor=imgSource==='catalog'?'bg-blue-600':imgSource==='custom'?'bg-emerald-600':'bg-gray-400'; const labelMap:any={catalog:'Catalog',custom:'Custom',none:'None'}; const isSelected=selected.has(product.id); const counter=product.supportsCounter===true; return (
+            <Link key={product.id} href={available?`/admin/products/${product.id}`:'#'} className={`group flex flex-col items-center select-none relative ${available?'cursor-pointer':'opacity-40 pointer-events-none'} ${isSelected?'ring-2 ring-primary':''}`}> 
               <div className='relative w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 shadow-md overflow-hidden flex items-center justify-center transition-transform group-hover:scale-105 rounded-xl bg-[rgb(var(--color-bg-surface))] border border-[rgb(var(--color-border))]'>
                 <button type='button' onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setSelected(prev=>{ const n=new Set(prev); n.has(product.id)?n.delete(product.id):n.add(product.id); return n;}); }} className={`absolute top-0 left-0 w-5 h-5 flex items-center justify-center text-[10px] font-bold ${isSelected?'bg-primary text-primary-contrast':'bg-zinc-700/70 text-white'} rounded-br`}>{isSelected?'✓':'+'}</button>
                 {baseImg ? <img src={baseImg||'/images/placeholder.png'} alt={product.name} className='w-3/4 h-3/4 object-contain rounded-lg' loading='lazy' onError={()=>setFailed(prev=>{ if(prev.has(product.id)) return prev; const next=new Set(prev); next.add(product.id); return next; })} data-orig={imageSrc} data-small={variants?.small} data-medium={variants?.medium} /> : <span className='text-[10px] text-[rgb(var(--color-text-secondary))]'>No Img</span>}
                 <span className={`absolute -top-1 -left-1 ${badgeColor} text-white text-[9px] md:text-[10px] px-1 py-0.5 rounded-br`}>{labelMap[imgSource]}</span>
                 {!available && <span className='absolute bottom-1 right-1 text-[9px] md:text-[10px] px-1.5 py-0.5 rounded-full bg-[rgb(var(--color-danger))] text-[rgb(var(--color-primary-contrast))]'>غير متوفر</span>}
+                <button
+                  type='button'
+                  onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); toggleSupportsCounter(product.id); }}
+                  className={`absolute bottom-1 left-1 text-[8px] px-1 py-0.5 rounded ${counter?'bg-amber-500/90 text-black':'bg-zinc-700/70 text-white'} hover:brightness-110`}
+                  title='Toggle Counter Mode'
+                >{counter?'Counter':'Fixed'}</button>
               </div>
               <div className='mt-1.5 md:mt-2 text-center text-[11px] sm:text-[12px] md:text-sm truncate w-16 sm:w-20 md:w-24 flex flex-col items-center gap-0.5'>
                 <div className='flex items-center gap-1'>
                   <span className={`w-3.5 h-3.5 rounded-full border ${(product.isActive!==false)?'bg-green-500 border-green-600':'bg-red-500 border-red-600'}`} />
                   <span>{product.name}</span>
                 </div>
+                <span className={`text-[9px] ${counter?'text-amber-500':'text-text-secondary'}`}>{counter?'عداد مفعل':'ثابت'}</span>
                 {isSelected && <span className='text-[9px] text-primary'>محدد</span>}
               </div>
             </Link>

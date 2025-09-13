@@ -16,6 +16,8 @@ export class ClientApiStatsCron implements OnModuleInit {
 
   onModuleInit() {
     if (process.env.CLIENT_API_STATS_DISABLED === '1') return; // opt-out
+    // In tests we disable background schedulers/intervals to avoid open handle leaks
+    if (process.env.NODE_ENV === 'test' && process.env.TEST_DISABLE_SCHEDULERS === 'true') return;
     if (this.started) return;
     this.started = true;
     // Run at 00:05 server time daily; check every 60s.

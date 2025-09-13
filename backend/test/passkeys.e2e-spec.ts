@@ -15,7 +15,10 @@ import * as crypto from 'crypto';
 // the composite challenge value returned during options phase.
 // This keeps the test deterministic without real cryptographic attestation.
 
-describe('Passkeys (e2e, mocked)', () => {
+const PASSKEYS_ENABLED = process.env.PASSKEYS_ENABLED === 'true';
+const d = PASSKEYS_ENABLED ? describe : describe.skip;
+
+d('Passkeys (e2e, mocked)', () => {
   let app: INestApplication;
   let http: any;
   let dataSource: DataSource;

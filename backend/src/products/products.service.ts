@@ -25,6 +25,7 @@ import { AccountingPeriodsService } from '../accounting/accounting-periods.servi
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClientApiWebhookEnqueueService } from '../client-api/client-api-webhook.enqueue.service';
 import { PricingService } from './pricing.service';
+import { getPriceDecimals } from '../config/pricing.config';
 
 export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'processing' | 'sent';
 
@@ -215,7 +216,7 @@ export class ProductsService {
       const costUsdSnap = (order as any).costUsdAtOrder != null ? Number((order as any).costUsdAtOrder) : null;
       const profitUsdSnap = (order as any).profitUsdAtOrder != null
         ? Number((order as any).profitUsdAtOrder)
-        : (costUsdSnap != null ? Number((sellUsdSnap - costUsdSnap).toFixed(4)) : null);
+  : (costUsdSnap != null ? Number((sellUsdSnap - costUsdSnap).toFixed(getPriceDecimals())) : null);
 
       return {
         id: order.id,
@@ -1443,8 +1444,8 @@ export class ProductsService {
           // If r is the amount of local currency per USD (e.g., TRY=\n 40), then USD = amount / r
           costUsdSnap = r && r > 0 ? Number(finalCostAmount) / r : Number(finalCostAmount);
         }
-        (order as any).costUsdAtOrder = Number(costUsdSnap.toFixed(4));
-        (order as any).profitUsdAtOrder = Number((sellUsdSnap - Number((order as any).costUsdAtOrder)).toFixed(4));
+  (order as any).costUsdAtOrder = Number(costUsdSnap.toFixed(getPriceDecimals()));
+  (order as any).profitUsdAtOrder = Number((sellUsdSnap - Number((order as any).costUsdAtOrder)).toFixed(getPriceDecimals()));
       } catch {}
       await this.ordersRepo.save(order);
 
@@ -1506,7 +1507,7 @@ export class ProductsService {
     }
 
     // Debug trace (lightweight)
-    try { console.log('[OrderCreate] start', { productId, packageId, quantity, userId, tenantId, hasOrderUuid: Boolean(orderUuid), origin }); } catch {}
+  try { if (process.env.TEST_VERBOSE_ORDERS === 'true') console.log('[OrderCreate] start', { productId, packageId, quantity, userId, tenantId, hasOrderUuid: Boolean(orderUuid), origin }); } catch {}
 
     // سنؤخر التحقق التفصيلي للـ quantity إذا كانت الباقة من نوع unit داخل منطق التسعير
     if (!quantity || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0) {
@@ -1522,7 +1523,7 @@ export class ProductsService {
         this.ensureSameTenant((existing as any).tenantId, tenantId);
         const priceUSDExisting = Number((existing as any).price) || 0;
         const unitPriceUSDExisting = (existing as any).quantity ? priceUSDExisting / Number((existing as any).quantity) : priceUSDExisting;
-        try { console.log('[OrderCreate] reused', { id: existing.id, orderUuid, tenantId: (existing as any).tenantId }); } catch {}
+  try { if (process.env.TEST_VERBOSE_ORDERS === 'true') console.log('[OrderCreate] reused', { id: existing.id, orderUuid, tenantId: (existing as any).tenantId }); } catch {}
         return {
           id: existing.id,
           status: existing.status,
@@ -1630,13 +1631,13 @@ export class ProductsService {
 
       if ((product as any).supportsCounter === true && (pkg as any).type === 'unit') {
         // تعبئة الحقول الإضافية للنوع unit
-        (order as any).unitPriceApplied = Number(unitPriceUSD).toFixed(4);
-        (order as any).sellPrice = Number(totalUSD).toFixed(4);
+  (order as any).unitPriceApplied = Number(unitPriceUSD).toFixed(getPriceDecimals());
+  (order as any).sellPrice = Number(totalUSD).toFixed(getPriceDecimals());
         const unitCost = Number((pkg as any).capital ?? 0) > 0 ? Number((pkg as any).capital) : Number((pkg as any).basePrice ?? 0);
         if (unitCost > 0) {
           const cost = unitCost * Number(quantity);
-            (order as any).cost = Number(cost).toFixed(4);
-            (order as any).profit = Number(totalUSD - cost).toFixed(4);
+            (order as any).cost = Number(cost).toFixed(getPriceDecimals());
+            (order as any).profit = Number(totalUSD - cost).toFixed(getPriceDecimals());
         }
       }
 
@@ -1645,7 +1646,7 @@ export class ProductsService {
   const baseCostPerUnit = Number((pkg as any).basePrice ?? (pkg as any).capital ?? 0) || 0;
   const costUsdSnapshot = baseCostPerUnit * Number(quantity);
   (order as any).costUsdAtOrder = costUsdSnapshot;
-  (order as any).profitUsdAtOrder = Number((totalUSD - costUsdSnapshot).toFixed(4));
+  (order as any).profitUsdAtOrder = Number((totalUSD - costUsdSnapshot).toFixed(getPriceDecimals()));
 
       // Phase2/3: تحديد الموزّع الجذر (سواء المستخدم نفسه موزّع أو مستخدم فرعي له parentUserId)
       let rootDistributor: any = null;
@@ -1828,7 +1829,7 @@ export class ProductsService {
           origin: saved.origin,
         } as any,
   };
-  try { console.log('[OrderCreate] created', { id: saved.id, orderUuid: saved.orderUuid, tenantId: (saved as any).tenantId, origin: saved.origin }); } catch {}
+  try { if (process.env.TEST_VERBOSE_ORDERS === 'true') console.log('[OrderCreate] created', { id: saved.id, orderUuid: saved.orderUuid, tenantId: (saved as any).tenantId, origin: saved.origin }); } catch {}
   return result;
     });
     created = txResult;
@@ -2022,7 +2023,7 @@ export class ProductsService {
       const costUsdSnap = (order as any).costUsdAtOrder != null ? Number((order as any).costUsdAtOrder) : null;
       const profitUsdSnap = (order as any).profitUsdAtOrder != null
         ? Number((order as any).profitUsdAtOrder)
-        : (costUsdSnap != null ? Number((sellUsdSnap - costUsdSnap).toFixed(4)) : null);
+  : (costUsdSnap != null ? Number((sellUsdSnap - costUsdSnap).toFixed(getPriceDecimals())) : null);
 
       return {
         id: order.id,

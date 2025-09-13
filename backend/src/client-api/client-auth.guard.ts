@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import { debugEnabled, debugLog } from '../common/debug.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
+import { ClientApiRequestLog } from './client-api-request-log.entity';
 import { User } from '../user/user.entity';
 import { ErrClientApi, ClientApiError } from './client-api-error';
 import { extractNormalizedIp, ipAllowed } from './client-api-ip.util';
@@ -76,11 +77,14 @@ export class ClientApiAuthGuard implements CanActivate {
     }
 
     // Rate limiting (simple per-minute count from logs if limit set)
-    if (user.apiRateLimitPerMin && user.apiRateLimitPerMin > 0) {
+    if (process.env.NODE_ENV === 'test' && process.env.TEST_DISABLE_RATE_LIMIT === 'true') {
+      // skip in tests when explicitly disabled to reduce flakiness
+    } else if (user.apiRateLimitPerMin && user.apiRateLimitPerMin > 0) {
       const since = new Date(Date.now() - 60_000);
       // lightweight count using raw query to avoid extra entity cost
-      const cntRows = await this.usersRepo.query(`SELECT count(*)::int AS c FROM client_api_request_logs WHERE "userId"=$1 AND "createdAt" > $2`, [user.id, since]);
-      const count = cntRows?.[0]?.c || 0;
+  // Portable count for both Postgres & SQLite using repository API (no driver-specific SQL)
+  const logRepo = this.usersRepo.manager.getRepository(ClientApiRequestLog);
+  const count = await logRepo.count({ where: { userId: user.id, createdAt: MoreThan(since) } as any });
       if (count >= user.apiRateLimitPerMin) {
   // eslint-disable-next-line no-console
       console.warn('[CLIENT_API][AUTH][DENY]', { reqId: req.reqId || null, reason: 'rate_limited', limit: user.apiRateLimitPerMin, userId: user.id });

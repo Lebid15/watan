@@ -29,7 +29,8 @@ describe('External API E2E', () => {
 
   // Seed tenant + users + product + package
     const tenantId = uuid();
-  await ds.query(`INSERT INTO tenants(id, name, code, isActive) VALUES($1,'T','t1',1)`, [tenantId]);
+    // Actual table is 'tenant' (singular)
+    await ds.query(`INSERT INTO tenant(id, name, code, isActive) VALUES($1,'T','t1',1)`, [tenantId]);
     const ownerId = uuid();
     await ds.query(`INSERT INTO users(id, tenantId, email, password, role, balance, overdraftLimit, apiEnabled) VALUES($1,$2,'o@x','pw','tenant_owner',100,0,true)`, [ownerId, tenantId]);
   externalUserId = uuid();

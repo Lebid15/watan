@@ -1,3 +1,10 @@
+// Ensure sqlite-compatible entity column types before any entity imports
+process.env.TEST_DB_SQLITE = 'true';
+process.env.PASSKEYS_FORCE_ENABLED = 'false';
+process.env.PRICE_DECIMALS = process.env.PRICE_DECIMALS || '2';
+process.env.TEST_DISABLE_SCHEDULERS = 'true';
+process.env.TEST_SYNC_CLIENT_API_LOGS = '1';
+process.env.TEST_DISABLE_RATE_LIMIT = 'true';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -8,6 +15,8 @@ import { Product } from '../../products/product.entity';
 import { ProductPackage } from '../../products/product-package.entity';
 import { User } from '../../user/user.entity';
 import { ProductApiMetadata } from '../../products/product-api-metadata.entity';
+import { Tenant } from '../../tenants/tenant.entity';
+import { flushClientApiLogs } from '../../client-api/client-api-logging.interceptor';
 
 // Helper: extract error {code,message}
 function expectError(res: request.Response, code: number) {
@@ -17,6 +26,7 @@ function expectError(res: request.Response, code: number) {
 }
 
 describe('Client API Metadata & Validation (e2e-lite)', () => {
+  jest.setTimeout(20000);
   let app: INestApplication;
   let ds: DataSource;
   let user: User;
@@ -28,16 +38,19 @@ describe('Client API Metadata & Validation (e2e-lite)', () => {
   let nullPkg: ProductPackage;
 
   beforeAll(async () => {
-    process.env.TEST_DB_SQLITE = 'true';
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleFixture.createNestApplication();
     await app.init();
     ds = app.get(DataSource);
 
     // Seed tenant/user (simplified: assume user has tenantId column and balance etc.)
-  user = ds.getRepository(User).create({ username: 'apiuser', email: 'u@example.com', password: 'x', tenantId: uuidv4(), apiEnabled: true, apiToken: 'TOK123', balance: 0 });
+    // Create tenant first for FK integrity
+    const tenantRepo = ds.getRepository(Tenant);
+    const tenant = tenantRepo.create({ name: 'ApiTenant', code: 'apit', isActive: true } as any);
+    await tenantRepo.save(tenant as any);
+  user = ds.getRepository(User).create({ username: 'apiuser', email: 'u@example.com', password: 'x', tenantId: (tenant as any).id, apiEnabled: true, apiToken: 'abcdefabcdefabcdefabcdefabcdefabcdefabcd', balance: 1000, overdraftLimit: 100000 });
     await ds.getRepository(User).save(user);
-    tenantId = (user as any).tenantId;
+    tenantId = (tenant as any).id;
 
     // Seed products & packages
     async function makeProduct(name: string) {
@@ -65,7 +78,9 @@ describe('Client API Metadata & Validation (e2e-lite)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    await flushClientApiLogs().catch(()=>{});
+    try { await app?.close(); } catch {}
+    try { await ds?.destroy(); } catch {}
   });
 
   function auth(req: request.Test) { return req.set('x-api-token', user.apiToken!); }

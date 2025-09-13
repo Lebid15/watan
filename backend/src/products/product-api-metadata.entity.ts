@@ -25,12 +25,27 @@ export class ProductApiMetadata {
   @Column({ name: 'qty_max', type: 'integer', nullable: true })
   qtyMax?: number | null;
 
-  @Column({ name: 'qty_list', type: 'text', array: true, nullable: true })
+  // For sqlite tests we don't have native array; store as simple-json
+  @Column({
+    name: 'qty_list',
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'text',
+    array: process.env.TEST_DB_SQLITE === 'true' ? false : true,
+    nullable: true,
+  })
   qtyList?: string[] | null;
 
-  @Column({ name: 'params_schema', type: 'jsonb', default: () => "'[]'::jsonb" })
+  @Column({
+    name: 'params_schema',
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'simple-json' : 'jsonb',
+    // simple-json doesn't support function default; leave undefined -> app layer ensures []
+    default: process.env.TEST_DB_SQLITE === 'true' ? undefined : () => "'[]'::jsonb",
+  })
   paramsSchema: any[];
 
-  @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'now()' })
+  @Column({
+    name: 'updated_at',
+    type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz',
+    default: process.env.TEST_DB_SQLITE === 'true' ? () => 'CURRENT_TIMESTAMP' : () => 'now()',
+  })
   updatedAt: Date;
 }

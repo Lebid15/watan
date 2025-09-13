@@ -35,6 +35,7 @@ const user = { id: '11111111-1111-1111-1111-111111111111', email: 'u@syrz1.com' 
 function buildService() {
   process.env.RP_ID = 'syrz1.com';
   process.env.PASSKEYS_STRICT = 'true';
+  process.env.PASSKEYS_FORCE_ENABLED = 'true';
   return new PasskeysService(repoFactory(), new MockChallengeStore() as any, new MockAudit() as any);
 }
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api, { API_ROUTES } from '@/utils/api';
 import toast from 'react-hot-toast';
+import { getDecimalDigits, clampPriceDecimals, priceInputStep } from '@/utils/pricingFormat';
 
 interface UpdatePricesResponse {
   packageId: string;
@@ -13,10 +14,10 @@ interface UpdatePricesResponse {
 
 interface PriceGroup { id: string; name: string; }
 interface PackagePrice { id: string | null; price: number; groupId: string; groupName: string; }
-interface ProductPackage { id: string; productId: string; name: string; capital: number; prices: PackagePrice[]; }
+interface ProductPackage { id: string; productId: string; name: string; capital: number; prices: PackagePrice[]; type?: 'fixed' | 'unit'; baseUnitPrice?: number | null; }
 interface ProductDTO {
   id: string; name: string;
-  packages: { id: string; name: string; capital?: number; basePrice?: number; prices?: any[] }[];
+  packages: { id: string; name: string; capital?: number; basePrice?: number; prices?: any[]; type?: 'fixed' | 'unit'; baseUnitPrice?: number | null; }[];
 }
 type BulkMode = 'percent' | 'fee';
 
@@ -335,7 +336,7 @@ export default function PriceGroupsPage() {
         for (const pkg of (prod.packages ?? [])) {
           const capital = toNumberSafe(pkg?.basePrice ?? pkg?.capital ?? 0);
           const prices = normalizePrices(pkg?.prices);
-      allPkgs.push({ id: pkg.id, productId: prod.id, name: pkg.name, capital, prices });
+          allPkgs.push({ id: pkg.id, productId: prod.id, name: pkg.name, capital, prices, type: pkg.type, baseUnitPrice: pkg.baseUnitPrice ?? null });
           pkgIds.push(pkg.id);
         }
         pList.push({ id: prod.id, name: prod.name, packageIds: pkgIds });
@@ -577,6 +578,10 @@ export default function PriceGroupsPage() {
   if (loading) return <div className="p-4 text-text-primary">جارٍ التحميل...</div>;
   if (error) return <div className="p-4 text-danger">{error}</div>;
 
+  // Assumption: Unit price overrides are managed relative to the FIRST price group (primary group) unless UI extended later.
+  const primaryGroupId = priceGroups[0]?.id; // may be undefined if no groups
+  const DECIMAL_DIGITS = getDecimalDigits();
+
   return (
     <div className="space-y-4">
       {/* شريط الإجراءات */}
@@ -633,7 +638,7 @@ export default function PriceGroupsPage() {
                 <span className="text-xs text-text-secondary">عدد الباقات: {prodPkgs.length}</span>
               </div>
               <div className="table-wrap overflow-auto">
-                <table className="table min-w-[900px]">
+                <table className="table min-w-[1000px]">
                   <thead>
                     <tr>
                       <th>اسم الباقة</th>
@@ -641,6 +646,7 @@ export default function PriceGroupsPage() {
                       {priceGroups.map((group) => (
                         <th key={group.id}>{group.name}</th>
                       ))}
+                      <th>Unit price</th>
                       <th className="w-28">الحالة</th>
                     </tr>
                   </thead>
@@ -678,6 +684,19 @@ export default function PriceGroupsPage() {
                             </td>
                           );
                         })}
+                        <td>
+                          {pkg.type === 'unit' && primaryGroupId ? (
+                            <UnitPriceOverrideCell
+                              key={pkg.id + '-unit'}
+                              packageId={pkg.id}
+                              groupId={primaryGroupId}
+                              baseUnitPrice={pkg.baseUnitPrice ?? null}
+                              digits={DECIMAL_DIGITS}
+                            />
+                          ) : (
+                            <span className="text-text-secondary">—</span>
+                          )}
+                        </td>
                         <td className="text-sm text-center">
                           {savingMap[pkg.id] ? (
                             <span className="text-warning">يحفظ…</span>
@@ -777,6 +796,181 @@ export default function PriceGroupsPage() {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+/* =========================================================
+   Unit Price Override Cell
+   - Shows editable field for unit packages only (using primary group)
+   - PUT /api/admin/price-groups/:groupId/package-prices/:packageId/unit { unitPrice }
+   - DELETE /api/admin/price-groups/:groupId/package-prices/:packageId/unit
+   - After mutation re-fetches current override via:
+     GET /api/admin/products/price-groups/:groupId/package-prices?packageId=...
+========================================================= */
+interface UnitOverrideFetchItem { packageId: string; unitPrice: number; }
+interface UnitOverrideFetchResponse { data?: UnitOverrideFetchItem[] | UnitOverrideFetchItem | null; unitPrice?: number; packageId?: string; }
+
+function UnitPriceOverrideCell({ packageId, groupId, baseUnitPrice, digits }: { packageId: string; groupId: string; baseUnitPrice: number | null; digits: number; }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [overrideValue, setOverrideValue] = useState<number | null>(null); // null => no override
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const step = priceInputStep(digits);
+
+  // Fetch current override
+  const fetchOverride = async () => {
+    try {
+      const url = `/api/admin/products/price-groups/${groupId}/package-prices?packageId=${packageId}`;
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) return; // silent
+      const json: any = await res.json().catch(() => ({}));
+      // Flexible: server might return {unitPrice} or array
+      let found: number | null = null;
+      if (typeof json?.unitPrice === 'number') found = json.unitPrice;
+      else if (Array.isArray(json?.data)) {
+        const item = json.data.find((x: any) => String(x?.packageId) === packageId);
+        if (item && typeof item.unitPrice === 'number') found = item.unitPrice;
+      } else if (json && typeof json === 'object' && typeof json.unitPrice === 'number') {
+        found = json.unitPrice;
+      }
+      setOverrideValue(found);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { fetchOverride(); }, [packageId, groupId]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.focus();
+  }, [editing]);
+
+  function startEdit() {
+    setDraft(overrideValue != null ? String(overrideValue) : (baseUnitPrice != null ? String(baseUnitPrice) : ''));
+    setEditing(true);
+  }
+
+  function validateDraft(val: string): number | null {
+    if (!val.trim()) return null; // treat empty as invalid until user types
+    const normalized = val.replace(',', '.');
+    if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
+    const num = Number(normalized);
+    if (!Number.isFinite(num) || num <= 0) return null;
+    // clamp decimals
+    return Number(clampPriceDecimals(num, digits));
+  }
+
+  async function save() {
+    const parsed = validateDraft(draft);
+    if (parsed == null) { toast.error('قيمة غير صالحة'); return; }
+    const prev = overrideValue;
+    setOverrideValue(parsed); // optimistic
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/price-groups/${groupId}/package-prices/${packageId}/unit`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unitPrice: parsed })
+      });
+      if (!res.ok) {
+        let msg = 'فشل الحفظ';
+        try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
+        setOverrideValue(prev);
+        toast.error(msg);
+      } else {
+        toast.success('تم حفظ سعر الوحدة.');
+        await fetchOverride();
+        setEditing(false);
+      }
+    } catch (e: any) {
+      setOverrideValue(prev);
+      toast.error(e.message || 'فشل الحفظ');
+    } finally { setLoading(false); }
+  }
+
+  async function removeOverride() {
+    if (overrideValue == null) return;
+    const prev = overrideValue;
+    setOverrideValue(null); // optimistic
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/price-groups/${groupId}/package-prices/${packageId}/unit`, { method: 'DELETE' });
+      if (!res.ok) {
+        let msg = 'فشل الحذف';
+        try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
+        setOverrideValue(prev);
+        toast.error(msg);
+      } else {
+        toast.success('تم حذف التخصيص.');
+        await fetchOverride();
+      }
+    } catch (e: any) {
+      setOverrideValue(prev);
+      toast.error(e.message || 'فشل الحذف');
+    } finally { setLoading(false); setEditing(false); }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-1">
+        {overrideValue != null ? (
+          <>
+            <span className="text-sm font-medium">{clampPriceDecimals(overrideValue, digits)}</span>
+            <span className="text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary">Overridden</span>
+            <button
+              aria-label="تعديل سعر الوحدة"
+              onClick={startEdit}
+              className="text-xs px-1.5 py-0.5 rounded bg-bg-surface-alt border border-border hover:bg-primary/10"
+            >تعديل</button>
+            <button
+              aria-label="حذف التخصيص"
+              onClick={removeOverride}
+              className="text-xs px-1.5 py-0.5 rounded bg-danger text-text-inverse hover:brightness-110"
+            >×</button>
+          </>
+        ) : (
+          <>
+            <button
+              aria-label="تعديل سعر الوحدة"
+              onClick={startEdit}
+              className="text-xs px-2 py-1 rounded bg-bg-surface-alt border border-border hover:bg-primary/10"
+            >{baseUnitPrice != null ? clampPriceDecimals(baseUnitPrice, digits) : '—'}</button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1" aria-busy={loading || undefined}>
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="decimal"
+        step={step}
+        className="input w-24"
+        value={draft}
+        disabled={loading}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setEditing(false); } }}
+        onBlur={() => { /* keep edit mode until explicit save/cancel */ }}
+  placeholder={baseUnitPrice != null ? String(clampPriceDecimals(baseUnitPrice, digits)) : '0'}
+        aria-label="قيمة سعر الوحدة"
+      />
+      <button
+        onClick={save}
+        disabled={loading}
+        className="text-xs px-2 py-1 rounded bg-success text-text-inverse hover:brightness-110 disabled:opacity-50"
+      >✓</button>
+      <button
+        onClick={() => { setEditing(false); setDraft(''); }}
+        disabled={loading}
+        className="text-xs px-2 py-1 rounded bg-gray-600 text-text-inverse hover:brightness-110 disabled:opacity-50"
+      >إلغاء</button>
+      {overrideValue != null && !loading && (
+        <span className="text-[11px] text-text-secondary" title={`base: ${baseUnitPrice ?? '—'}`}>(base: {baseUnitPrice ?? '—'})</span>
+      )}
+      {loading && <span className="text-[11px] text-text-secondary">…</span>}
     </div>
   );
 }

@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState, useMemo } from "react";
+import toast from 'react-hot-toast';
+import { getDecimalDigits, formatPrice, priceInputStep, clampPriceDecimals } from '@/utils/pricingFormat';
+import CounterPurchaseCard from '@/components/CounterPurchaseCard';
 import { useParams, useRouter  } from "next/navigation";
 import api, { API_ROUTES } from '@/utils/api';
 import { useUser } from '../../../context/UserContext';
@@ -20,6 +23,14 @@ interface Package {
   isActive: boolean;
   description?: string;
   prices?: PackagePriceItem[];
+  // unit pricing fields (present only if type==='unit')
+  type?: 'fixed' | 'unit';
+  baseUnitPrice?: number | null;
+  unitName?: string | null;
+  unitCode?: string | null;
+  minUnits?: number | null;
+  maxUnits?: number | null;
+  step?: number | null; // optional server-provided preferred step (fallback to env digits)
 }
 
 interface Product {
@@ -29,6 +40,7 @@ interface Product {
   isActive: boolean;
   packages: Package[];
   currencyCode?: string;
+  supportsCounter?: boolean; // feature flag
 }
 
 function currencySymbol(code?: string) {
@@ -144,6 +156,8 @@ export default function ProductDetailsPage() {
   const activePkgs = (product.packages || []).filter(p => p.isActive);
   const sym = currencySymbol(currencyCode);
   const imageSrc = normalizeImageUrl(product.imageUrl, apiHost);
+  const unitPkgs = activePkgs.filter(p => p.type === 'unit');
+  const showCounterCard = Boolean(product.supportsCounter && unitPkgs.length > 0);
 
   return (
     <div className="p-3 text-center bg-bg-base text-text-primary">
@@ -190,6 +204,17 @@ export default function ProductDetailsPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {showCounterCard && (
+        <div className="mt-8 max-w-md mx-auto w-full">
+          <CounterPurchaseCard
+            product={product}
+            packages={unitPkgs}
+            currencyCode={currencyCode}
+            getUserPriceGroupId={getUserPriceGroupId}
+          />
         </div>
       )}
 
@@ -240,3 +265,5 @@ export default function ProductDetailsPage() {
     </div>
   );
 }
+
+// CounterPurchaseCard moved to separate component for testing

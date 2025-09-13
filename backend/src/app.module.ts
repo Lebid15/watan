@@ -42,6 +42,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './dev/all-exceptions.filter';
 import { SchemaGuardService } from './infrastructure/schema/schema-guard.service';
 import { DeveloperNote } from './dev/developer-note.entity';
+import { Currency } from './currencies/currency.entity';
 import { DeveloperNotesService } from './dev/developer-notes.service';
 import { DeveloperNotesController } from './dev/developer-notes.controller';
 import { MuhammedModule } from './muhammed/muhammed.module';
@@ -66,6 +67,9 @@ import { MuhammedModule } from './muhammed/muhammed.module';
             type: 'sqlite',
             database: ':memory:',
             autoLoadEntities: true,
+            // Explicitly include entities with problematic relation ordering (Currency) to avoid metadata race
+            // Include User as well so the ManyToOne(User.currency) metadata is registered when Currency loads first
+            entities: [Currency, require('./user/user.entity').User],
             synchronize: true,
             dropSchema: true,
             migrationsRun: false,
@@ -128,8 +132,10 @@ import { MuhammedModule } from './muhammed/muhammed.module';
         };
       },
     }),
-  // Disable scheduler module when testing
-  ...(process.env.NODE_ENV === 'test' ? [] : [ScheduleModule.forRoot()]),
+  // Conditionally disable scheduler module in tests when TEST_DISABLE_SCHEDULERS=true (omit entirely)
+  ...((process.env.NODE_ENV === 'test' && process.env.TEST_DISABLE_SCHEDULERS === 'true')
+    ? []
+    : [ScheduleModule.forRoot()]),
     UserModule,
     AuthModule,
   PasskeysModule,
@@ -150,7 +156,7 @@ import { MuhammedModule } from './muhammed/muhammed.module';
   MuhammedModule,
   // Repositories needed directly in AppModule-level controllers (e.g., AdminCountsController)
   // Include ProductOrder + Deposit so their repositories can be injected.
-  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot, ProductOrder, Deposit, DeveloperNote]),
+  TypeOrmModule.forFeature([Tenant, TenantDomain, ProductImageMetricsSnapshot, ProductOrder, Deposit, DeveloperNote, Currency]),
   ],
   // DebugAuthController is registered inside AuthModule (avoid double registration here)
   controllers: [HealthController, MetricsController, AdminCountsController, DeveloperNotesController],

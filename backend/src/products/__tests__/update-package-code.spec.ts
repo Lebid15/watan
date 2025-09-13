@@ -4,6 +4,9 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ProductPackage } from '../product-package.entity';
 import { Repository } from 'typeorm';
 import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { IdempotentRequest } from '../idempotent-request.entity';
+import { PricingService } from '../pricing.service';
+import { ClientApiWebhookEnqueueService } from '../../client-api/client-api-webhook.enqueue.service';
 
 // Minimal mocks for required repositories (only packagesRepo used here)
 function repoMock() {
@@ -26,18 +29,22 @@ describe('ProductsService.updatePackageCode', () => {
         { provide: getRepositoryToken(require('../product.entity').Product), useValue: {} },
         { provide: getRepositoryToken(require('../price-group.entity').PriceGroup), useValue: {} },
         { provide: getRepositoryToken(require('../package-price.entity').PackagePrice), useValue: {} },
+  { provide: getRepositoryToken(IdempotentRequest), useValue: {} },
   { provide: getRepositoryToken(require('../product-order.entity').ProductOrder), useValue: {} },
   { provide: getRepositoryToken(require('../../user/user.entity').User), useValue: {} },
   { provide: getRepositoryToken(require('../../currencies/currency.entity').Currency), useValue: {} },
   { provide: getRepositoryToken(require('../order-dispatch-log.entity').OrderDispatchLog), useValue: {} },
   { provide: getRepositoryToken(require('../../integrations/package-routing.entity').PackageRouting), useValue: {} },
   { provide: getRepositoryToken(require('../../integrations/package-mapping.entity').PackageMapping), useValue: {} },
+  { provide: getRepositoryToken(require('../../integrations/package-cost.entity').PackageCost), useValue: {} },
   { provide: getRepositoryToken(require('../../distributor/distributor-pricing.entities').DistributorPackagePrice), useValue: {} },
   { provide: getRepositoryToken(require('../../distributor/distributor-pricing.entities').DistributorUserPriceGroup), useValue: {} },
   // Unused in these tests but required by constructor injection
   { provide: require('../../integrations/integrations.service').IntegrationsService, useValue: {} },
   { provide: require('../../notifications/notifications.service').NotificationsService, useValue: {} },
   { provide: require('../../accounting/accounting-periods.service').AccountingPeriodsService, useValue: {} },
+  { provide: PricingService, useValue: { getEffectiveUnitPrice: jest.fn(), validateQuantity: jest.fn(), quoteUnitOrder: jest.fn() } },
+        { provide: ClientApiWebhookEnqueueService, useValue: { enqueue: jest.fn() } },
       ],
     }).compile();
 
