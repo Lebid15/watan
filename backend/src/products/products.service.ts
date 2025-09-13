@@ -1113,34 +1113,19 @@ export class ProductsService {
     if (data.publicCode != null) {
       const pc = Number(data.publicCode);
       if (Number.isInteger(pc) && pc > 0) {
-        // (1) تحقق من التفرد داخل نفس المنتج (حفاظاً على السلوك السابق)
         const existingProductScope = await this.packagesRepo.findOne({ where: { product: { id: product.id }, publicCode: pc } as any });
         if (existingProductScope) {
           console.warn('[PKG][CREATE][ERR] publicCode already used in SAME PRODUCT', { publicCode: pc, productId: product.id });
-          const err: any = new ConflictException('الكود مستخدم داخل نفس المنتج');
+          const err: any = new ConflictException('الكود مستخدم داخل نفس المنتج فقط (مسموح في منتجات أخرى)');
           err.code = 'PKG_PUBLIC_CODE_CONFLICT_PRODUCT';
           throw err;
         }
-        // (2) تحقق من التفرد داخل نفس المستأجر (لتوافق القيد الفعلي ux_product_packages_tenant_public_code إن وجد)
-        try {
-          const existingTenantScope = await this.packagesRepo.findOne({ where: { tenantId, publicCode: pc } as any });
-          if (existingTenantScope) {
-            console.warn('[PKG][CREATE][ERR] publicCode already used in TENANT (different product)', { publicCode: pc, tenantId: tenantId.slice(0,8) });
-            const err: any = new ConflictException('هذا الكود مستخدم في منتج آخر لنفس المستأجر');
-            err.code = 'PKG_PUBLIC_CODE_CONFLICT_TENANT';
-            throw err;
-          }
-        } catch (chkErr) {
-          // لو فشل الاستعلام لا نمنع الحفظ لكن نسجل فقط
-          console.warn('[PKG][CREATE][WARN] tenant-scope check failed', (chkErr as any)?.message);
-        }
-        if (product) console.log('[PKG][CREATE][INFO] assigning publicCode', { pc, productId: product.id });
         (newPackage as any).publicCode = pc;
       } else if (data.publicCode !== null) {
         console.warn('[PKG][CREATE][ERR] invalid publicCode value', { value: data.publicCode });
-  const err: any = new BadRequestException('publicCode غير صالح (يجب أن يكون رقمًا موجبًا)');
-  err.code = 'PKG_PUBLIC_CODE_INVALID';
-  throw err;
+        const err: any = new BadRequestException('publicCode غير صالح (يجب أن يكون رقمًا موجبًا)');
+        err.code = 'PKG_PUBLIC_CODE_INVALID';
+        throw err;
       }
     }
 
@@ -1152,22 +1137,9 @@ export class ProductsService {
       // التقاط تعارض unique (PostgreSQL code 23505)
       const detail: string = e?.detail || '';
       const constraint: string = e?.constraint || '';
-      const msg: string = e?.message || '';
-      const blob = `${detail} ${constraint} ${msg}`;
-      const isTenantIdx = /ux_product_packages_tenant_public_code/i.test(blob);
-      const isProductIdx = /ux_product_packages_product_public_code/i.test(blob);
-      if (e?.code === '23505') {
-        if (isTenantIdx) {
-          console.warn('[PKG][CREATE][DB][UNIQUE_VIOLATION][TENANT]', { detail, constraint });
-          throw new ConflictException('فشل الحفظ: الكود مستخدم داخل نفس المستأجر');
-        }
-        if (isProductIdx) {
-          console.warn('[PKG][CREATE][DB][UNIQUE_VIOLATION][PRODUCT]', { detail, constraint });
-          throw new ConflictException('فشل الحفظ: الكود مستخدم داخل نفس المنتج');
-        }
-        // fallback عام لو لم يتعرف على الاسم
-        console.warn('[PKG][CREATE][DB][UNIQUE_VIOLATION][UNKNOWN]', { detail, constraint });
-        throw new ConflictException('فشل الحفظ: الكود مستخدم بالفعل');
+      if (e?.code === '23505' && /ux_product_packages_product_public_code/i.test(`${detail} ${constraint}`)) {
+        console.warn('[PKG][CREATE][DB][UNIQUE_VIOLATION][PRODUCT]', { detail, constraint });
+        throw new ConflictException('فشل الحفظ: الكود مستخدم داخل نفس المنتج فقط');
       }
       throw e; // إعادة الرمي إن لم يُعرّف لدينا
     }

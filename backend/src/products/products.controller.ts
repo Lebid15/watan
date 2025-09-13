@@ -237,6 +237,8 @@ export class ProductsController {
   }
 
   @Delete(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.DEVELOPER, UserRole.INSTANCE_OWNER)
   async delete(@Req() req: Request, @Param('id') id: string): Promise<{ message: string }> {
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
     const role = (req as any).user?.roleFinal || (req as any).user?.role;
