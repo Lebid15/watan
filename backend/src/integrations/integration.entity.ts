@@ -53,7 +53,8 @@ export class Integration {
   @Column({ type: 'numeric', precision: 18, scale: 3, nullable: true })
   balance?: string | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  // Use generic datetime when running with in-memory sqlite tests
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', nullable: true })
   balanceUpdatedAt?: Date | null;
 
   @CreateDateColumn()
