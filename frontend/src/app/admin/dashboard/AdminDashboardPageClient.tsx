@@ -32,7 +32,8 @@ export default function AdminDashboardPageClient() {
 
   return (
     <div>
-      <h1 className="text-lg p-5 font-bold mb-3">لوحة تحكم المشرف</h1>
+      {/* الهيدر: جعل الموبايل هو الافتراضي (أصغر) ثم الحفاظ على القيم الأصلية على الشاشات >= md */}
+      <h1 className="text-sm md:text-lg p-3 md:p-5 font-bold mb-2 md:mb-3">لوحة تحكم المشرف</h1>
       <div className="space-y-2">
         <p>مرحباً، {user?.fullName || user?.email}</p>
         <p>هنا سنقدم جميع التعلميات الخاصة بالموضع87</p>
