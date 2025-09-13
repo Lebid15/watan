@@ -7,6 +7,7 @@ import MobileZoomFrame from '@/components/MobileZoomFrame';
 import api, { API_ROUTES } from '@/utils/api';
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
+  // الحد الأقصى لعرض منطقة الإدارة (تصميم ديسكتوب) مع واجهة مرنة mobile-first
   const DESIGN_WIDTH = 1280;
   const [authReady, setAuthReady] = useState(false);
   const router = useRouter();
@@ -75,12 +76,14 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   if (!authReady) return null;
 
   const inner = (
-    <div className="mx-auto" style={{ width: DESIGN_WIDTH, minWidth: DESIGN_WIDTH, minHeight: '100vh', overflowX: 'auto' }}>
+    <div className="w-full min-h-screen flex flex-col">
       <div className="bg-[var(--toppage)] text-gray-100">
         <AdminTopBar alertMessage={alertMessage} onLogout={handleLogout} />
       </div>
       <AdminNavbar />
-      <div className="p-">{children}</div>
+      <div className="flex-1 w-full mx-auto max-w-[1280px] px-3 sm:px-4 md:px-6 lg:px-8 py-4">
+        {children}
+      </div>
     </div>
   );
 
@@ -88,6 +91,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     <div className="w-full min-h-screen overflow-auto">
       {isMobileFrame ? (
         <div className="p-4">
+          {/* إطار الاختبار للموبايل (يحتفظ به) */}
           <MobileZoomFrame width={390}>{inner}</MobileZoomFrame>
         </div>
       ) : inner}

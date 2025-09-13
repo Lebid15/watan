@@ -9,21 +9,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ar" dir="rtl" data-theme="dark1" suppressHydrationWarning>
       <head>
         <title>Watan Store</title>
-        {/* Viewport: enforce desktop width for backoffice (/admin & /dev), otherwise standard responsive */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){
-              try {
-                var path = window.location.pathname;
-                var isBackoffice = path.startsWith('/admin') || path.startsWith('/dev');
-                var viewport = document.createElement('meta');
-                viewport.name = 'viewport';
-                viewport.content = isBackoffice ? 'width=1280, initial-scale=1' : 'width=device-width, initial-scale=1, viewport-fit=cover';
-                document.head.appendChild(viewport);
-              } catch(e) {}
-            })();`,
-          }}
-        />
+        {/* ثابت: جعل التطبيق يعمل بنهج mobile-first */}
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){
