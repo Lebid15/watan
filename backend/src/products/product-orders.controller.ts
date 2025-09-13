@@ -11,6 +11,8 @@ import {
   Patch,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { ApiBadRequestResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { CreateOrderDto } from './dto/create-order.dto';
 import type { Request } from 'express';
 import { ProductsService } from './products.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -22,6 +24,7 @@ import { ListOrdersDto } from './dto/list-orders.dto';
 export type OrderStatus = 'pending' | 'approved' | 'rejected';
 
 @UseGuards(JwtAuthGuard)
+@ApiTags('orders')
 @Controller('orders')
 export class ProductOrdersController {
   constructor(private readonly productsService: ProductsService) {}
@@ -90,16 +93,34 @@ export class ProductOrdersController {
 
   /** إنشاء طلب جديد (المستخدم الحالي فقط) */
   @Post()
-  async createOrder(
-    @Body()
-    body: {
-      productId: string;
-      packageId: string;
-      quantity: number;
-      userIdentifier?: string;
-      extraField?: string;
-      orderUuid?: string | null;
+  @ApiOkResponse({
+    description: 'Order created',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        order_uuid: { type: 'string', nullable: true },
+        origin: { type: 'string', example: 'panel' },
+        status: { type: 'string', example: 'pending' },
+        quantity: { type: 'string', example: '2.5' },
+        price_usd: { type: 'number', example: 3.125 },
+        unit_price_usd: { type: 'number', example: 1.25 },
+        unitPriceApplied: { type: 'string', example: '1.2500' },
+        sellPrice: { type: 'string', example: '3.1250' },
+        cost: { type: 'string', nullable: true, example: '0.0000' },
+        profit: { type: 'string', nullable: true, example: '3.1250' },
+        created_at: { type: 'string', format: 'date-time' },
+        product: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string', nullable: true } } },
+        package: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string', nullable: true } } },
+        userIdentifier: { type: 'string', nullable: true },
+        extraField: { type: 'string', nullable: true },
+        reused: { type: 'boolean', example: false },
+      },
     },
+  })
+  @ApiBadRequestResponse({ description: 'ERR_UNIT_NOT_SUPPORTED | ERR_QUANTITY_REQUIRED | ERR_QTY_BELOW_MIN | ERR_QTY_ABOVE_MAX | ERR_QTY_STEP_MISMATCH | ERR_UNIT_PRICE_MISSING' })
+  async createOrder(
+    @Body() body: CreateOrderDto,
     @Req() req: Request,
   ) {
     const user = req.user as any;
@@ -107,7 +128,7 @@ export class ProductOrdersController {
     const unified = await this.productsService.createOrder({
       productId: body.productId,
       packageId: body.packageId,
-      quantity: body.quantity,
+      quantity: body.quantity ? Number(body.quantity) : (body as any).quantity,
       userId: user.id,
       userIdentifier: body.userIdentifier,
       extraField: body.extraField,
@@ -120,7 +141,7 @@ export class ProductOrdersController {
       order_uuid: unified.order_uuid || null,
       origin: unified.origin,
       status: unified.status,
-      quantity: unified.quantity,
+      quantity: unified.quantity != null ? String(unified.quantity) : null,
       price_usd: unified.priceUSD,
       unit_price_usd: unified.unitPriceUSD,
       created_at: unified.createdAt,
@@ -129,6 +150,10 @@ export class ProductOrdersController {
       userIdentifier: unified.userIdentifier ?? null,
       extraField: unified.extraField ?? null,
       reused: unified.reused || false,
+      unitPriceApplied: (unified as any).unitPriceApplied || null,
+      sellPrice: (unified as any).sellPrice || null,
+      cost: (unified as any).cost || null,
+      profit: (unified as any).profit || null,
     };
   }
 
