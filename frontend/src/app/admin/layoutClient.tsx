@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AdminNavbar from './AdminNavbar';
@@ -8,12 +8,29 @@ import api, { API_ROUTES } from '@/utils/api';
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   const DESIGN_WIDTH = 1280;
+
   const [authReady, setAuthReady] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
   const router = useRouter();
   const search = useSearchParams();
-  const isMobileFrame = search.get('mobile') === '1';
-  // رسالة التنبيه العامة (يتم ضبطها من صفحة المطور). نتركها فارغة إن لم تُحدد.
-  const [alertMessage, setAlertMessage] = useState('');
+
+  // ====== تصغير ديناميكي على الشاشات الأصغر من 1280 ======
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const calc = () => {
+      const w = typeof window !== 'undefined' ? window.innerWidth : DESIGN_WIDTH;
+      // تصغير بين 0.55 و 1 حسب عرض الجهاز
+      const s = Math.min(1, Math.max(0.55, w / DESIGN_WIDTH));
+      setScale(s);
+    };
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
+  // تمكين الإطار المصغّر إذا الكشف ديناميكياً أو عبر بارامتر mobile=1
+  const isMobileFrameParam = search.get('mobile') === '1';
+  const useMobileScale = scale < 1 || isMobileFrameParam;
+  // =======================================================
 
   useEffect(() => {
     let mounted = true;
@@ -36,21 +53,17 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     return () => { mounted = false; };
   }, [router]);
 
-  // دالة إعادة تحميل الملاحظة من localStorage
+  // تحميل رسالة التنبيه العامة من localStorage
   const loadAlert = () => {
     try {
       const note = localStorage.getItem('adminGlobalAlert');
-      if (note && note.trim()) {
-        setAlertMessage(note.trim());
-      } else {
-        setAlertMessage('');
-      }
+      setAlertMessage(note && note.trim() ? note.trim() : '');
     } catch {
       setAlertMessage('');
     }
   };
 
-  // تحميل أولي + تحديث عند تركيز النافذة أو تغيير الرؤية أو استقبال حدث مخصص
+  // تحميل أولي + تحديث عند التركيز/تغير الرؤية/حدث مخصص
   useEffect(() => {
     loadAlert();
     const onCustom = () => loadAlert();
@@ -68,28 +81,58 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
 
   const handleLogout = async () => {
     try { await api.post('/auth/logout'); } catch {}
-    try { localStorage.removeItem('user'); localStorage.removeItem('userPriceGroupId'); localStorage.removeItem('token'); } catch {}
+    try {
+      localStorage.removeItem('user');
+      localStorage.removeItem('userPriceGroupId');
+      localStorage.removeItem('token');
+    } catch {}
     router.replace('/login');
   };
 
   if (!authReady) return null;
-  const inner = (
-    <div className="mx-auto" style={{ width: DESIGN_WIDTH, minWidth: DESIGN_WIDTH, minHeight: '100vh', overflowX: 'auto' }}>
+
+  // المحتوى الداخلي (بدون خصائص سكول أفقي)
+  const innerCore = (
+    <>
       <div className="bg-[var(--toppage)] text-gray-100">
         <AdminTopBar alertMessage={alertMessage} onLogout={handleLogout} />
       </div>
       <AdminNavbar />
       <div className="p-">{children}</div>
+    </>
+  );
+
+  // حاوية الديسكتوب بعرض ثابت 1280
+  const desktopContainer = (
+    <div
+      className="mx-auto"
+      style={{ width: DESIGN_WIDTH, minWidth: DESIGN_WIDTH, minHeight: '100vh' }}
+    >
+      {innerCore}
     </div>
   );
 
   return (
-    <div className="w-full min-h-screen overflow-auto">
-      {isMobileFrame ? (
-        <div className="p-4">
-          <MobileZoomFrame width={390}>{inner}</MobileZoomFrame>
+    <div className="w-full min-h-screen" style={{ overflowX: 'hidden' }}>
+      {useMobileScale ? (
+        // غلاف التصغير: يمنع السكرول الأفقي ويضبط التمرير العمودي
+        <div style={{ width: '100%', overflowX: 'hidden' }}>
+          <div
+            style={{
+              width: DESIGN_WIDTH,
+              margin: '0 auto',
+              transform: `scale(${scale})`,
+              transformOrigin: 'top center',
+              minHeight: `calc(100vh / ${scale})`,
+              willChange: 'transform',
+            }}
+          >
+            {desktopContainer}
+          </div>
         </div>
-      ) : inner}
+      ) : (
+        desktopContainer
+      )}
     </div>
   );
 }
