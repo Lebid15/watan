@@ -24,24 +24,19 @@ export class PagesController {
     const hasTenant = await this.hasTenantColumn();
 
     if (hasTenant) {
-      // إذا كان العمود موجودًا: جرّب tenantId أولاً، ثم قيمة عامة (NULL) ثم قيمة عامة بلا عمود (توافقًا)
-      const byTenant = tenantId
-        ? await this.repo.findOne({ where: { key, tenantId } as any })
-        : null;
-      if (byTenant?.value != null) return byTenant.value;
-
-      const byNull = await this.repo.findOne({ where: { key, tenantId: null } as any });
-      if (byNull?.value != null) return byNull.value;
-
-      const byKeyOnly = await this.repo.findOne({ where: { key } as any });
-      if (byKeyOnly?.value != null) return byKeyOnly.value;
-
-      return null;
-    } else {
-      // لا يوجد tenantId في الجدول: اعتمد المفتاح فقط
-      const plain = await this.repo.findOne({ where: { key } as any });
-      return plain?.value ?? null;
+      // 1) قيمة خاصة بالمستأجر
+      if (tenantId) {
+        const byTenant = await this.repo.findOne({ where: { key, tenantId } as any });
+        if (byTenant?.value != null) return byTenant.value;
+      }
+      // 2) قيمة افتراضية عامة (tenantId NULL) فقط – لا رجوع لأي مستأجر آخر
+      const globalDefault = await this.repo.findOne({ where: { key, tenantId: null } as any });
+      return globalDefault?.value ?? null;
     }
+
+    // وضع التوافق القديم (قبل وجود عمود tenantId)
+    const legacy = await this.repo.findOne({ where: { key } as any });
+    return legacy?.value ?? null;
   }
 
   @Get('about')
