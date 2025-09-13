@@ -30,9 +30,11 @@ export class PasskeyChallengeStore implements OnModuleDestroy {
         this.redis = null;
       }
     }
-    // periodic cleanup
-    this.cleaner = setInterval(() => this.cleanup(), 60_000);
-    if (this.cleaner.unref) this.cleaner.unref();
+    // periodic cleanup (disabled in tests to reduce open handles)
+    if (!(process.env.NODE_ENV === 'test' && process.env.TEST_DISABLE_SCHEDULERS === 'true')) {
+      this.cleaner = setInterval(() => this.cleanup(), 60_000);
+      if ((this.cleaner as any)?.unref) (this.cleaner as any).unref();
+    }
   }
 
   async onModuleDestroy() {

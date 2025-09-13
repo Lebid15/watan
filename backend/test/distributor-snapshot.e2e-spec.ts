@@ -45,7 +45,8 @@ describe('Distributor Snapshot & FX Freeze (E2E)', () => {
     await insert('currencies', { id: 'c-sar', tenantId: TID, code: 'SAR', name: 'Saudi Riyal', rate: 3.7500, isActive: 1, isPrimary: 0 });
 
     // Tenant (needed for FK constraints on users / price_groups). Insert with minimal required fields.
-  await q('INSERT INTO tenants (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)', [
+    // Table name is 'tenant' (singular) per entity mapping.
+    await q('INSERT INTO tenant (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)', [
       TID,
       'Tenant One',
       't1',

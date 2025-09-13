@@ -5,31 +5,35 @@ import { ProductPackage } from './product-package.entity';
 import { User } from '../user/user.entity';
 import { PackagePrice } from './package-price.entity';
 import { Product } from './product.entity';
+import { getPriceDecimals, getScaleBigInt } from '../config/pricing.config';
+import { isValidDec } from './decimal.util';
 
-// ثابت مقياس (scale=4)
-const SCALE = 10000n;
-
+// Local helpers leveraging dynamic SCALE (10 ** priceDecimals)
 function toScaled(value: string | number | null | undefined): bigint {
   if (value === null || value === undefined) throw new Error('VALUE_REQUIRED');
   const s = String(value).trim();
   if (!s) throw new Error('VALUE_REQUIRED');
   if (!/^[-+]?\d*(?:\.\d+)?$/.test(s)) throw new Error('INVALID_NUMBER');
+  const decimals = getPriceDecimals();
   const [intPart, fracRaw = ''] = s.split('.');
-  const frac = (fracRaw + '0000').slice(0, 4); // pad / trim
+  const pad = '0'.repeat(decimals);
+  const frac = (fracRaw + pad).slice(0, decimals);
   const sign = s.startsWith('-') ? -1n : 1n;
   const intDigits = intPart.replace(/^[-+]/, '') || '0';
   const bi = BigInt(intDigits);
-  const bf = BigInt(frac);
-  return sign * (bi * SCALE + bf);
+  const bf = BigInt(frac || '0');
+  return sign * (bi * getScaleBigInt() + bf);
 }
 
 function scaledToString(v: bigint): string {
+  const decimals = getPriceDecimals();
   const sign = v < 0n ? '-' : '';
   const abs = v < 0n ? -v : v;
-  const intPart = abs / SCALE;
-  const frac = abs % SCALE;
-  const fracStr = frac.toString().padStart(4, '0').replace(/0{1,4}$/, (m) => m.length === 4 ? '0000' : m); // keep exactly 4
-  return `${sign}${intPart.toString()}.${frac.toString().padStart(4, '0')}`; // always 4 decimals
+  const scaleBig = getScaleBigInt();
+  const intPart = abs / scaleBig;
+  const frac = abs % scaleBig;
+  const fracStr = frac.toString().padStart(decimals, '0');
+  return decimals > 0 ? `${sign}${intPart.toString()}.${fracStr}` : `${sign}${intPart.toString()}`;
 }
 
 @Injectable()
@@ -70,8 +74,7 @@ export class PricingService {
     if (chosen == null || !(chosen > 0)) {
       throw new BadRequestException('ERR_UNIT_PRICE_MISSING');
     }
-    // to scale 4 string
-    return Number(chosen).toFixed(4);
+    return Number(chosen).toFixed(getPriceDecimals());
   }
 
   validateQuantity(params: { quantity: string; minUnits?: string; maxUnits?: string; step?: string }): void {
@@ -116,18 +119,20 @@ export class PricingService {
     const unitPriceApplied = await this.getEffectiveUnitPrice({ tenantId, userId, packageId });
     const qScaled = toScaled(quantity);
     const uScaled = toScaled(unitPriceApplied);
-    const sellScaled = (qScaled * uScaled) / SCALE; // (qty * unit) / 10000 to keep scale=4
+    const scaleBig = getScaleBigInt();
+    const sellScaled = (qScaled * uScaled) / scaleBig; // (qty * unit) / SCALE
     let cost: string | undefined; let profit: string | undefined;
     if (pkg.capital != null && Number(pkg.capital) > 0) {
-      const unitCostScaled = toScaled(Number(pkg.capital).toFixed(4));
-      const costScaled = (qScaled * unitCostScaled) / SCALE;
+      const unitCostScaled = toScaled(Number(pkg.capital).toFixed(getPriceDecimals()));
+      const costScaled = (qScaled * unitCostScaled) / scaleBig;
       const profitScaled = sellScaled - costScaled;
       cost = scaledToString(costScaled);
       profit = scaledToString(profitScaled);
     }
+    const decimals = getPriceDecimals();
     return {
-      unitPriceApplied: uScaled === 0n ? '0.0000' : unitPriceApplied,
-      quantity: Number(quantity).toFixed(4).replace(/0+$/,'').replace(/\.$/,'') || quantity,
+      unitPriceApplied: uScaled === 0n ? (decimals ? `0.${'0'.repeat(decimals)}` : '0') : unitPriceApplied,
+      quantity: Number(quantity).toFixed(decimals).replace(/0+$/,'').replace(/\.$/,'') || quantity,
       sellPrice: scaledToString(sellScaled),
       cost,
       profit,

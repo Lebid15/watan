@@ -8,7 +8,7 @@ import { jwtConstants } from '../src/auth/constants';
 
 // This test now provisions a tenant + admin user context explicitly since product routes require tenant context.
 function adminToken(tenantId: string) {
-  return jwt.sign({ sub: 'admin-user-id', role: 'admin', email: 'admin@example.com', tenantId }, jwtConstants.secret, { expiresIn: '10m' });
+  return jwt.sign({ sub: 'admin-user-id', role: 'admin', email: 'admin@example.com', tenantId, totpVerified: true }, jwtConstants.secret, { expiresIn: '10m' });
 }
 
 describe('Admin Product Image (e2e)', () => {
@@ -26,12 +26,14 @@ describe('Admin Product Image (e2e)', () => {
   ds = app.get<DataSource>(DataSource);
   });
 
-  afterAll(async () => { if (app) await app.close(); });
+  afterAll(async () => { if (app) { try { if (ds?.isInitialized) await ds.destroy(); } catch {} await app.close(); } });
 
   it('provisions tenant + product', async () => {
     // Seed tenant + product directly (avoids hitting /products POST which lacks JwtAuthGuard so guard expects user but none set).
     tenantId = '11111111-1111-1111-1111-111111111111';
-  await ds.query(`INSERT INTO tenants (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, [tenantId, 'Test Tenant', 'testcode', null, 1, new Date().toISOString(), new Date().toISOString()]);
+    // NOTE: Entity maps to table name 'tenant' (singular) – tests previously used 'tenants'.
+  await ds.query(`INSERT INTO tenant (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, [tenantId, 'Test Tenant', 'testcode', null, 1, new Date().toISOString(), new Date().toISOString()]);
+  await ds.query(`INSERT INTO tenant_domain (id, tenantId, domain, type, isPrimary, isVerified, createdAt, updatedAt) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))`, ['td-img-1', tenantId, '127.0.0.1', 'subdomain', 1, 1]);
     await ds.query(`INSERT INTO tenant_domain (id, tenantId, domain, type, isPrimary, isVerified, createdAt, updatedAt) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))`, ['dom-1', tenantId, '127.0.0.1', 'subdomain', 1, 1]);
     createdProductId = '22222222-2222-2222-2222-222222222222';
   await ds.query(`INSERT INTO product (id, tenantId, name, description, customImageUrl, isActive) VALUES (?,?,?,?,?,?)`, [

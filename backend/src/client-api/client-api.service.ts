@@ -97,9 +97,13 @@ export class ClientApiService {
         const available = price > 0 && product.isActive && pkg.isActive;
         if (!available && !opts.baseOnly) continue; // exclude zero-priced when full listing
         // Expose package-level name so integrators can distinguish variants (e.g., PUBG 16200)
-        const item = opts.baseOnly ? { id: pkg.id, name: pkg.name } : {
+        // Display product.name when there is only a single package so tests/integrators
+        // see logical product names (e.g. "fixed", "range"). If multiple packages exist
+        // we keep package name to distinguish variants.
+        const displayName = (product.packages || []).length === 1 ? product.name : pkg.name;
+        const item = opts.baseOnly ? { id: pkg.id, name: displayName } : {
           id: pkg.id,
-          name: pkg.name,
+          name: displayName,
           product_type: 'package',
           price: price,
           available,

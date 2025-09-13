@@ -6,12 +6,15 @@ import { Product } from '../product.entity';
 import { ProductPackage } from '../product-package.entity';
 import { PackagePrice } from '../package-price.entity';
 import { PriceGroup } from '../price-group.entity';
+import { IdempotentRequest } from '../idempotent-request.entity';
+import { PricingService } from '../pricing.service';
 import { User } from '../../user/user.entity';
 import { ProductOrder } from '../product-order.entity';
 import { Currency } from '../../currencies/currency.entity';
 import { OrderDispatchLog } from '../order-dispatch-log.entity';
 import { PackageRouting } from '../../integrations/package-routing.entity';
 import { PackageMapping } from '../../integrations/package-mapping.entity';
+import { PackageCost } from '../../integrations/package-cost.entity';
 import {
   DistributorPackagePrice,
   DistributorUserPriceGroup,
@@ -19,6 +22,7 @@ import {
 import { NotificationsService } from '../../notifications/notifications.service';
 import { IntegrationsService } from '../../integrations/integrations.service';
 import { AccountingPeriodsService } from '../../accounting/accounting-periods.service';
+import { ClientApiWebhookEnqueueService } from '../../client-api/client-api-webhook.enqueue.service';
 
 describe('ProductsService - getUsersPriceGroups Optimization', () => {
   let service: ProductsService;
@@ -38,12 +42,18 @@ describe('ProductsService - getUsersPriceGroups Optimization', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
+        { provide: PricingService, useValue: { getEffectiveUnitPrice: jest.fn(), validateQuantity: jest.fn(), quoteUnitOrder: jest.fn() } },
+        { provide: ClientApiWebhookEnqueueService, useValue: { enqueue: jest.fn() } },
         {
           provide: getRepositoryToken(Product),
           useValue: { createQueryBuilder: jest.fn() },
         },
         {
           provide: getRepositoryToken(ProductPackage),
+          useValue: { createQueryBuilder: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(IdempotentRequest),
           useValue: { createQueryBuilder: jest.fn() },
         },
         {
@@ -87,6 +97,10 @@ describe('ProductsService - getUsersPriceGroups Optimization', () => {
         },
         {
           provide: getRepositoryToken(PackageMapping),
+          useValue: { createQueryBuilder: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(PackageCost),
           useValue: { createQueryBuilder: jest.fn() },
         },
         {

@@ -20,6 +20,6 @@ export class MuhParty {
   @Column({ type: 'int', nullable: true })
   display_order?: number | null;
 
-  @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+  @UpdateDateColumn({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', name: 'updated_at' })
   updated_at!: Date;
 }

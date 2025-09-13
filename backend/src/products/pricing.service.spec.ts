@@ -1,3 +1,5 @@
+import { setTestPriceDecimals } from '../../test/utils/price-decimals.helpers';
+setTestPriceDecimals(4);
 import { Test } from '@nestjs/testing';
 import { PricingService } from './pricing.service';
 import { getRepositoryToken } from '@nestjs/typeorm';

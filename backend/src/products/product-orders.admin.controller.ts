@@ -33,6 +33,7 @@ import { PackageCost } from '../integrations/package-cost.entity';
 import { PackageMapping } from '../integrations/package-mapping.entity';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { ListOrdersDto } from './dto/list-orders.dto';
+import { getPriceDecimals } from '../config/pricing.config';
 
 type ExternalStatus =
   | 'not_sent'
@@ -708,8 +709,9 @@ export class ProductOrdersAdminController {
         ? Number((order as any).sellUsdAtOrder)
         : Number((order as any).price ?? 0);
       if (String(finalCostCurrency || '').toUpperCase() === 'USD') {
-        (order as any).costUsdAtOrder = Number(finalCostAmount.toFixed(4));
-        (order as any).profitUsdAtOrder = Number((sellUsdSnap - Number((order as any).costUsdAtOrder)).toFixed(4));
+        const d = getPriceDecimals();
+	  (order as any).costUsdAtOrder = Number(finalCostAmount.toFixed(d));
+	  (order as any).profitUsdAtOrder = Number((sellUsdSnap - Number((order as any).costUsdAtOrder)).toFixed(d));
       }
     } catch {}
 

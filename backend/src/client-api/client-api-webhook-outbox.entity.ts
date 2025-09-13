@@ -1,4 +1,4 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn, BeforeInsert, BeforeUpdate } from 'typeorm';
 
 export type WebhookOutboxStatus = 'pending' | 'delivering' | 'succeeded' | 'failed' | 'dead';
 
@@ -43,9 +43,22 @@ export class ClientApiWebhookOutbox {
   @Column({ type: 'int', nullable: true })
   response_code?: number | null;
 
-  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', default: () => 'now()' })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', default: () => (process.env.TEST_DB_SQLITE === 'true' ? 'CURRENT_TIMESTAMP' : 'now()') })
   created_at!: Date;
 
-  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', default: () => 'now()' })
+  @Column({ type: process.env.TEST_DB_SQLITE === 'true' ? 'datetime' : 'timestamptz', default: () => (process.env.TEST_DB_SQLITE === 'true' ? 'CURRENT_TIMESTAMP' : 'now()') })
   updated_at!: Date;
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  _serializeJsonForSqlite() {
+    if (process.env.TEST_DB_SQLITE === 'true') {
+      if (this.payload_json && typeof this.payload_json !== 'string') {
+        try { (this as any).payload_json = JSON.stringify(this.payload_json); } catch {}
+      }
+      if (this.headers_json && typeof this.headers_json !== 'string') {
+        try { (this as any).headers_json = JSON.stringify(this.headers_json); } catch {}
+      }
+    }
+  }
 }

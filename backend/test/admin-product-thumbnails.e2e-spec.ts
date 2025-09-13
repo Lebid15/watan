@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 import { jwtConstants } from '../src/auth/constants';
 
 function adminToken(tenantId: string) {
-  return jwt.sign({ sub: 'admin-user-thumb', role: 'admin', email: 'admin@example.com', tenantId }, jwtConstants.secret, { expiresIn: '10m' });
+  return jwt.sign({ sub: 'admin-user-thumb', role: 'admin', email: 'admin@example.com', tenantId, totpVerified: true }, jwtConstants.secret, { expiresIn: '10m' });
 }
 
 describe('Admin Product Thumbnails (e2e)', () => {
@@ -24,7 +24,8 @@ describe('Admin Product Thumbnails (e2e)', () => {
     await app.init();
     ds = app.get<DataSource>(DataSource);
     // seed tenant + product (with custom image to trigger thumbs)
-  await ds.query(`INSERT INTO tenants (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, [tenantId, 'Thumb Tenant', 'thumbcode', null, 1, new Date().toISOString(), new Date().toISOString()]);
+    // Table is 'tenant' (singular)
+    await ds.query(`INSERT INTO tenant (id, name, code, "ownerUserId", "isActive", createdAt, updatedAt) VALUES (?,?,?,?,?,?,?)`, [tenantId, 'Thumb Tenant', 'thumbcode', null, 1, new Date().toISOString(), new Date().toISOString()]);
     await ds.query(`INSERT INTO tenant_domain (id, tenantId, domain, type, isPrimary, isVerified, createdAt, updatedAt) VALUES (?,?,?,?,?,?,datetime('now'),datetime('now'))`, ['td-1', tenantId, '127.0.0.1', 'subdomain', 1, 1]);
     await ds.query(`INSERT INTO product (id, tenantId, name, description, customImageUrl, isActive) VALUES (?,?,?,?,?,?)`, [
       productId,
@@ -36,7 +37,7 @@ describe('Admin Product Thumbnails (e2e)', () => {
     ]);
   });
 
-  afterAll(async () => { if (app) await app.close(); });
+  afterAll(async () => { if (app) { try { if (ds?.isInitialized) await ds.destroy(); } catch {} await app.close(); } });
 
   it('sets a custom image and generates thumbnails (URLs echo)', async () => {
     const token = adminToken(tenantId);
@@ -45,7 +46,7 @@ describe('Admin Product Thumbnails (e2e)', () => {
       .put(`/api/admin/products/${productId}/image/custom`)
       .set('Authorization', `Bearer ${token}`)
       .set('X-Tenant-Id', tenantId)
-      .set('X-Tenant-Host', '127.0.0.1')
+      .set('X-Tenant-Host', '127.0.0.1') // ensure middleware resolves tenant
       .send({ customImageUrl: imageUrl });
     expect([200,201]).toContain(res.status);
     // refetch raw product row to inspect thumbnail fields

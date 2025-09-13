@@ -97,6 +97,13 @@ export class ProductsController {
       packages: (product.packages || []).map((pk: any) => ({
         ...pk,
         providerName: pk.providerName || null,
+        type: pk.type,
+        unitName: pk.unitName || null,
+        unitCode: pk.unitCode || null,
+        minUnits: pk.minUnits ?? null,
+        maxUnits: pk.maxUnits ?? null,
+        step: pk.step ?? null,
+        baseUnitPrice: pk.baseUnitPrice ?? null,
       })),
       packagesCount: product.packages?.length ?? 0,
       imageUrl: product.imageUrl,
