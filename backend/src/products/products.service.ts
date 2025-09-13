@@ -975,32 +975,35 @@ export class ProductsService {
     const roleLower = (role || '').toLowerCase();
     const isDev = roleLower === 'developer' || roleLower === 'instance_owner';
 
-    if (!tenantId) {
-      if (!(isDev && allowGlobal)) {
+    // اجلب المنتج أولاً بدون تقييد التينانت ثم قرر الصلاحية
+    const product = await this.productsRepo.findOne({ where: { id } });
+    if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
+
+    const isGlobal = product.tenantId === this.DEV_TENANT_ID;
+
+    // في حال منتج تينانت: يجب أن يطابق tenantId القادم من السياق وإلا منع
+    if (!isGlobal) {
+      if (!tenantId) {
         throw new ForbiddenException('لا يوجد سياق مستأجر صالح للحذف');
+      }
+      if (product.tenantId !== tenantId) {
+        throw new ForbiddenException('عدم تطابق سياق المنتج مع التينانت');
+      }
+      // السماح: مالك التينانت (instance_owner) أو developer فقط
+      if (!(isDev)) {
+        throw new ForbiddenException('دورك لا يسمح بحذف هذا المنتج');
+      }
+    } else {
+      // منتج عالمي: يتطلب developer أو instance_owner + allowGlobal أو غياب tenantId (من الواجهة العامة)
+      const globalAllowed = isDev && (allowGlobal || !tenantId);
+      if (!globalAllowed) {
+        throw new ForbiddenException('غير مصرح بحذف منتج عالمي');
       }
     }
 
-    const where: any = { id };
-    if (tenantId) where.tenantId = tenantId;
-    else if (isDev && allowGlobal) where.tenantId = this.DEV_TENANT_ID;
-
-    const product = await this.productsRepo.findOne({ where });
-    if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
-
-    // حواجز حماية إضافية: منع مطور من حذف منتج تينانت آخر لو مر tenantId خاطئ
-    if (product.tenantId !== (where.tenantId)) {
-      throw new ForbiddenException('عدم تطابق سياق المنتج مع التينانت');
-    }
-
-    // إن كان حذف عالمي تأكد من أنه فعلاً عالمي
-    if (allowGlobal && isDev && product.tenantId !== this.DEV_TENANT_ID) {
-      throw new ForbiddenException('هذا المنتج ليس ضمن الحاوية العالمية');
-    }
-
-    console.log('[PRODUCTS][DELETE][REQ]', { id: product.id, tenantId: product.tenantId, byRole: roleLower, allowGlobal });
+    console.log('[PRODUCTS][DELETE][REQ]', { id: product.id, productTenant: product.tenantId, byRole: roleLower, isGlobal, reqTenant: tenantId, allowGlobal });
     await this.productsRepo.remove(product);
-    console.log('[PRODUCTS][DELETE][DONE]', { id: product.id, global: product.tenantId === this.DEV_TENANT_ID });
+    console.log('[PRODUCTS][DELETE][DONE]', { id: product.id, global: isGlobal });
   }
 
   async createPriceGroup(
@@ -1149,16 +1152,23 @@ export class ProductsService {
     } catch (e: any) {
       // التقاط تعارض unique (PostgreSQL code 23505)
       const detail: string = e?.detail || '';
-      const isTenantIdx = /ux_product_packages_tenant_public_code/i.test(detail);
-      const isProductIdx = /ux_product_packages_product_public_code/i.test(detail);
-      if (e?.code === '23505' && (isTenantIdx || isProductIdx)) {
-        console.warn('[PKG][CREATE][DB][UNIQUE_VIOLATION]', { detail });
+      const constraint: string = e?.constraint || '';
+      const msg: string = e?.message || '';
+      const blob = `${detail} ${constraint} ${msg}`;
+      const isTenantIdx = /ux_product_packages_tenant_public_code/i.test(blob);
+      const isProductIdx = /ux_product_packages_product_public_code/i.test(blob);
+      if (e?.code === '23505') {
         if (isTenantIdx) {
+          console.warn('[PKG][CREATE][DB][UNIQUE_VIOLATION][TENANT]', { detail, constraint });
           throw new ConflictException('فشل الحفظ: الكود مستخدم داخل نفس المستأجر');
         }
         if (isProductIdx) {
+          console.warn('[PKG][CREATE][DB][UNIQUE_VIOLATION][PRODUCT]', { detail, constraint });
           throw new ConflictException('فشل الحفظ: الكود مستخدم داخل نفس المنتج');
         }
+        // fallback عام لو لم يتعرف على الاسم
+        console.warn('[PKG][CREATE][DB][UNIQUE_VIOLATION][UNKNOWN]', { detail, constraint });
+        throw new ConflictException('فشل الحفظ: الكود مستخدم بالفعل');
       }
       throw e; // إعادة الرمي إن لم يُعرّف لدينا
     }
