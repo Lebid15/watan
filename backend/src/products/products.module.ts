@@ -37,6 +37,7 @@ import { ThumbnailScheduler } from './thumbnail.scheduler';
 import { ClientApiWebhookOutbox } from '../client-api/client-api-webhook-outbox.entity';
 import { ClientApiWebhookEnqueueService } from '../client-api/client-api-webhook.enqueue.service';
 import { IdempotentRequest } from './idempotent-request.entity';
+import { ProductPackagesIndexGuardService } from './startup-index-guard.service';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { IdempotentRequest } from './idempotent-request.entity';
   ThumbnailService,
   ThumbnailScheduler,
   ClientApiWebhookEnqueueService,
+  ProductPackagesIndexGuardService,
   ],
   exports: [
     ProductsService,
