@@ -994,9 +994,8 @@ export class ProductsService {
         throw new ForbiddenException('دورك لا يسمح بحذف هذا المنتج');
       }
     } else {
-      // منتج عالمي: يتطلب developer أو instance_owner + allowGlobal أو غياب tenantId (من الواجهة العامة)
-      const globalAllowed = isDev && (allowGlobal || !tenantId);
-      if (!globalAllowed) {
+      // منتج عالمي: يكفي أن يكون الدور مطور أو مالك مثيل (لا يهم وجود tenantId في الطلب)
+      if (!isDev) {
         throw new ForbiddenException('غير مصرح بحذف منتج عالمي');
       }
     }
