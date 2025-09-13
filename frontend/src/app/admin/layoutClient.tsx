@@ -1,3 +1,6 @@
+// NOTE: This layout currently includes experimental dynamic scale logic to mimic a shrunk desktop.
+// If this approach causes layout drift or usability issues, remove the zoom-outer / zoom-inner wrapper
+// and rely on true responsive design instead (keeping max-w container only).
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';

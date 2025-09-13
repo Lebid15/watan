@@ -2,6 +2,8 @@
 // as a static layout chunk (fixing 404s like /_next/static/css/app/layout.css).
 // All client-only logic moved to ClientRoot.
 import '../styles/globals.css';
+// Viewport now fixed to device-width (desktop forced width meta was removed after revert decision).
+// Any future attempt to simulate desktop via scaling should live in admin-only layout, not here.
 import ClientRoot from './ClientRoot';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,3 +1,5 @@
+// NOTE: This dashboard page kept after reverting experimental scaling/viewport changes.
+// Mobile-first adjustments for header remain (text-sm default, md: upscale).
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
