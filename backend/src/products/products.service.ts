@@ -24,6 +24,7 @@ import { OrderDispatchLog } from './order-dispatch-log.entity';
 import { AccountingPeriodsService } from '../accounting/accounting-periods.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClientApiWebhookEnqueueService } from '../client-api/client-api-webhook.enqueue.service';
+import { PricingService } from './pricing.service';
 
 export type OrderStatus = 'pending' | 'approved' | 'rejected' | 'processing' | 'sent';
 
@@ -49,6 +50,7 @@ export class ProductsService {
   @InjectRepository(PackageMapping) private readonly mappingRepo: Repository<PackageMapping>,
   @InjectRepository(PackageCost) private readonly costRepo: Repository<PackageCost>,
   @InjectRepository(OrderDispatchLog) private readonly dispatchLogRepo: Repository<OrderDispatchLog>,
+  private readonly pricingService: PricingService,
   ) {}
 
   async listOrdersForAdmin(query: any, tenantId?: string) {
@@ -1486,13 +1488,13 @@ export class ProductsService {
     const {
       productId,
       packageId,
-      quantity,
       userId,
       userIdentifier,
       extraField,
       orderUuid,
       origin = 'panel',
     } = data;
+    let quantity = Number(data.quantity);
 
     // Basic validation for orderUuid (prevent DB errors due to oversize or strange values)
     if (orderUuid) {
@@ -1506,8 +1508,9 @@ export class ProductsService {
     // Debug trace (lightweight)
     try { console.log('[OrderCreate] start', { productId, packageId, quantity, userId, tenantId, hasOrderUuid: Boolean(orderUuid), origin }); } catch {}
 
-    if (!quantity || quantity <= 0 || !Number.isFinite(Number(quantity))) {
-      throw new BadRequestException('Quantity must be a positive number');
+    // سنؤخر التحقق التفصيلي للـ quantity إذا كانت الباقة من نوع unit داخل منطق التسعير
+    if (!quantity || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0) {
+      quantity = 1;
     }
 
     // Idempotency early check — now tenant-scoped when tenantId known to avoid cross-tenant reuse
@@ -1576,9 +1579,25 @@ export class ProductsService {
       this.ensureSameTenant((product as any).tenantId, (user as any).tenantId);
       this.ensureSameTenant((pkg as any).tenantId, (user as any).tenantId);
 
-      // التسعير بالدولار (الدالة تتحقق من المستأجر داخليًا)
-      const unitPriceUSD = await this.getEffectivePriceUSD(packageId, userId);
-      const totalUSD = Number(unitPriceUSD) * Number(quantity);
+      let unitPriceUSD = await this.getEffectivePriceUSD(packageId, userId);
+      let totalUSD = Number(unitPriceUSD) * Number(quantity);
+
+      // دعم الباقة من نوع unit
+      if ((product as any).supportsCounter === true && (pkg as any).type === 'unit') {
+        // استخدم خدمة التسعير الموحدة
+        const quote = await this.pricingService.quoteUnitOrder({
+          tenantId: String((user as any).tenantId),
+          userId,
+          packageId,
+          quantity: String(quantity),
+        });
+        unitPriceUSD = Number(quote.unitPriceApplied);
+        totalUSD = Number(quote.sellPrice);
+        // ثبت الحقول الجديدة على الكيان (scale=4 محفوظ كنص، نحفظ رقمين لـ legacy fields)
+        (pkg as any).lastUnitPriceApplied = quote.unitPriceApplied; // إن أردنا تتبع لاحق
+        (product as any).lastUnitPriceApplied = quote.unitPriceApplied;
+        // سنستخدمها لاحقاً عند الإرسال للخارج
+      }
 
       const rate = user.currency ? Number(user.currency.rate) : 1;
       const code = user.currency ? user.currency.code : 'USD';
@@ -1600,7 +1619,7 @@ export class ProductsService {
         product,
         package: pkg,
         quantity,
-        price: totalUSD,
+        price: totalUSD, // إجمالي البيع (سواء fixed أو unit)
         status: 'pending',
         user,
         userIdentifier: userIdentifier ?? null,
@@ -1608,6 +1627,18 @@ export class ProductsService {
         orderUuid: orderUuid || null,
         origin,
       });
+
+      if ((product as any).supportsCounter === true && (pkg as any).type === 'unit') {
+        // تعبئة الحقول الإضافية للنوع unit
+        (order as any).unitPriceApplied = Number(unitPriceUSD).toFixed(4);
+        (order as any).sellPrice = Number(totalUSD).toFixed(4);
+        const unitCost = Number((pkg as any).capital ?? 0) > 0 ? Number((pkg as any).capital) : Number((pkg as any).basePrice ?? 0);
+        if (unitCost > 0) {
+          const cost = unitCost * Number(quantity);
+            (order as any).cost = Number(cost).toFixed(4);
+            (order as any).profit = Number(totalUSD - cost).toFixed(4);
+        }
+      }
 
   // 🔒 لقطة USD وقت الإنشاء (price هو إجمالي البيع بالدولار بالفعل)
   (order as any).sellUsdAtOrder = totalUSD;
@@ -1779,6 +1810,10 @@ export class ProductsService {
           quantity: saved.quantity,
           priceUSD: totalUSD,
           unitPriceUSD,
+          unitPriceApplied: (saved as any).unitPriceApplied || null,
+          sellPrice: (saved as any).sellPrice || null,
+          cost: (saved as any).cost || null,
+          profit: (saved as any).profit || null,
           display: {
             currencyCode: code,
             unitPrice: unitPriceUSD * rate,

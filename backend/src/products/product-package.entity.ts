@@ -64,7 +64,7 @@ export class ProductPackage {
   minUnits?: number | null;
   @Column({ type: 'int', nullable: true })
   maxUnits?: number | null;
-  @Column({ type: 'int', nullable: true })
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   step?: number | null;
 
   // السعر الأساسي للوحدة (يُستخدم إن لم توجد price group override)
