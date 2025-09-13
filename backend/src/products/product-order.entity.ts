@@ -61,6 +61,22 @@ export class ProductOrder {
   @Column({ type: 'int', default: 1 })
   quantity: number;
 
+  // السعر الفعلي للوحدة وقت إنشاء الطلب (بعد أخذ مجموعة الأسعار أو السعر الأساسي)
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  unitPriceApplied?: number | null;
+
+  // إجمالي سعر البيع (unitPriceApplied * quantity) إن كان type=unit
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  sellPrice?: number | null;
+
+  // إجمالي التكلفة (قد يُحسب لاحقاً)
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  cost?: number | null;
+
+  // الربح (sellPrice - cost)
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  profit?: number | null;
+
   /** سعر البيع النهائي للمستخدم (لإظهار الربح) */
   @Column({ type: 'varchar', length: 10, default: 'USD' })
   sellPriceCurrency: string;

@@ -47,6 +47,30 @@ export class ProductPackage {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   basePrice: number;
 
+  // نوع الباقة: ثابتة أم بعدد وحدات (عداد)
+  @Column({ type: 'varchar', length: 10, default: 'fixed' })
+  type: 'fixed' | 'unit';
+
+  // اسم الوحدة (Gem, Coin, Point ...)
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  unitName?: string | null;
+
+  // كود اختياري للوحدة (قد يستخدم للتكاملات)
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  unitCode?: string | null;
+
+  // أقل وأعلى كمية وعدد الخطوة (التحقق التفصيلي في الخدمة وليس Constraint DB)
+  @Column({ type: 'int', nullable: true })
+  minUnits?: number | null;
+  @Column({ type: 'int', nullable: true })
+  maxUnits?: number | null;
+  @Column({ type: 'int', nullable: true })
+  step?: number | null;
+
+  // السعر الأساسي للوحدة (يُستخدم إن لم توجد price group override)
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  baseUnitPrice?: number | null;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   capital: number;
 

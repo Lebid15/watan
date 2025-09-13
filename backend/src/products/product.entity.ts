@@ -36,6 +36,10 @@ export class Product {
   @Column({ default: true })
   isActive: boolean;
 
+  // يدعم باقات العدّاد (unit-based) مثل رصيد أو جواهر
+  @Column({ type: 'boolean', default: false })
+  supportsCounter: boolean;
+
   // مرجع المنتج العالمي الأصلي عند الاستنساخ (اختياري)
   @Column('uuid', { nullable: true })
   @Index()
