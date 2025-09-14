@@ -97,7 +97,7 @@ export default function AdminProductDetailsPage() {
   const [pkgBaseUnitPrice, setPkgBaseUnitPrice] = useState('');
 
   // Bridges
-  const [bridges, setBridges] = useState<number[]>([]);
+  const [bridges, setBridges] = useState<(number | string)[]>([]);
   const [bridgesLoading, setBridgesLoading] = useState(false);
 
   // Tabs
@@ -138,7 +138,17 @@ export default function AdminProductDetailsPage() {
       const res = await fetch(`${API_ROUTES.products.base}/${id}/bridges`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setBridges(Array.isArray(data.available) ? data.available : []);
+      const raw: any[] = Array.isArray(data.available) ? data.available : [];
+      const cleaned = raw
+        .map((v: any) => {
+          if (v == null) return null;
+          if (typeof v === 'number' || typeof v === 'string') return v;
+          if (typeof v === 'object') return (v.code ?? v.value ?? null);
+          return null;
+        })
+        .filter((v: any) => v !== null && v !== '' && !Number.isNaN(Number(v))) as (number | string)[];
+      const unique = Array.from(new Set(cleaned.map(v => String(v)))).map(s => (/^\d+$/.test(s) ? Number(s) : s)).sort((a, b) => Number(a) - Number(b));
+      setBridges(unique);
     } catch {
       setBridges([]);
     } finally {
@@ -389,11 +399,7 @@ export default function AdminProductDetailsPage() {
                     <label className="block text-[12px] text-text-secondary mb-1">الجسر (مطلوب)</label>
                     <select className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgBridge} onChange={e => setPkgBridge(e.target.value)}>
                       <option value="">-- اختر الجسر --</option>
-                      {bridges.map((b: any, idx: number) => {
-  const val = typeof b === 'string' ? b : (b?.code ?? b?.value ?? '');
-  if (!val) return <option key={idx} value="">—</option>;
-  return <option key={val} value={val}>{val}</option>;
-})}
+                      {bridges.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
                   </div>
                   {pkgType === 'unit' && (
@@ -485,7 +491,7 @@ function UnitSettings({ productId, packages, digits, onSaved }: { productId: str
 }
 
 // ===== Package Row (basic tab) =====
-function PackageRow({ pkg, allPackages, availableBridges, onChanged, onDelete }: { pkg: ProductPackage; allPackages: ProductPackage[]; availableBridges: number[]; onChanged: () => void; onDelete: () => void }) {
+function PackageRow({ pkg, allPackages, availableBridges, onChanged, onDelete }: { pkg: ProductPackage; allPackages: ProductPackage[]; availableBridges: (number|string)[]; onChanged: () => void; onDelete: () => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(pkg.name);
   const [desc, setDesc] = useState(pkg.description || '');
@@ -497,10 +503,12 @@ function PackageRow({ pkg, allPackages, availableBridges, onChanged, onDelete }:
   const token = (typeof window !== 'undefined') ? localStorage.getItem('token') || '' : '';
 
   useEffect(() => {
-    const current = (pkg.publicCode && typeof pkg.publicCode === 'number') ? [pkg.publicCode] : [];
-    const union = Array.from(new Set([...current, ...availableBridges]))
-      .filter((v): v is number => typeof v === 'number')
-      .sort((a, b) => a - b);
+    const current = (pkg.publicCode != null && (typeof pkg.publicCode === 'number' || typeof pkg.publicCode === 'string')) ? [pkg.publicCode] : [];
+    const merged = [...current, ...availableBridges];
+    const numeric = merged
+      .map(v => (typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v))
+      .filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+    const union = Array.from(new Set(numeric)).sort((a, b) => a - b);
     setCodeOptions(union);
   }, [allPackages.map(p => p.publicCode).join(','), availableBridges.join(','), pkg.publicCode]);
 
