@@ -48,9 +48,17 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
       // Case 2: array root (e.g. packages/prices returns an array of rows)
       if (Array.isArray(json)) {
         const row = json.find((r: any) => String(r?.packageId) === packageId);
-        if (row && (typeof row.unitPrice === 'number' || (typeof row.unitPrice === 'string' && row.unitPrice.trim() !== ''))) {
-          const n = Number(row.unitPrice);
-          if (Number.isFinite(n)) return n;
+        if (row) {
+          // Prefer explicit unitPrice
+            if (row.unitPrice != null && (typeof row.unitPrice === 'number' || (typeof row.unitPrice === 'string' && row.unitPrice.trim() !== ''))) {
+              const n = Number(row.unitPrice);
+              if (Number.isFinite(n)) return n;
+            }
+            // Fallback: some older rows may only expose 'price' (override) for unit packages
+            if (row.price != null && (typeof row.price === 'number' || (typeof row.price === 'string' && row.price.trim() !== ''))) {
+              const np = Number(row.price);
+              if (Number.isFinite(np)) return np;
+            }
         }
       }
 
