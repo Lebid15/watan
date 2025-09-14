@@ -189,11 +189,13 @@ export default function ProductDetailsPage() {
   const [unitCardPrices, setUnitCardPrices] = useState<Record<string, number>>({});
   // توقيع للتغيرات في أسعار الوحدات (بعد إزالة baseUnitPrice نعتمد فقط على صف السعر حسب المجموعة)
   const unitPricesSignature = useMemo(() => {
+    // تتبع التغير في سعر مجموعة المستخدم سواء أكان الحقل اسمه unitPrice أو price
     return unitPkgs.map(p => {
       let grp: any = 'null';
       if (userPriceGroupId && Array.isArray(p.prices)) {
-        const row: any = p.prices.find(r => r.groupId === userPriceGroupId && (r as any).unitPrice != null);
-        if (row && row.unitPrice != null) grp = Number(row.unitPrice);
+        const row: any = p.prices.find(r => r.groupId === userPriceGroupId && ((r as any).unitPrice != null || (r as any).price != null));
+        const val = row?.unitPrice != null ? row.unitPrice : row?.price;
+        if (val != null) grp = Number(val);
       }
       return `${p.id}:${grp}`;
     }).join('|');
@@ -219,14 +221,14 @@ export default function ProductDetailsPage() {
       const map: Record<string, number> = {};
       for (const p of unitPkgs) {
         let eff: number | null = null;
-        // حاول إيجاد override محلي في p.prices (بعد تعديل الباك لإرجاع unitPrice)
+        // نقرأ قيمة صف المجموعة من unitPrice أو price (دعم التسمية الجديدة)
         if (userPriceGroupId && Array.isArray(p.prices)) {
-          const row: any = p.prices.find(pr => pr.groupId === userPriceGroupId && (pr as any).unitPrice != null);
-          if (row && row.unitPrice != null && Number(row.unitPrice) > 0) {
-            eff = Number(row.unitPrice);
+          const row: any = p.prices.find(pr => pr.groupId === userPriceGroupId && ((pr as any).unitPrice != null || (pr as any).price != null));
+          if (row) {
+            const raw = row.unitPrice != null ? row.unitPrice : row.price;
+            if (raw != null && Number(raw) > 0) eff = Number(raw);
           }
         }
-        // لا fallback: يجب أن يكون هناك صف سعر حسب المجموعة
         if (eff != null) map[p.id] = code === 'USD' ? eff : eff * rate;
       }
       if (!cancelled) setUnitCardPrices(map);
@@ -249,8 +251,11 @@ export default function ProductDetailsPage() {
       if (!selectedUnitPackage) { setEffectiveUnitPriceUSD(null); return; }
       let price: number | null = null;
       if (userPriceGroupId && Array.isArray(selectedUnitPackage?.prices)) {
-        const row: any = selectedUnitPackage.prices.find(pr => pr.groupId === userPriceGroupId && (pr as any).unitPrice != null);
-        if (row && row.unitPrice != null && Number(row.unitPrice) > 0) price = Number(row.unitPrice);
+        const row: any = selectedUnitPackage.prices.find(pr => pr.groupId === userPriceGroupId && ((pr as any).unitPrice != null || (pr as any).price != null));
+        if (row) {
+          const raw = row.unitPrice != null ? row.unitPrice : row.price;
+          if (raw != null && Number(raw) > 0) price = Number(raw);
+        }
       }
       // لا fallback بعد الآن
       if (!cancelled) setEffectiveUnitPriceUSD(price);
