@@ -1099,6 +1099,9 @@ export class ProductsService {
 
     const initialCapital = Number(data.capital ?? data.basePrice ?? 0);
 
+    // Determine desired type (default fixed). Only allow 'unit' if product supportsCounter
+    let desiredType: 'fixed' | 'unit' = 'fixed';
+    if ((data as any).type === 'unit') desiredType = 'unit';
     const newPackage: ProductPackage = this.packagesRepo.create({
       tenantId,
       name: data.name.trim(),
@@ -1110,6 +1113,7 @@ export class ProductsService {
       product,
       createdByDistributorId: (data as any).createdByDistributorId || null,
       providerName: (data as any).providerName || null,
+      type: desiredType,
     } as Partial<ProductPackage>);
 
     // اختيارياً: ضبط publicCode أثناء الإنشاء إن وُفّر
@@ -1133,6 +1137,25 @@ export class ProductsService {
     }
 
     // ✅ ثبّت النوع هنا ولف الحفظ لمعالجة تعارض القيد بلطف
+    // If unit type requested, validate supportsCounter + unit metadata
+    if (desiredType === 'unit') {
+      if ((product as any).supportsCounter !== true) {
+        throw new BadRequestException('يجب تفعيل نمط العداد للمنتج أولاً');
+      }
+      const rawUnitName = (data as any).unitName ? String((data as any).unitName).trim() : '';
+      if (!rawUnitName) throw new BadRequestException('unitName مطلوب');
+      (newPackage as any).unitName = rawUnitName;
+      if ((data as any).unitCode) (newPackage as any).unitCode = String((data as any).unitCode).trim();
+      if ((data as any).baseUnitPrice != null && String((data as any).baseUnitPrice).trim() !== '') {
+        const raw = String((data as any).baseUnitPrice).trim().replace(',', '.');
+        const num = Number(raw);
+        if (!(num > 0)) throw new BadRequestException('baseUnitPrice غير صالح (>0)');
+        (newPackage as any).baseUnitPrice = Number(num.toFixed(4));
+      } else {
+        throw new BadRequestException('baseUnitPrice مطلوب');
+      }
+    }
+
     let saved: ProductPackage;
     try {
       saved = await this.packagesRepo.save(newPackage);

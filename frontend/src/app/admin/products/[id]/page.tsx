@@ -358,10 +358,25 @@ export default function AdminProductDetailsPage() {
               فعال؟
             </label>
 
-              <label className="flex items-center gap-2 mb-4 text-text-secondary">
-                <input type="checkbox" checked={editSupportsCounter} onChange={e => setEditSupportsCounter(e.target.checked)} />
-                تفعيل نمط العداد (الوحدة)
-              </label>
+            <label className="flex items-center gap-2 mb-4 text-text-secondary">
+              <input
+                type="checkbox"
+                checked={editSupportsCounter}
+                onChange={async e => {
+                  const next = e.target.checked;
+                  setEditSupportsCounter(next);
+                  try {
+                    const token = localStorage.getItem('token') || '';
+                    const res = await fetch(`/api/admin/products/${id}/supports-counter`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ supportsCounter: next }) });
+                    if (!res.ok) throw new Error('فشل تحديث نمط العداد');
+                  } catch (err:any) {
+                    alert(err.message || 'تعذر تحديث نمط العداد');
+                    setEditSupportsCounter(!next);
+                  }
+                }}
+              />
+              تفعيل نمط العداد (الوحدة)
+            </label>
               {editSupportsCounter && unitPackages.length === 0 && (
                 <div className="text-[11px] text-amber-500 mb-4 leading-relaxed">
                   لتفعيل تبويب <span className="font-semibold">إعدادات العداد</span>:
