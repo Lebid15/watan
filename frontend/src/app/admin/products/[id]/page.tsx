@@ -225,7 +225,8 @@ export default function AdminProductDetailsPage() {
         payload.unitName = pkgUnitName.trim();
         payload.baseUnitPrice = parseFloat(pkgBaseUnitPrice);
       }
-      const res = await fetch(`${API_ROUTES.products.base}/${id}/packages`, {
+      // استخدم مسار الإدارة لضمان دعم type وحقول العداد
+      const res = await fetch(`/api/admin/products/${id}/packages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload)
@@ -285,7 +286,7 @@ export default function AdminProductDetailsPage() {
         maxUnits: unitForm.maxUnits.trim() || null,
         step: unitForm.step.trim() || null,
       };
-      const res = await fetch(`/api/admin/packages/${unitModalPkg.id}/unit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const res = await fetch(`/api/admin/products/packages/${unitModalPkg.id}/unit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
       if (!res.ok) { let payload: any = null; try { payload = await res.json(); } catch {} throw new Error(payload?.message || 'فشل الحفظ'); }
       // Optimistic local update
       setProduct(prev => prev ? ({ ...prev, packages: (prev.packages||[]).map(p => p.id === unitModalPkg.id ? { ...p, unitName: body.unitName, unitCode: body.unitCode, baseUnitPrice: Number(body.baseUnitPrice), minUnits: min, maxUnits: max, step: stepNum } : p) }) : prev);
