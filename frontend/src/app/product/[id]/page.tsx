@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import toast from 'react-hot-toast';
 import { getDecimalDigits, formatPrice, priceInputStep, clampPriceDecimals } from '@/utils/pricingFormat';
-import fetchUnitPrice from '@/lib/pricing/fetchUnitPrice';
+// fetchUnitPrice أصبح غير مستخدم بعد اعتماد صف السعر الواحد لكل مجموعة
 // CounterPurchaseCard (old always-visible component) removed in favor of on-demand modal
 import { useParams, useRouter  } from "next/navigation";
 import api, { API_ROUTES } from '@/utils/api';
@@ -189,11 +189,16 @@ export default function ProductDetailsPage() {
   const [unitCardPrices, setUnitCardPrices] = useState<Record<string, number>>({});
   // توقيع للتغيرات في أسعار الوحدات (بعد إزالة baseUnitPrice نعتمد فقط على صف السعر حسب المجموعة)
   const unitPricesSignature = useMemo(() => {
-    // تتبع التغير في سعر مجموعة المستخدم سواء أكان الحقل اسمه unitPrice أو price
+    // تتبع التغير في سعر مجموعة المستخدم. دعم كلّا من groupId و priceGroupId لاحتمال اختلاف التسمية.
     return unitPkgs.map(p => {
       let grp: any = 'null';
-      if (userPriceGroupId && Array.isArray(p.prices)) {
-        const row: any = p.prices.find(r => r.groupId === userPriceGroupId && ((r as any).unitPrice != null || (r as any).price != null));
+      if (Array.isArray(p.prices) && p.prices.length) {
+        let row: any = null;
+        if (userPriceGroupId) {
+          row = p.prices.find(r => (r as any).groupId === userPriceGroupId || (r as any).priceGroupId === userPriceGroupId) || null;
+        }
+        // إن لم نجد الصف (أو لا توجد مجموعة للمستخدم) خذ أول صف كعرض افتراضي حتى لا يبقى السعر فارغاً
+        if (!row) row = p.prices[0];
         const val = row?.unitPrice != null ? row.unitPrice : row?.price;
         if (val != null) grp = Number(val);
       }
@@ -221,13 +226,16 @@ export default function ProductDetailsPage() {
       const map: Record<string, number> = {};
       for (const p of unitPkgs) {
         let eff: number | null = null;
-        // نقرأ قيمة صف المجموعة من unitPrice أو price (دعم التسمية الجديدة)
-        if (userPriceGroupId && Array.isArray(p.prices)) {
-          const row: any = p.prices.find(pr => pr.groupId === userPriceGroupId && ((pr as any).unitPrice != null || (pr as any).price != null));
-          if (row) {
-            const raw = row.unitPrice != null ? row.unitPrice : row.price;
-            if (raw != null && Number(raw) > 0) eff = Number(raw);
-          }
+        if (Array.isArray(p.prices) && p.prices.length) {
+          let row: any = null;
+            if (userPriceGroupId) {
+              row = p.prices.find(pr => (pr as any).groupId === userPriceGroupId || (pr as any).priceGroupId === userPriceGroupId) || null;
+            }
+            if (!row) row = p.prices[0]; // fallback للعرض فقط
+            if (row) {
+              const raw = row.unitPrice != null ? row.unitPrice : row.price;
+              if (raw != null && Number(raw) > 0) eff = Number(raw);
+            }
         }
         if (eff != null) map[p.id] = code === 'USD' ? eff : eff * rate;
       }
@@ -250,8 +258,12 @@ export default function ProductDetailsPage() {
       if (!unitModalOpen) return;
       if (!selectedUnitPackage) { setEffectiveUnitPriceUSD(null); return; }
       let price: number | null = null;
-      if (userPriceGroupId && Array.isArray(selectedUnitPackage?.prices)) {
-        const row: any = selectedUnitPackage.prices.find(pr => pr.groupId === userPriceGroupId && ((pr as any).unitPrice != null || (pr as any).price != null));
+      if (Array.isArray(selectedUnitPackage?.prices) && selectedUnitPackage.prices.length) {
+        let row: any = null;
+        if (userPriceGroupId) {
+          row = selectedUnitPackage.prices.find(pr => (pr as any).groupId === userPriceGroupId || (pr as any).priceGroupId === userPriceGroupId) || null;
+        }
+        if (!row) row = selectedUnitPackage.prices[0];
         if (row) {
           const raw = row.unitPrice != null ? row.unitPrice : row.price;
           if (raw != null && Number(raw) > 0) price = Number(raw);
