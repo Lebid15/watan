@@ -216,16 +216,18 @@ export default function ProductDetailsPage() {
     async function loadUnitCardPrices() {
       if (!activePkgs.length) return;
       const code = currencyCode || 'USD';
+      const baseCode = product?.currencyCode || 'USD';
+      // إذا كان الباك يعيد الأسعار بعملة ليست USD فلا نقوم بأي تحويل (لتجنب الضرب المزدوج)
       let rate = 1;
-      if (code !== 'USD') {
+      if (baseCode === 'USD' && code !== 'USD') {
         try {
           const res = await api.get<any[]>(API_ROUTES.currencies.base);
-            const list = Array.isArray(res.data) ? res.data : [];
-            const row = list.find((c:any) => (c.code || c.currency || c.symbol) === code);
-            if (row) {
-              const r = Number(row.rate ?? row.factor ?? row.value ?? row.usdRate ?? 0);
-              if (r > 0) rate = r;
-            }
+          const list = Array.isArray(res.data) ? res.data : [];
+          const row = list.find((c:any) => (c.code || c.currency || c.symbol) === code);
+          if (row) {
+            const r = Number(row.rate ?? row.factor ?? row.value ?? row.usdRate ?? 0);
+            if (r > 0) rate = r;
+          }
         } catch { /* ignore */ }
       }
       const map: Record<string, number> = {};
@@ -244,7 +246,8 @@ export default function ProductDetailsPage() {
         }
         // eff هنا هو السعر بالدولار من الصف. نقوم بالتحويل مرة واحدة فقط.
         if (eff != null) {
-          const converted = code === 'USD' ? eff : eff * rate;
+          // إذا كانت العملة الأساس ليست USD نعتبر القيمة eff نهائية بالفعل.
+          const converted = (baseCode === 'USD' && code !== 'USD') ? eff * rate : eff;
           map[p.id] = converted;
           if (typeof window !== 'undefined') {
             console.log('[UNIT_DEBUG] cardPrice', { pkgId: p.id, name: p.name, effUSD: eff, rate, code, converted });
@@ -255,7 +258,7 @@ export default function ProductDetailsPage() {
     }
     loadUnitCardPrices();
     return () => { cancelled = true; };
-  }, [activePkgs.length, currencyCode, userPriceGroupId, unitPricesSignature]);
+  }, [activePkgs.length, currencyCode, userPriceGroupId, unitPricesSignature, product?.currencyCode]);
 
   // ====== منطق التسعير للوحدات داخل المودال ======
   const digits = getDecimalDigits();
@@ -339,16 +342,27 @@ export default function ProductDetailsPage() {
   }
 
   // عرض الأسعار بعملة المستخدم (كما في عرض الباقات خارج المودال)
-  const unitPriceDisplay = effectiveUnitPriceUSD != null
-    ? (currencyCode === 'USD'
-        ? formatMoney(effectiveUnitPriceUSD, currencyCode, { fractionDigits: 2, withSymbol: false })
-        : formatMoney(effectiveUnitPriceUSD * currencyRate, currencyCode, { fractionDigits: 2, withSymbol: false }))
-    : '—';
+  const unitPriceDisplay = (() => {
+    if (effectiveUnitPriceUSD == null) return '—';
+    const baseCode = product?.currencyCode || 'USD';
+    // إذا كان الباك ليس USD لا نضرب ثانيةً
+    if (baseCode !== 'USD') {
+      return formatMoney(effectiveUnitPriceUSD, currencyCode, { fractionDigits: 2, withSymbol: false });
+    }
+    // الأساس USD: لو واجهة تعرض بعملة أخرى نستعمل المعدل
+    if (currencyCode !== 'USD') {
+      return formatMoney(effectiveUnitPriceUSD * currencyRate, currencyCode, { fractionDigits: 2, withSymbol: false });
+    }
+    return formatMoney(effectiveUnitPriceUSD, currencyCode, { fractionDigits: 2, withSymbol: false });
+  })();
   const unitTotalDisplay = (() => {
     if (!effectiveUnitPriceUSD || !unitValidNumber) return '—';
-    const totalBase = effectiveUnitPriceUSD * (unitQtyNum || 0);
-    const total = currencyCode === 'USD' ? totalBase : totalBase * currencyRate;
-    return formatMoney(total, currencyCode, { fractionDigits: 2, withSymbol: false });
+    const baseCode = product?.currencyCode || 'USD';
+    let totalBase = effectiveUnitPriceUSD * (unitQtyNum || 0);
+    if (baseCode === 'USD' && currencyCode !== 'USD') {
+      totalBase = totalBase * currencyRate;
+    }
+    return formatMoney(totalBase, currencyCode, { fractionDigits: 2, withSymbol: false });
   })();
 
   const hintParts: string[] = [];
