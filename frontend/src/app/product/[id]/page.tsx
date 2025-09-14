@@ -26,7 +26,6 @@ interface Package {
   prices?: PackagePriceItem[];
   // unit pricing fields (present only if type==='unit')
   type?: 'fixed' | 'unit';
-  baseUnitPrice?: number | null;
   unitName?: string | null;
   unitCode?: string | null;
   minUnits?: number | null;
@@ -188,16 +187,15 @@ export default function ProductDetailsPage() {
   const selectedUnitPackage = unitPkgs.find(p => p.id === unitSelectedPkgId) || unitPkgs[0];
   // خريطة أسعار الوحدات (محولة لعملة المستخدم) لعرضها على الكروت
   const [unitCardPrices, setUnitCardPrices] = useState<Record<string, number>>({});
-  // توقيع للتغيرات في أسعار الوحدات (baseUnitPrice أو unitPrice overrides)
+  // توقيع للتغيرات في أسعار الوحدات (بعد إزالة baseUnitPrice نعتمد فقط على صف السعر حسب المجموعة)
   const unitPricesSignature = useMemo(() => {
     return unitPkgs.map(p => {
-      const base = p.baseUnitPrice != null ? Number(p.baseUnitPrice) : 'null';
-      let override: any = 'null';
-      if (Array.isArray(p.prices) && p.prices.length) {
-        const row: any = userPriceGroupId ? p.prices.find(r => r.groupId === userPriceGroupId && (r as any).unitPrice != null) : null;
-        if (row && row.unitPrice != null) override = Number(row.unitPrice);
+      let grp: any = 'null';
+      if (userPriceGroupId && Array.isArray(p.prices)) {
+        const row: any = p.prices.find(r => r.groupId === userPriceGroupId && (r as any).unitPrice != null);
+        if (row && row.unitPrice != null) grp = Number(row.unitPrice);
       }
-      return `${p.id}:${base}:${override}`;
+      return `${p.id}:${grp}`;
     }).join('|');
   }, [unitPkgs, userPriceGroupId]);
 
@@ -228,14 +226,7 @@ export default function ProductDetailsPage() {
             eff = Number(row.unitPrice);
           }
         }
-        // fallback إلى النداء الشبكي السابق فقط إذا لم نجد override محلي
-        if (eff == null) {
-          eff = await fetchUnitPrice({
-            groupId: userPriceGroupId,
-            packageId: p.id,
-            baseUnitPrice: p.baseUnitPrice ?? null
-          });
-        }
+        // لا fallback: يجب أن يكون هناك صف سعر حسب المجموعة
         if (eff != null) map[p.id] = code === 'USD' ? eff : eff * rate;
       }
       if (!cancelled) setUnitCardPrices(map);
@@ -249,7 +240,7 @@ export default function ProductDetailsPage() {
   const step = selectedUnitPackage?.step != null && selectedUnitPackage.step > 0 ? selectedUnitPackage.step : Number(priceInputStep(digits));
   const minUnits = selectedUnitPackage?.minUnits ?? null;
   const maxUnits = selectedUnitPackage?.maxUnits ?? null;
-  const baseUnitPrice = selectedUnitPackage?.baseUnitPrice ?? null;
+  // أزيل baseUnitPrice: يجب توفر صف سعر للمجموعة وإلا يبقى null
 
   useEffect(() => {
     let cancelled = false;
@@ -261,19 +252,13 @@ export default function ProductDetailsPage() {
         const row: any = selectedUnitPackage.prices.find(pr => pr.groupId === userPriceGroupId && (pr as any).unitPrice != null);
         if (row && row.unitPrice != null && Number(row.unitPrice) > 0) price = Number(row.unitPrice);
       }
-      if (price == null) {
-        price = await fetchUnitPrice({
-          groupId: userPriceGroupId,
-          packageId: selectedUnitPackage.id,
-          baseUnitPrice: baseUnitPrice
-        });
-      }
+      // لا fallback بعد الآن
       if (!cancelled) setEffectiveUnitPriceUSD(price);
     }
     loadEffectiveUnitPrice();
     return () => { cancelled = true; };
-  // أعد تحميل سعر الوحدة في المودال إذا تغير override أو baseUnitPrice
-  }, [unitModalOpen, userPriceGroupId, selectedUnitPackage?.id, baseUnitPrice, unitPricesSignature]);
+  // أعد التحميل عند تغير الصف أو المجموعة
+  }, [unitModalOpen, userPriceGroupId, selectedUnitPackage?.id, unitPricesSignature]);
 
   // جلب معدل التحويل للعملة الحالية إذا لم تكن USD
   useEffect(() => {

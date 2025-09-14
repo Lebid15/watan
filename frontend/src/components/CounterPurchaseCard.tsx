@@ -11,7 +11,6 @@ export interface CounterPackage {
   name: string;
   isActive: boolean;
   type?: 'fixed' | 'unit';
-  baseUnitPrice?: number | null;
   unitName?: string | null;
   unitCode?: string | null;
   minUnits?: number | null;
@@ -44,7 +43,7 @@ const CounterPurchaseCard: React.FC<Props> = ({ product, packages, getUserPriceG
 
   const min = selectedPkg?.minUnits ?? null;
   const max = selectedPkg?.maxUnits ?? null;
-  const baseUnit = selectedPkg?.baseUnitPrice ?? null;
+  // baseUnitPrice removed: prices must be resolved via group rows only
 
   useEffect(() => {
     let cancelled = false;
@@ -52,13 +51,12 @@ const CounterPurchaseCard: React.FC<Props> = ({ product, packages, getUserPriceG
       if (!selectedPkg) return;
       const price = await fetchUnitPrice({
         groupId: getUserPriceGroupId(),
-        packageId: selectedPkg.id,
-        baseUnitPrice: baseUnit
+        packageId: selectedPkg.id
       });
       if (!cancelled) setEffectiveUnitPrice(price);
     })();
     return () => { cancelled = true; };
-  }, [selectedPkgId, getUserPriceGroupId, baseUnit, selectedPkg]);
+  }, [selectedPkgId, getUserPriceGroupId, selectedPkg]);
 
   const unitPriceDisplay = effectiveUnitPrice != null ? formatPrice(effectiveUnitPrice, digits) : '—';
   const qtyNum = quantity === '' ? null : Number(quantity);

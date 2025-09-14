@@ -1,40 +1,47 @@
 import { fetchUnitPrice } from '../fetchUnitPrice';
 
-describe('fetchUnitPrice', () => {
-  test('returns direct unitPrice shape', async () => {
+describe('fetchUnitPrice (no fallback model)', () => {
+  test('returns direct price shape (price)', async () => {
     const price = await fetchUnitPrice({
       groupId: 'g1',
       packageId: 'p1',
-      baseUnitPrice: 7,
-      fetchImpl: () => Promise.resolve<any>({ ok: true, json: () => Promise.resolve({ unitPrice: 9 }) })
+      fetchImpl: () => Promise.resolve<any>({ ok: true, json: () => Promise.resolve({ price: 9 }) })
     });
     expect(price).toBe(9);
   });
 
-  test('returns from array shape', async () => {
+  test('returns from array root shape', async () => {
     const price = await fetchUnitPrice({
-      groupId: 'g1', packageId: 'p2', baseUnitPrice: 5,
-      fetchImpl: () => Promise.resolve<any>({ ok: true, json: () => Promise.resolve({ data: [ { packageId: 'x', unitPrice: 1 }, { packageId: 'p2', unitPrice: 11 } ] }) })
+      groupId: 'g1', packageId: 'p2',
+      fetchImpl: () => Promise.resolve<any>({ ok: true, json: () => Promise.resolve([ { packageId: 'x', price: 1 }, { packageId: 'p2', price: 11 } ]) })
     });
     expect(price).toBe(11);
   });
 
-  test('falls back to base on error', async () => {
+  test('returns from object.data[] shape', async () => {
     const price = await fetchUnitPrice({
-      groupId: 'g1', packageId: 'p3', baseUnitPrice: 4,
+      groupId: 'g1', packageId: 'p3',
+      fetchImpl: () => Promise.resolve<any>({ ok: true, json: () => Promise.resolve({ data: [ { packageId: 'p3', price: 4.75 } ] }) })
+    });
+    expect(price).toBe(4.75);
+  });
+
+  test('returns null on network error (no fallback)', async () => {
+    const price = await fetchUnitPrice({
+      groupId: 'g1', packageId: 'p4',
       fetchImpl: () => Promise.reject(new Error('network'))
     });
-    expect(price).toBe(4);
+    expect(price).toBeNull();
   });
 
-  test('returns base when groupId null', async () => {
-    const price = await fetchUnitPrice({ groupId: null, packageId: 'p4', baseUnitPrice: 6 });
-    expect(price).toBe(6);
+  test('returns null when groupId is null', async () => {
+    const price = await fetchUnitPrice({ groupId: null, packageId: 'p5' });
+    expect(price).toBeNull();
   });
 
-  test('returns null if no base and nothing found', async () => {
+  test('returns null if nothing found', async () => {
     const price = await fetchUnitPrice({
-      groupId: 'g1', packageId: 'p5', baseUnitPrice: null,
+      groupId: 'g1', packageId: 'p6',
       fetchImpl: () => Promise.resolve<any>({ ok: true, json: () => Promise.resolve({ data: [] }) })
     });
     expect(price).toBeNull();

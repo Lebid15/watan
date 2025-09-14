@@ -14,10 +14,10 @@ interface UpdatePricesResponse {
 
 interface PriceGroup { id: string; name: string; }
 interface PackagePrice { id: string | null; price: number; groupId: string; groupName: string; }
-interface ProductPackage { id: string; productId: string; name: string; capital: number; prices: PackagePrice[]; type?: 'fixed' | 'unit'; baseUnitPrice?: number | null; }
+interface ProductPackage { id: string; productId: string; name: string; capital: number; prices: PackagePrice[]; type?: 'fixed' | 'unit'; }
 interface ProductDTO {
   id: string; name: string;
-  packages: { id: string; name: string; capital?: number; basePrice?: number; prices?: any[]; type?: 'fixed' | 'unit'; baseUnitPrice?: number | null; }[];
+  packages: { id: string; name: string; capital?: number; basePrice?: number; prices?: any[]; type?: 'fixed' | 'unit'; }[];
 }
 type BulkMode = 'percent' | 'fee';
 
@@ -336,7 +336,7 @@ export default function PriceGroupsPage() {
         for (const pkg of (prod.packages ?? [])) {
           const capital = toNumberSafe(pkg?.basePrice ?? pkg?.capital ?? 0);
           const prices = normalizePrices(pkg?.prices);
-          allPkgs.push({ id: pkg.id, productId: prod.id, name: pkg.name, capital, prices, type: pkg.type, baseUnitPrice: pkg.baseUnitPrice ?? null });
+          allPkgs.push({ id: pkg.id, productId: prod.id, name: pkg.name, capital, prices, type: pkg.type });
           pkgIds.push(pkg.id);
         }
         pList.push({ id: prod.id, name: prod.name, packageIds: pkgIds });
@@ -693,12 +693,9 @@ export default function PriceGroupsPage() {
                                 key={pkg.id + '-unit'}
                                 packageId={pkg.id}
                                 groupId={primaryGroupId}
-                                baseUnitPrice={pkg.baseUnitPrice ?? null}
                                 digits={DECIMAL_DIGITS}
                               />
-                            ) : (
-                              <span className="text-text-secondary">—</span>
-                            )}
+                            ) : <span className="text-text-secondary">—</span>}
                           </td>
                         )}
                         <td className="text-sm text-center">
@@ -815,7 +812,7 @@ export default function PriceGroupsPage() {
 interface UnitOverrideFetchItem { packageId: string; unitPrice: number; }
 interface UnitOverrideFetchResponse { data?: UnitOverrideFetchItem[] | UnitOverrideFetchItem | null; unitPrice?: number; packageId?: string; }
 
-function UnitPriceOverrideCell({ packageId, groupId, baseUnitPrice, digits }: { packageId: string; groupId: string; baseUnitPrice: number | null; digits: number; }) {
+function UnitPriceOverrideCell({ packageId, groupId, digits }: { packageId: string; groupId: string; digits: number; }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -850,7 +847,7 @@ function UnitPriceOverrideCell({ packageId, groupId, baseUnitPrice, digits }: { 
   }, [editing]);
 
   function startEdit() {
-    setDraft(overrideValue != null ? String(overrideValue) : (baseUnitPrice != null ? String(baseUnitPrice) : ''));
+    setDraft(overrideValue != null ? String(overrideValue) : '');
     setEditing(true);
   }
 
@@ -915,13 +912,11 @@ function UnitPriceOverrideCell({ packageId, groupId, baseUnitPrice, digits }: { 
   }
 
   if (!editing) {
-    const baseVal = baseUnitPrice != null ? clampPriceDecimals(baseUnitPrice, digits) : '—';
-    const overridden = overrideValue != null && overrideValue !== baseUnitPrice;
-    const effective = overrideValue != null ? clampPriceDecimals(overrideValue, digits) : baseVal;
+    const effective = overrideValue != null ? clampPriceDecimals(overrideValue, digits) : '—';
     return (
-      <div className="flex items-center gap-1" title={overridden ? `الأساس: ${baseVal} | التخصيص: ${effective}` : ''}>
+      <div className="flex items-center gap-1">
         <span className="text-sm font-medium">{effective}</span>
-        {overridden && (
+        {overrideValue != null && (
           <span className="text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary">معدل</span>
         )}
         <button
@@ -953,7 +948,7 @@ function UnitPriceOverrideCell({ packageId, groupId, baseUnitPrice, digits }: { 
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setEditing(false); } }}
         onBlur={() => { /* keep edit mode until explicit save/cancel */ }}
-  placeholder={baseUnitPrice != null ? String(clampPriceDecimals(baseUnitPrice, digits)) : '0'}
+    placeholder={'0'}
         aria-label="قيمة سعر الوحدة"
       />
       <button
@@ -967,7 +962,7 @@ function UnitPriceOverrideCell({ packageId, groupId, baseUnitPrice, digits }: { 
         className="text-xs px-2 py-1 rounded bg-gray-600 text-text-inverse hover:brightness-110 disabled:opacity-50"
       >إلغاء</button>
       {overrideValue != null && !loading && (
-        <span className="text-[11px] text-text-secondary" title={`base: ${baseUnitPrice ?? '—'}`}>(base: {baseUnitPrice ?? '—'})</span>
+        <span className="text-[11px] text-text-secondary">(override)</span>
       )}
       {loading && <span className="text-[11px] text-text-secondary">…</span>}
     </div>

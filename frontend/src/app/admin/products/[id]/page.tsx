@@ -20,7 +20,6 @@ interface ProductPackage {
   minUnits?: number | null;
   maxUnits?: number | null;
   step?: number | null;
-  baseUnitPrice?: number | null;
 }
 
 interface Product {
@@ -94,7 +93,7 @@ export default function AdminProductDetailsPage() {
   const [showPackageForm, setShowPackageForm] = useState(false);
   const [pkgType, setPkgType] = useState<'fixed' | 'unit'>('fixed');
   const [pkgUnitName, setPkgUnitName] = useState('');
-  const [pkgBaseUnitPrice, setPkgBaseUnitPrice] = useState('');
+  // removed baseUnitPrice (pricing now derived exclusively from price group rows)
 
   // Bridges
   const [bridges, setBridges] = useState<(number | string)[]>([]);
@@ -105,7 +104,7 @@ export default function AdminProductDetailsPage() {
   const [activeTab] = useState<'basic'>('basic');
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [unitModalPkg, setUnitModalPkg] = useState<ProductPackage | null>(null);
-  const [unitForm, setUnitForm] = useState({ unitName: '', unitCode: '', baseUnitPrice: '', minUnits: '', maxUnits: '', step: '' });
+  const [unitForm, setUnitForm] = useState({ unitName: '', unitCode: '', minUnits: '', maxUnits: '', step: '' });
   const [unitSaving, setUnitSaving] = useState(false);
   const DECIMAL_DIGITS = getDecimalDigits();
 
@@ -216,14 +215,12 @@ export default function AdminProductDetailsPage() {
     }
     if (pkgType === 'unit') {
       if (!pkgUnitName.trim()) return alert('أدخل اسم الوحدة');
-      if (!pkgBaseUnitPrice.trim()) return alert('أدخل سعر الوحدة الأساسي');
     }
     try {
       const token = localStorage.getItem('token') || '';
       const payload: any = { name: pkgName, description: pkgDesc, basePrice: pkgPrice, publicCode: pkgBridge, isActive: true, type: pkgType };
       if (pkgType === 'unit') {
         payload.unitName = pkgUnitName.trim();
-        payload.baseUnitPrice = parseFloat(pkgBaseUnitPrice);
       }
       // استخدم مسار الإدارة لضمان دعم type وحقول العداد
       const res = await fetch(`/api/admin/products/${id}/packages`, {
@@ -232,7 +229,7 @@ export default function AdminProductDetailsPage() {
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('فشل في إضافة الباقة');
-      setPkgName(''); setPkgDesc(''); setPkgPrice(0); setPkgBridge(''); setShowPackageForm(false); setPkgType('fixed'); setPkgUnitName(''); setPkgBaseUnitPrice('');
+  setPkgName(''); setPkgDesc(''); setPkgPrice(0); setPkgBridge(''); setShowPackageForm(false); setPkgType('fixed'); setPkgUnitName('');
       fetchProduct(); fetchBridges();
     } catch (e: any) { alert(e.message || 'حدث خطأ غير متوقع'); }
   };
@@ -258,7 +255,6 @@ export default function AdminProductDetailsPage() {
     setUnitForm({
       unitName: pkg.unitName ? String(pkg.unitName) : '',
       unitCode: pkg.unitCode ? String(pkg.unitCode) : '',
-      baseUnitPrice: pkg.baseUnitPrice != null ? String(pkg.baseUnitPrice) : '',
       minUnits: pkg.minUnits != null ? String(pkg.minUnits) : '',
       maxUnits: pkg.maxUnits != null ? String(pkg.maxUnits) : '',
       step: pkg.step != null ? String(pkg.step) : '',
@@ -269,7 +265,6 @@ export default function AdminProductDetailsPage() {
   async function saveUnitModal() {
     if (!unitModalPkg) return;
     if (!unitForm.unitName.trim()) { alert('اسم الوحدة مطلوب'); return; }
-    if (!unitForm.baseUnitPrice.trim()) { alert('سعر الوحدة الأساسي مطلوب'); return; }
     const min = unitForm.minUnits.trim() ? Number(unitForm.minUnits) : null;
     const max = unitForm.maxUnits.trim() ? Number(unitForm.maxUnits) : null;
     if (min != null && max != null && max < min) { alert('الحد الأقصى يجب أن يكون أكبر أو يساوي الحد الأدنى'); return; }
@@ -281,7 +276,6 @@ export default function AdminProductDetailsPage() {
       const body: any = {
         unitName: unitForm.unitName.trim(),
         unitCode: unitForm.unitCode.trim() || null,
-        baseUnitPrice: unitForm.baseUnitPrice.trim(),
         minUnits: unitForm.minUnits.trim() || null,
         maxUnits: unitForm.maxUnits.trim() || null,
         step: unitForm.step.trim() || null,
@@ -289,7 +283,7 @@ export default function AdminProductDetailsPage() {
   const res = await fetch(`/api/admin/products/packages/${unitModalPkg.id}/unit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
       if (!res.ok) { let payload: any = null; try { payload = await res.json(); } catch {} throw new Error(payload?.message || 'فشل الحفظ'); }
       // Optimistic local update
-      setProduct(prev => prev ? ({ ...prev, packages: (prev.packages||[]).map(p => p.id === unitModalPkg.id ? { ...p, unitName: body.unitName, unitCode: body.unitCode, baseUnitPrice: Number(body.baseUnitPrice), minUnits: min, maxUnits: max, step: stepNum } : p) }) : prev);
+  setProduct(prev => prev ? ({ ...prev, packages: (prev.packages||[]).map(p => p.id === unitModalPkg.id ? { ...p, unitName: body.unitName, unitCode: body.unitCode, minUnits: min, maxUnits: max, step: stepNum } : p) }) : prev);
       setShowUnitModal(false);
     } catch (e: any) { alert(e.message || 'خطأ'); }
     finally { setUnitSaving(false); }
@@ -384,7 +378,7 @@ export default function AdminProductDetailsPage() {
                   <br />
                   1- أضف باقة جديدة أو عدّل باقة موجودة واجعل نوعها <span className="font-mono bg-bg-surface-alt px-1 rounded border border-border">unit</span>.
                   <br />
-                  2- حدّد الحقل <span className="font-semibold">baseUnitPrice</span> (السعر لكل وحدة) وأدخل اسم الوحدة (مثال: رسالة، نقطة، دقيقة).
+                  2- أدخل اسم الوحدة (مثال: رسالة، نقطة، دقيقة).
                   <br />
                   بعد حفظ الباقة ستظهر لك تبويب إعدادات العداد لإدارة الحد الأدنى والأقصى و قيمة الخطوة (Step) وأسعار المجموعات.
                 </div>
@@ -470,16 +464,10 @@ export default function AdminProductDetailsPage() {
                     </select>
                   </div>
                   {pkgType === 'unit' && !unitExists && (
-                    <>
-                      <div>
-                        <label className="block text-[12px] text-text-secondary mb-1">اسم الوحدة (مثال: نقطة، رسالة)</label>
-                        <input className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgUnitName} onChange={e => setPkgUnitName(e.target.value)} />
-                      </div>
-                      <div>
-                        <label className="block text-[12px] text-text-secondary mb-1">سعر الوحدة الأساسي (baseUnitPrice)</label>
-                        <input className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgBaseUnitPrice} onChange={e => setPkgBaseUnitPrice(e.target.value)} placeholder="0.0500" />
-                      </div>
-                    </>
+                    <div>
+                      <label className="block text-[12px] text-text-secondary mb-1">اسم الوحدة (مثال: نقطة، رسالة)</label>
+                      <input className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgUnitName} onChange={e => setPkgUnitName(e.target.value)} />
+                    </div>
                   )}
                 </div>
                 {pkgType === 'unit' && !editSupportsCounter && !unitExists && (
@@ -509,10 +497,6 @@ export default function AdminProductDetailsPage() {
                     <div>
                       <label className="block text-[11px] text-text-secondary mb-1">رمز (اختياري)</label>
                       <input className="w-full border border-border rounded p-2 bg-bg-surface-alt" value={unitForm.unitCode} onChange={e => setUnitForm(f => ({ ...f, unitCode: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-text-secondary mb-1">سعر الوحدة الأساسي</label>
-                      <input className="w-full border border-border rounded p-2 bg-bg-surface-alt" value={unitForm.baseUnitPrice} onChange={e => setUnitForm(f => ({ ...f, baseUnitPrice: e.target.value }))} placeholder="0.0500" />
                     </div>
                     <div>
                       <label className="block text-[11px] text-text-secondary mb-1">الحد الأدنى (اختياري)</label>

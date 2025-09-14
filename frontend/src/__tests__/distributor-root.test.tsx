@@ -3,7 +3,7 @@ import { render } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import DistributorLayout from '@/app/distributor/layout';
 
-jest.mock('@/context/UserContext', ()=>({ useUser: ()=>({ user:{ id:'1', role:'distributor', balance:0, currency:'USD'}, loading:false, refreshUser:()=>Promise.resolve(), logout:()=>{} }) }));
+jest.mock('@/context/UserContext', ()=>({ useUser: ()=>({ user:{ id:'1', role:'distributor', balance:0, currency:'USD'}, loading:false, refreshUser:()=>Promise.resolve(), refreshProfile:()=>Promise.resolve(), logout:()=>{} }) }));
 jest.mock('next/navigation', ()=>({ useRouter: ()=>({ replace: jest.fn() }), usePathname: ()=>'/distributor' }));
 
 describe('Distributor layout', ()=>{

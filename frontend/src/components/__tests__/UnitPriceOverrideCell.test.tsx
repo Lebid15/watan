@@ -66,7 +66,7 @@ jest.mock('@/utils/api', () => {
     default: {
       get: jest.fn(async (url: string) => {
         if (url.endsWith('/products')) {
-          return { data: [ { id: 'prod1', name: 'Product One', packages: [ { id: 'p1', name: 'Pkg Unit', type: 'unit', baseUnitPrice: 2.5, basePrice: 10, prices: [] } ] } ] };
+          return { data: [ { id: 'prod1', name: 'Product One', packages: [ { id: 'p1', name: 'Pkg Unit', type: 'unit', basePrice: 10, prices: [] } ] } ] };
         }
         if (url.endsWith('/price-groups')) {
           return { data: [ { id: 'g1', name: 'Group 1' } ] };
@@ -93,19 +93,19 @@ async function renderPageWithFetch(fetchMock: any) {
 }
 
 describe('UnitPriceOverrideCell (embedded)', () => {
-  test('renders base (no override) then saves override and shows badge', async () => {
+  test('starts empty (—) then saves override and shows badge', async () => {
     const f = mkFetchSequence();
     primeSuccessfulOverride(f, 5.55);
     await renderPageWithFetch(f);
-    // open edit: click the button that shows baseUnitPrice (2.5 formatted)
-    const baseBtn = await screen.findByRole('button', { name: /2\.5|2.50/ });
-    fireEvent.click(baseBtn);
+    // open edit: click the edit button (initial dash state)
+  const editBtn = await screen.findByRole('button', { name: 'تعديل سعر الوحدة' });
+    fireEvent.click(editBtn);
     const input = await screen.findByLabelText('قيمة سعر الوحدة');
     fireEvent.change(input, { target: { value: '5.55' } });
     // save
     const saveBtn = screen.getByRole('button', { name: '✓' });
     fireEvent.click(saveBtn);
-    await waitFor(() => expect(screen.getByText(/Overridden/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/معدل/)).toBeInTheDocument());
     expect(screen.getByText('5.55')).toBeInTheDocument();
   });
 
@@ -115,10 +115,10 @@ describe('UnitPriceOverrideCell (embedded)', () => {
     await renderPageWithFetch(f);
     // Should show overridden value first (7.5)
     await screen.findByText('7.5');
-    const deleteBtn = screen.getByRole('button', { name: '×' });
+  const deleteBtn = screen.getByRole('button', { name: 'حذف التخصيص' });
     fireEvent.click(deleteBtn);
-    // After deletion fetch returns empty so base (2.5) should appear again
-    await waitFor(() => expect(screen.getByRole('button', { name: /2\.5|2.50/ })).toBeInTheDocument());
+    // After deletion fetch returns empty so dash should appear again
+    await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThan(0));
   });
 
   test('invalid value (<=0) prevents PUT', async () => {
@@ -126,14 +126,14 @@ describe('UnitPriceOverrideCell (embedded)', () => {
     // only initial GET
     f.queue({ method: 'GET', url: '/api/admin/products/price-groups/g1/package-prices?packageId=p1', json: {} });
     await renderPageWithFetch(f);
-    const baseBtn = await screen.findByRole('button', { name: /2\.5|2.50/ });
-    fireEvent.click(baseBtn);
+  const editBtn = await screen.findByRole('button', { name: 'تعديل سعر الوحدة' });
+    fireEvent.click(editBtn);
     const input = await screen.findByLabelText('قيمة سعر الوحدة');
     fireEvent.change(input, { target: { value: '0' } });
     const saveBtn = screen.getByRole('button', { name: '✓' });
     fireEvent.click(saveBtn);
     // No badge should appear
     await new Promise(r => setTimeout(r, 150));
-    expect(screen.queryByText(/Overridden/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/معدل/)).not.toBeInTheDocument();
   });
 });

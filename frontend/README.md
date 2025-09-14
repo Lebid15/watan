@@ -39,7 +39,7 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 1. التفعيل: من صفحة `Admin > Products` استخدم زر التحويل (Counter / Fixed) لكل منتج.
 2. إعدادات الوحدة: داخل صفحة المنتج يظهر تبويب "إعدادات العداد" عندما يكون المنتج مفعّلًا وبه باقات نوعها `unit`.
-	- الحقول: `unitName`, `unitCode`, `minUnits`, `maxUnits`, `step`, `baseUnitPrice`.
+	- الحقول: `unitName`, `unitCode`, `minUnits`, `maxUnits`, `step`.
 3. سعر الوحدة لكل مجموعة أسعار: في صفحة `Admin > Products > Price Groups` يظهر عمود "Unit price" للباقات ذات النوع `unit` فقط.
 	- إدخال قيمة موجبة بعدد المنازل العشرية المعتمد (`NEXT_PUBLIC_PRICE_DECIMALS`).
 	- حفظ (✓) ينشئ Override عبر: `PUT /api/admin/price-groups/:groupId/package-prices/:packageId/unit`.
@@ -66,10 +66,11 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 - السعر الفوري: (سعر الوحدة الفعّال × الكمية) يُحدَّث مباشرة ويستخدم الدقة المعتمدة.
 
 مصدر سعر الوحدة الفعّال:
-1. محاولة جلب تخصيص للمجموعة (override) عبر endpoint عام (شكل مرن):
-	- إما `{ unitPrice: number }`
-	- أو `{ data: [ { packageId, unitPrice }, ... ] }`
-2. عند الفشل (404 / 500 / استجابة غير متوقعة) يتم استخدام `baseUnitPrice` كبديهة فورًا.
+1. محاولة جلب سعر المجموعة (override) عبر endpoint مرن يقبل عدة أشكال:
+	- `{ price: number }` أو `{ unitPrice: number }`
+	- مصفوفة: `[ { packageId, price }, ... ]`
+	- كائن: `{ data: [ { packageId, price }, ... ] }`
+2. عند الفشل أو عدم العثور على صف للسعر يتم إرجاع `null` ويُعرض "—" في الواجهة، ولا يوجد Fallback.
 
 التحقق (Client Side):
 - يمنع: قيمة فارغة، غير رقمية، ≤ 0، أقل من الحد الأدنى، أكبر من الحد الأقصى، أو لا تطابق خطوة الزيادة (مع تسامح عائم صغير 1e-9).
@@ -95,16 +96,16 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 #### Troubleshooting
 
 1. تغيّر شكل ردّ سعر الوحدة:
-	- الكارت يدعم: `{ unitPrice: "..." }` أو `{ data: [{ packageId, unitPrice }, ...] }`.
-	- الفشل ⇒ fallback إلى `baseUnitPrice` مباشرة.
-	- إن تم تغيير المسار أو الحقل نهائيًا، عدّل فقط دالة الجلب داخل المكوّن (مكان استدعاء `fetch` للـ override).
+	- الكارت يدعم الصيغ: `{ price }`، `{ unitPrice }`، مصفوفة مباشرة، أو `{ data: [...] }`.
+	- الفشل أو عدم وجود صف ⇒ النتيجة `null` (عرض شرطة) بدون أي Fallback.
+	- لتعديل السلوك عدّل فقط دالة الجلب `fetchUnitPrice`.
 
 2. أخطاء "STEP / MIN / MAX" من السيرفر:
 	- تأكد أن الإدخال يطابق `step` والدقة (`NEXT_PUBLIC_PRICE_DECIMALS`).
 	- اعرض رسالة السيرفر كما هي لتجنّب اختلاف الترجمة أو التضليل.
 
-3. السعر يظهر 0.00:
-	- تحقّق من: تفعيل `supportsCounter`، الباقة نوعها `unit`، قيمة `baseUnitPrice` > 0 أو وجود override صالح.
+3. السعر يظهر —:
+	- تحقّق من: تفعيل `supportsCounter`، الباقة نوعها `unit`، ووجود صف سعر للمجموعة في قاعدة البيانات.
 
 4. استدعاءان متتاليان لـ fetch:
 	- متوقع: الأول لجلب سعر الوحدة (override)، الثاني لإنشاء الطلب.

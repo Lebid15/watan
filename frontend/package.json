@@ -8,7 +8,8 @@
   "scripts": {
     "prebuild": "node scripts/generate-build-meta.cjs",
     "dev": "next dev -H 0.0.0.0 -p 3000",
-    "build": "next build",
+  "build": "next build",
+  "test": "jest --passWithNoTests",
     "start": "PORT=\"${PORT:-3000}\" next start -H 0.0.0.0 -p $PORT",
     "lint": "next lint"
   },

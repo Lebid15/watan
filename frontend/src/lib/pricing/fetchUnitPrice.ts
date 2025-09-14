@@ -12,13 +12,12 @@ export interface FetchUnitPriceOptions {
   groupId: string | null | undefined;
   packageId: string;
   endpoint?: string; // Allows overriding the base endpoint path for future changes
-  baseUnitPrice: number | null | undefined;
   fetchImpl?: typeof fetch; // for testing injection
 }
 
 export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<number | null> {
-  const { groupId, packageId, baseUnitPrice, endpoint, fetchImpl } = options;
-  if (!groupId) return baseUnitPrice ?? null;
+  const { groupId, packageId, endpoint, fetchImpl } = options;
+  if (!groupId) return null; // no group -> no unit price (model removed global base fallback)
   const f = fetchImpl || fetch;
 
   // We now prefer the bulk packages/prices endpoint. Some environments might still expect singular 'packageId'
@@ -39,7 +38,7 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
       let json: any = null;
       try { json = await res.json(); } catch { continue; }
 
-      // Case 1: direct object – accept 'price' only now
+  // Case 1: direct object – accept 'price'
       if (json && !Array.isArray(json) && (json.price != null)) {
         const n = Number(json.price);
         if (Number.isFinite(n) && n > 0) return n;
@@ -70,8 +69,8 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
     }
   }
 
-  // If nothing found return the provided base (may be null)
-  return baseUnitPrice ?? null;
+  // If nothing found return null (explicit missing group price)
+  return null;
 }
 
 export default fetchUnitPrice;

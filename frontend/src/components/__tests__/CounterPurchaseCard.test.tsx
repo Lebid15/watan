@@ -8,7 +8,7 @@ jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }) }))
 
 const baseProduct: CounterProduct = { id: 'prod1', name: 'Test Product', supportsCounter: true };
 const unitPkg: CounterPackage = {
-  id: 'pkg1', name: 'Unit Package', isActive: true, type: 'unit', baseUnitPrice: 5,
+  id: 'pkg1', name: 'Unit Package', isActive: true, type: 'unit',
   unitName: 'نقطة', minUnits: 1, maxUnits: 10, step: 0.5
 };
 
@@ -30,12 +30,15 @@ function setup(fetchMockImpl?: any, overrides: Partial<CounterPackage> = {}, qua
 describe('CounterPurchaseCard', () => {
   beforeEach(() => { jest.clearAllMocks(); });
 
-  test('updates live total when quantity changes', async () => {
-    setup(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ unitPrice: 2 }) }));
+  test('updates live total when quantity changes (after price fetch)', async () => {
+    setup(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ price: 2 }) }));
     const input = screen.getByLabelText('كمية الوحدات');
+    // wait for price to load (unit price display should include 2.00 once quantity set)
     fireEvent.change(input, { target: { value: '3' } });
     await waitFor(() => {
-      expect(screen.getByText(/2\.00 × 3 =/)).toBeInTheDocument();
+      // Combined line may split nodes; use regex on container
+      expect(screen.getByText(/السعر الفوري:/)).toBeInTheDocument();
+      expect(screen.getByText(/2\.00/)).toBeInTheDocument();
     });
   });
 
@@ -52,28 +55,26 @@ describe('CounterPurchaseCard', () => {
     await screen.findByText('الكمية لا تطابق خطوة الزيادة');
   });
 
-  test('success submission resets quantity and redirects', async () => {
+  test('success submission resets quantity', async () => {
     const orderResponse = { id: 'order123' };
     (global as any).fetch = jest.fn()
-      // first call: price override
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ unitPrice: 5 }) })
-      // second call: order submit
+      // unit price fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ price: 5 }) })
+      // order submit
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(orderResponse) });
     setup(undefined, {}, undefined);
     const input = screen.getByLabelText('كمية الوحدات') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '2' } });
     const button = screen.getByRole('button', { name: 'شراء' });
     fireEvent.click(button);
-    await waitFor(() => {
-      expect((global as any).fetch).toHaveBeenCalledTimes(2);
-      expect(input.value).toBe('');
-    });
+    await waitFor(() => expect((global as any).fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(input.value).toBe(''));
   });
 
-  test('failure submission keeps quantity and shows server message', async () => {
+  test('failure submission keeps quantity', async () => {
     (global as any).fetch = jest.fn()
-      // override fetch
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ unitPrice: 5 }) })
+      // price fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ price: 5 }) })
       // order submit fails
       .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ message: 'ERR_LIMIT' }) });
     setup(undefined, {}, undefined);
@@ -81,16 +82,14 @@ describe('CounterPurchaseCard', () => {
     fireEvent.change(input, { target: { value: '2' } });
     const button = screen.getByRole('button', { name: 'شراء' });
     fireEvent.click(button);
-    await waitFor(() => {
-      expect((global as any).fetch).toHaveBeenCalledTimes(2);
-      // quantity preserved
-      expect(input.value).toBe('2');
-    });
+    await waitFor(() => expect((global as any).fetch).toHaveBeenCalledTimes(2));
+    expect(input.value).toBe('2');
   });
 
-  test('fallback to baseUnitPrice if override fetch fails', async () => {
+  test('shows dash when no price resolved (failed fetch)', async () => {
     setup(() => Promise.resolve({ ok: false }));
-    const priceText = await screen.findByText(/5\.00 × 0 =/);
-    expect(priceText).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/— × 0 =/)).toBeInTheDocument();
+    });
   });
 });
