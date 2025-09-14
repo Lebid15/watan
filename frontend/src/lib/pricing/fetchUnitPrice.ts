@@ -39,27 +39,19 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
       let json: any = null;
       try { json = await res.json(); } catch { continue; }
 
-      // Case 1: direct object – prefer effectiveUnitPrice then unitPrice then price
-      if (json && !Array.isArray(json)) {
-        const candidatesNums = [json.effectiveUnitPrice, json.unitPrice, json.price];
-        for (const val of candidatesNums) {
-          if (val != null && (typeof val === 'number' || (typeof val === 'string' && String(val).trim() !== ''))) {
-            const n = Number(val);
-            if (Number.isFinite(n) && n > 0) return n;
-          }
-        }
+      // Case 1: direct object – accept 'price' only now
+      if (json && !Array.isArray(json) && (json.price != null)) {
+        const n = Number(json.price);
+        if (Number.isFinite(n) && n > 0) return n;
       }
 
       // Case 2: array root (e.g. packages/prices returns an array of rows)
       if (Array.isArray(json)) {
         const row = json.find((r: any) => String(r?.packageId) === packageId);
         if (row) {
-          const candidatesNums = [row.effectiveUnitPrice, row.unitPrice, row.price];
-          for (const val of candidatesNums) {
-            if (val != null && (typeof val === 'number' || (typeof val === 'string' && String(val).trim() !== ''))) {
-              const n = Number(val);
-              if (Number.isFinite(n) && n > 0) return n;
-            }
+          if (row.price != null) {
+            const n = Number(row.price);
+            if (Number.isFinite(n) && n > 0) return n;
           }
         }
       }
@@ -67,14 +59,9 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
       // Case 3: object with data array
       if (json && Array.isArray(json.data)) {
         const item = json.data.find((x: any) => String(x?.packageId) === packageId);
-        if (item) {
-          const candidatesNums = [item.effectiveUnitPrice, item.unitPrice, item.price];
-          for (const val of candidatesNums) {
-            if (val != null && (typeof val === 'number' || (typeof val === 'string' && String(val).trim() !== ''))) {
-              const n = Number(val);
-              if (Number.isFinite(n) && n > 0) return n;
-            }
-          }
+        if (item && item.price != null) {
+          const n = Number(item.price);
+          if (Number.isFinite(n) && n > 0) return n;
         }
       }
     } catch {
