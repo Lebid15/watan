@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { fmtDateStable } from '@/lib/fmtDateStable';
 
 // ملاحظات:
 // - نظهر التوكن فور التوليد/التدوير فقط (لا نعيد عرضه لاحقاً لأمان أكبر)
@@ -47,7 +48,7 @@ export default function UserApiTokenPage(){
         <div className="space-y-4">
           <div className="p-4 border rounded bg-gray-500">
             <div className="text-sm">الحالة: {info.revoked ? 'مُبطَل' : info.hasToken ? 'فعال' : 'لا يوجد توكن'}</div>
-            <div className="text-sm">آخر استخدام: {info.lastUsedAt ? new Date(info.lastUsedAt).toLocaleString() : '—'}</div>
+            <div className="text-sm">آخر استخدام: {info.lastUsedAt ? fmtDateStable(info.lastUsedAt) : '—'}</div>
           </div>
           {token && <div className="p-3 bg-amber-50 border rounded text-sm break-all relative">
             <div className="font-medium mb-1 pr-16">التوكن (انسخه الآن، لن يُعرض مرة أخرى):</div>

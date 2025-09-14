@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
+import { fmtDateStable } from '@/lib/fmtDateStable';
 import api from '@/utils/api';
 
 interface NoteResp { value: string; updatedAt: string | null }
@@ -35,7 +36,7 @@ export default function DevAdminNotePage() {
     setError('');
     try {
       const r = await api.post<NoteResp>('/dev/notes', { value: current });
-      setSavedAt(new Date().toLocaleString('ar-EG'));
+  setSavedAt(fmtDateStable(new Date()));
       setLatest(r.data);
     } catch {
       setError('فشل الحفظ');
@@ -81,7 +82,7 @@ export default function DevAdminNotePage() {
             {latest.value ? (
               <div className="rounded border border-border bg-bg-surface p-3 whitespace-pre-wrap break-words">
                 {latest.value}
-                <div className="mt-2 text-[11px] text-text-secondary">آخر تحديث: {latest.updatedAt ? new Date(latest.updatedAt).toLocaleString('ar-EG') : '—'}</div>
+                <div className="mt-2 text-[11px] text-text-secondary">آخر تحديث: {latest.updatedAt ? fmtDateStable(latest.updatedAt) : '—'}</div>
               </div>
             ) : (
               <div className="text-text-secondary">لا توجد ملاحظة محفوظة بعد.</div>

@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { fmtDateStable } from '@/lib/fmtDateStable';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useAuthRequired } from '@/hooks/useAuthRequired';
 import { ErrorResponse } from '@/types/common';
@@ -49,7 +50,7 @@ const fmt = (v: number | string | undefined | null, maxFrac = 2) => {
     maximumFractionDigits: maxFrac,
   });
 };
-const fmtDate = (d: string) => new Date(d).toLocaleString();
+const fmtDate = (d: string) => fmtDateStable(d);
 
 export default function WalletPage() {
   useAuthRequired();

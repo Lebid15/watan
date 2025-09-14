@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { fmtDateStable } from '@/lib/fmtDateStable';
 import api, { API_ROUTES } from '@/utils/api';
 
 export default function Page() {
@@ -35,8 +36,8 @@ export default function Page() {
     setError('');
     try {
       // 👈 وهنا أيضًا: infoes بدل about
-      await api.put(API_ROUTES.site.admin.infoes, { value });
-      setSavedAt(new Date().toLocaleString('ar-EG'));
+  await api.put(API_ROUTES.site.admin.infoes, { value });
+  setSavedAt(fmtDateStable(new Date()));
     } catch {
       setError('تعذّر الحفظ');
     } finally {
@@ -97,7 +98,7 @@ export default function Page() {
           </div>
 
           <div className="text-[11px] text-text-secondary text-left ltr">
-            {value.length.toLocaleString('ar-EG')} حرف
+            {value.length.toString()} حرف
           </div>
         </div>
       </div>

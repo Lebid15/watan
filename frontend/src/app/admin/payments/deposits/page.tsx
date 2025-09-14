@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { fmtDateStable } from '@/lib/fmtDateStable';
 import api, { API_ROUTES } from '@/utils/api';
 import { ErrorResponse } from '@/types/common';
 
@@ -39,7 +40,7 @@ const statusTabs: { key: DepositStatus | 'all'; label: string }[] = [
 const fmt = (v: number | string | undefined | null, maxFrac = 2) => {
   const n = Number(v);
   if (!isFinite(n)) return '—';
-  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: maxFrac });
+  return n.toFixed(Math.min(Math.max(0, maxFrac), 8));
 };
 
 // يلتقط أول قيمة موجودة
@@ -310,7 +311,7 @@ export default function AdminDepositsPage() {
                         />
                       </td>
                       <td className="border border-border px-3 py-2">
-                        {new Date(r.createdAt).toLocaleString()}
+                        {fmtDateStable(r.createdAt)}
                       </td>
                       <td className="border border-border px-3 py-2">
                         {r.status === 'pending' ? (

@@ -34,6 +34,8 @@ import { configureCloudinary } from '../utils/cloudinary';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '../auth/user-role.enum';
+// Swagger
+import { ApiOperation, ApiParam, ApiBody, ApiResponse } from '@nestjs/swagger';
 
 
 function parseMoney(input?: any): number {
@@ -241,6 +243,29 @@ export class ProductsController {
     const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
     console.log('[PRODUCTS] update tenantId=', tenantId, 'productId=', id);
     return this.productsService.update(tenantId, id, body);
+  }
+
+  // ✅ تفعيل/تعطيل العداد (supportsCounter) لمسار إدارة المنتجات
+  @Patch(':id/supports-counter')
+  @ApiOperation({ summary: 'Toggle product counter units feature (supportsCounter)' })
+  @ApiParam({ name: 'id', description: 'معرف المنتج', required: true })
+  @ApiBody({ schema: { properties: { supportsCounter: { oneOf: [ { type: 'boolean' }, { type: 'string', enum: ['true','false','1','0','yes','no','on','off'] } ], example: true } }, required: ['supportsCounter'] } })
+  @ApiResponse({ status: 200, description: 'تم تحديث حالة supportsCounter', schema: { example: { id: 'uuid', supportsCounter: true } } })
+  async toggleSupportsCounter(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body('supportsCounter') supportsCounter: any,
+  ) {
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    if (supportsCounter == null) throw new BadRequestException('supportsCounter مطلوب');
+    const raw = String(supportsCounter).toLowerCase();
+    let val: boolean;
+    if (typeof supportsCounter === 'boolean') val = supportsCounter;
+    else if (['1','true','yes','on'].includes(raw)) val = true;
+    else if (['0','false','no','off'].includes(raw)) val = false;
+    else throw new BadRequestException('قيمة supportsCounter غير صالحة');
+    const updated = await this.productsService.update(tenantId, id, { supportsCounter: val } as any);
+    return { id: updated.id, supportsCounter: (updated as any).supportsCounter === true };
   }
 
   @Delete(':id')
