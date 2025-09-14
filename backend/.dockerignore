@@ -36,4 +36,5 @@ yarn-error.log*
 !.env.example
 README.md
 CHANGELOG.md
-scripts/
+# Keep scripts for build steps (generate-build-meta.cjs)
+# scripts/
