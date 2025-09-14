@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import toast from 'react-hot-toast';
 import { getDecimalDigits, formatPrice, priceInputStep, clampPriceDecimals } from '@/utils/pricingFormat';
-import CounterPurchaseCard from '@/components/CounterPurchaseCard';
+// CounterPurchaseCard (old always-visible component) removed in favor of on-demand modal
 import { useParams, useRouter  } from "next/navigation";
 import api, { API_ROUTES } from '@/utils/api';
 import { useUser } from '../../../context/UserContext';
@@ -80,7 +80,13 @@ export default function ProductDetailsPage() {
   const [gameId, setGameId] = useState("");
   const [extraField, setExtraField] = useState("");
   const [buying, setBuying] = useState(false);
-  const counterRef = useRef<HTMLDivElement | null>(null);
+  // ====== حالة شراء الوحدات في نافذة منبثقة ======
+  const [unitModalOpen, setUnitModalOpen] = useState(false);
+  const [unitSelectedPkgId, setUnitSelectedPkgId] = useState<string>('');
+  const [unitQuantity, setUnitQuantity] = useState<string>('');
+  const [unitSubmitting, setUnitSubmitting] = useState(false);
+  const [unitError, setUnitError] = useState<string>('');
+  const [effectiveUnitPrice, setEffectiveUnitPrice] = useState<number | null>(null);
 
   const apiHost = useMemo(
     () => API_ROUTES.products.base.replace(/\/api(?:\/products)?\/?$/, ''),
@@ -119,13 +125,15 @@ export default function ProductDetailsPage() {
   const openModal = (pkg: Package) => {
     if (!pkg.isActive) return;
     if (pkg.type === 'unit') {
-      if (counterRef.current) {
-        counterRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        counterRef.current.classList.add('ring-2','ring-primary');
-        setTimeout(() => counterRef.current && counterRef.current.classList.remove('ring-2','ring-primary'), 1200);
-      }
+      setUnitSelectedPkgId(pkg.id);
+      setUnitQuantity('');
+      setGameId('');
+      setExtraField('');
+      setUnitError('');
+      setUnitModalOpen(true);
       return;
     }
+    // باقات ثابتة
     setSelectedPackage(pkg);
     setGameId('');
     setExtraField('');
@@ -165,7 +173,98 @@ export default function ProductDetailsPage() {
   const sym = currencySymbol(currencyCode);
   const imageSrc = normalizeImageUrl(product.imageUrl, apiHost);
   const unitPkgs = activePkgs.filter(p => p.type === 'unit');
-  const showCounterCard = Boolean(product.supportsCounter && unitPkgs.length > 0);
+  const selectedUnitPackage = unitPkgs.find(p => p.id === unitSelectedPkgId) || unitPkgs[0];
+
+  // ====== منطق التسعير للوحدات داخل المودال ======
+  const digits = getDecimalDigits();
+  const step = selectedUnitPackage?.step != null && selectedUnitPackage.step > 0 ? selectedUnitPackage.step : Number(priceInputStep(digits));
+  const minUnits = selectedUnitPackage?.minUnits ?? null;
+  const maxUnits = selectedUnitPackage?.maxUnits ?? null;
+  const baseUnitPrice = selectedUnitPackage?.baseUnitPrice ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadEffectiveUnitPrice() {
+      if (!selectedUnitPackage) { setEffectiveUnitPrice(null); return; }
+      try {
+        const res = await fetch('/api/pricing/unit-price', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            groupId: getUserPriceGroupId(),
+            packageId: selectedUnitPackage.id,
+            baseUnitPrice: baseUnitPrice
+          })
+        });
+        if (!res.ok) throw new Error();
+        const j = await res.json();
+        if (!cancelled) setEffectiveUnitPrice(typeof j?.price === 'number' ? j.price : baseUnitPrice);
+      } catch {
+        if (!cancelled) setEffectiveUnitPrice(baseUnitPrice || null);
+      }
+    }
+    if (unitModalOpen) loadEffectiveUnitPrice();
+    return () => { cancelled = true; };
+  }, [unitModalOpen, unitSelectedPkgId, baseUnitPrice, selectedUnitPackage, getUserPriceGroupId]);
+
+  const unitQtyNum = unitQuantity === '' ? null : Number(unitQuantity);
+  const unitValidNumber = unitQtyNum != null && !isNaN(unitQtyNum);
+
+  function validateUnitPurchase(): boolean {
+    if (!selectedUnitPackage) { setUnitError('الباقة غير صالحة'); return false; }
+    if (unitQtyNum == null || !unitValidNumber) { setUnitError('أدخل كمية صحيحة'); return false; }
+    if (unitQtyNum <= 0) { setUnitError('الكمية يجب أن تكون أكبر من صفر'); return false; }
+    if (minUnits != null && unitQtyNum < minUnits) { setUnitError('الكمية أقل من الحد الأدنى'); return false; }
+    if (maxUnits != null && unitQtyNum > maxUnits) { setUnitError('الكمية أعلى من الحد الأقصى'); return false; }
+    const base = minUnits != null ? minUnits : 0;
+    const diff = unitQtyNum - base;
+    const tol = 1e-9;
+    if (step > 0) {
+      const multiples = Math.round(diff / step);
+      const reconstructed = multiples * step;
+      if (Math.abs(reconstructed - diff) > tol) { setUnitError('الكمية لا تطابق خطوة الزيادة'); return false; }
+    }
+    if (!gameId.trim()) { setUnitError('الرجاء إدخال معرف اللعبة'); return false; }
+    setUnitError('');
+    return true;
+  }
+
+  const unitPriceDisplay = effectiveUnitPrice != null ? formatPrice(effectiveUnitPrice, digits) : '—';
+  const unitTotalDisplay = (() => {
+    if (!effectiveUnitPrice || !unitValidNumber) return '—';
+    return formatPrice(effectiveUnitPrice * (unitQtyNum || 0), digits);
+  })();
+
+  const hintParts: string[] = [];
+  if (minUnits != null) hintParts.push(`الحد الأدنى: ${minUnits}`);
+  if (maxUnits != null) hintParts.push(`الأقصى: ${maxUnits}`);
+  hintParts.push(`الخطوة: ${step}`);
+
+  async function submitUnitPurchase() {
+    if (!product) return; // safeguard
+    if (!validateUnitPurchase() || !selectedUnitPackage || unitQtyNum == null) return;
+    try {
+      setUnitSubmitting(true);
+      await api.post(API_ROUTES.orders.base, {
+        productId: product.id,
+        packageId: selectedUnitPackage.id,
+        quantity: unitQtyNum,
+        userIdentifier: gameId.trim(),
+        extraField: extraField?.trim() ? extraField.trim() : undefined,
+      });
+      await refreshProfile();
+      setUnitModalOpen(false);
+      setUnitQuantity('');
+      setGameId('');
+      setExtraField('');
+      alert('تم إنشاء الطلب');
+      router.push('/orders');
+    } catch (e) {
+      alert('فشل في تنفيذ الطلب');
+    } finally {
+      setUnitSubmitting(false);
+    }
+  }
 
   return (
     <div className="p-3 text-center bg-bg-base text-text-primary">
@@ -223,16 +322,7 @@ export default function ProductDetailsPage() {
         </div>
       )}
 
-      {showCounterCard && (
-        <div ref={counterRef} className="mt-8 max-w-md mx-auto w-full scroll-mt-20">
-          <CounterPurchaseCard
-            product={product}
-            packages={unitPkgs}
-            currencyCode={currencyCode}
-            getUserPriceGroupId={getUserPriceGroupId}
-          />
-        </div>
-      )}
+      {/* لم يعد يظهر الشراء بالعداد تلقائياً */}
 
       {selectedPackage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -275,6 +365,81 @@ export default function ProductDetailsPage() {
                 إلغاء
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {unitModalOpen && selectedUnitPackage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="card w-[340px] p-5 text-right">
+            <h2 className="text-sm font-bold mb-3 flex items-center justify-between">
+              <span>الشراء بالعداد</span>
+              <button onClick={() => setUnitModalOpen(false)} className="text-xs text-text-secondary hover:text-text-primary">إغلاق ✕</button>
+            </h2>
+            {unitPkgs.length > 1 && (
+              <div className="mb-3">
+                <label className="block text-[11px] mb-1 text-text-secondary">اختر باقة الوحدات</label>
+                <select
+                  className="input w-full"
+                  value={unitSelectedPkgId || selectedUnitPackage.id}
+                  onChange={e => { setUnitSelectedPkgId(e.target.value); setUnitQuantity(''); setUnitError(''); }}
+                >
+                  {unitPkgs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            <div className="mb-3">
+              <label className="block text-[11px] mb-1 text-text-secondary">معرف اللعبة</label>
+              <input
+                type="text"
+                className={`input w-full ${unitError === 'الرجاء إدخال معرف اللعبة' ? 'border-danger' : ''}`}
+                value={gameId}
+                onChange={e => setGameId(e.target.value)}
+                placeholder="اكتب المعرف هنا"
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-[11px] mb-1 text-text-secondary">معلومة إضافية (اختياري)</label>
+              <input
+                type="text"
+                className="input w-full"
+                value={extraField}
+                onChange={e => setExtraField(e.target.value)}
+                placeholder="مثلاً: السيرفر / المنطقة"
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-[11px] mb-1 text-text-secondary">الكمية ( {selectedUnitPackage?.unitName || 'وحدة'} )</label>
+              <input
+                type="number"
+                inputMode="decimal"
+                step={step}
+                min={minUnits != null ? minUnits : undefined}
+                max={maxUnits != null ? maxUnits : undefined}
+                className={`input w-full ${unitError ? 'border-danger' : ''}`}
+                value={unitQuantity}
+                onChange={e => setUnitQuantity(e.target.value)}
+                onBlur={() => { if (unitQuantity) setUnitQuantity(String(clampPriceDecimals(Number(unitQuantity), digits))); validateUnitPurchase(); }}
+              />
+              <div className="text-[11px] text-text-secondary mt-1">{hintParts.join(' | ')}</div>
+              {unitError && <div className="text-[11px] mt-1 text-danger">{unitError}</div>}
+            </div>
+
+            <div className="text-[12px] mb-3">
+              <span className="text-text-secondary">السعر الفوري: </span>
+              {unitPriceDisplay} × {unitQuantity || 0} = <span className="font-semibold">{unitTotalDisplay}</span>
+            </div>
+
+            <button
+              className="btn btn-primary w-full disabled:opacity-60"
+              disabled={unitSubmitting || !unitQuantity || !!unitError}
+              onClick={submitUnitPurchase}
+            >
+              {unitSubmitting ? 'جارٍ الإرسال...' : 'شراء'}
+            </button>
           </div>
         </div>
       )}
