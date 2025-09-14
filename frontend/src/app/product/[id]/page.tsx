@@ -237,7 +237,11 @@ export default function ProductDetailsPage() {
               if (raw != null && Number(raw) > 0) eff = Number(raw);
             }
         }
-        if (eff != null) map[p.id] = code === 'USD' ? eff : eff * rate;
+        // eff هنا هو السعر بالدولار من الصف. نقوم بالتحويل مرة واحدة فقط.
+        if (eff != null) {
+          const converted = code === 'USD' ? eff : eff * rate;
+          map[p.id] = converted;
+        }
       }
       if (!cancelled) setUnitCardPrices(map);
     }
@@ -392,7 +396,7 @@ export default function ProductDetailsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {activePkgs.map((pkg) => {
                 const price = pkg.type === 'unit'
-                  ? (unitCardPrices[pkg.id] ?? null)
+                  ? (unitCardPrices[pkg.id] ?? null) // القيمة هنا أصبحت بالعملة النهائية (TRY مثلاً) بعد التحويل مرة واحدة.
                   : getPrice(pkg);
                 return (
                   <div
@@ -432,8 +436,9 @@ export default function ProductDetailsPage() {
                     </div>
 
                     <div className="text-sm shrink-0 text-primary font-medium">
+                      {/* لا نعيد الضرب في معدل التحويل، price جاهز بعملة المستخدم */}
                       {price != null ? (
-                        <>{formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: false })} {sym}</>
+                        <span>{formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: false })} {sym}</span>
                       ) : '—'}
                     </div>
                   </div>
