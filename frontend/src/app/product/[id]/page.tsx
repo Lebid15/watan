@@ -174,12 +174,10 @@ export default function ProductDetailsPage() {
     }
   };
 
-  if (loading) return <p className="text-center mt-6">جاري التحميل...</p>;
-  if (error || !product) return <p className="text-center mt-6 text-danger">{error || 'المنتج غير موجود'}</p>;
-
-  const activePkgs = (product.packages || []).filter(p => p.isActive);
+  // احسب القيم حتى لو لم يكتمل التحميل (باستخدام حمايات)
+  const activePkgs = product ? (product.packages || []).filter(p => p.isActive) : [];
   const sym = currencySymbol(currencyCode);
-  const imageSrc = normalizeImageUrl(product.imageUrl, apiHost);
+  const imageSrc = normalizeImageUrl(product?.imageUrl || null, apiHost);
   const unitPkgs = activePkgs.filter(p => p.type === 'unit');
   const selectedUnitPackage = unitPkgs.find(p => p.id === unitSelectedPkgId) || unitPkgs[0];
 
@@ -283,58 +281,67 @@ export default function ProductDetailsPage() {
 
   return (
     <div className="p-3 text-center bg-bg-base text-text-primary">
-      <h1 className="text-xl font-bold mb-3">{product.name}</h1>
-
-      {activePkgs.length === 0 ? (
-        <p className="text-text-secondary">لا توجد باقات متاحة.</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {activePkgs.map((pkg) => {
-            const price = getPrice(pkg);
-            return (
-              <div
-                key={pkg.id}
-                onClick={() => openModal(pkg)}
-                className={`flex items-center justify-between gap-3 pl-3 py-1 pr-1 rounded-xl border transition
-                            bg-bg-surface border-border shadow
-                            ${pkg.isActive ? 'cursor-pointer hover:bg-bg-surface-alt' : 'opacity-50 pointer-events-none'}`}
-                title={pkg.name}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-border bg-bg-surface shrink-0">
-                    <img
-                      src={imageSrc}
-                      alt={pkg.name}
-                      className="w-full h-full object-cover rounded-xl"
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
-                      }}
-                    />
-                  </div>
-                  <div className="min-w-0 text-right">
-                    <div className="text-sm truncate text-text-primary flex items-center gap-1 justify-end">
-                      <span className="truncate">{pkg.name}</span>
-                      {pkg.type === 'unit' && (
-                        <span className="text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary" title="الشراء بالعداد من الأسفل">وحدات</span>
-                      )}
+      {loading && (
+        <p className="text-center mt-6">جاري التحميل...</p>
+      )}
+      {!loading && (error || !product) && (
+        <p className="text-center mt-6 text-danger">{error || 'المنتج غير موجود'}</p>
+      )}
+      {!loading && product && (
+        <>
+          <h1 className="text-xl font-bold mb-3">{product.name}</h1>
+          {activePkgs.length === 0 ? (
+            <p className="text-text-secondary">لا توجد باقات متاحة.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {activePkgs.map((pkg) => {
+                const price = getPrice(pkg);
+                return (
+                  <div
+                    key={pkg.id}
+                    onClick={() => openModal(pkg)}
+                    className={`flex items-center justify-between gap-3 pl-3 py-1 pr-1 rounded-xl border transition
+                                bg-bg-surface border-border shadow
+                                ${pkg.isActive ? 'cursor-pointer hover:bg-bg-surface-alt' : 'opacity-50 pointer-events-none'}`}
+                    title={pkg.name}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden border border-border bg-bg-surface shrink-0">
+                        <img
+                          src={imageSrc}
+                          alt={pkg.name}
+                          className="w-full h-full object-cover rounded-xl"
+                          loading="lazy"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = '/images/placeholder.png';
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0 text-right">
+                        <div className="text-sm truncate text-text-primary flex items-center gap-1 justify-end">
+                          <span className="truncate">{pkg.name}</span>
+                          {pkg.type === 'unit' && (
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary" title="الشراء بالعداد من الأسفل">وحدات</span>
+                          )}
+                        </div>
+                        {pkg.description ? (
+                          <div className="text-xs truncate text-text-secondary">{pkg.description}</div>
+                        ) : null}
+                        {pkg.type === 'unit' && (
+                          <div className="text-[10px] text-text-secondary mt-0.5">السعر حسب الكمية</div>
+                        )}
+                      </div>
                     </div>
-                    {pkg.description ? (
-                      <div className="text-xs truncate text-text-secondary">{pkg.description}</div>
-                    ) : null}
-                    {pkg.type === 'unit' && (
-                      <div className="text-[10px] text-text-secondary mt-0.5">السعر حسب الكمية</div>
-                    )}
-                  </div>
-                </div>
 
-                <div className="text-sm shrink-0 text-primary font-medium">
-                  {formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: false })} {sym}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                    <div className="text-sm shrink-0 text-primary font-medium">
+                      {formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: false })} {sym}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* لم يعد يظهر الشراء بالعداد تلقائياً */}
