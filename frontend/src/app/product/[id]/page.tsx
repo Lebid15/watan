@@ -98,19 +98,25 @@ export default function ProductDetailsPage() {
     null;
 
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       try {
         const url = `${API_ROUTES.products.base}/user/${id}`;
         const res = await api.get<Product>(url);
+        if (cancelled) return;
         setProduct(res.data);
         setCurrencyCode(res.data?.currencyCode || (user as any)?.currencyCode || 'USD');
-      } catch {
-        setError('فشل في جلب بيانات المنتج');
+        // تهيئة معرف أول باقة وحدات إن لم يكن محدداً
+        const firstUnit = res.data?.packages?.find(p => p.isActive && p.type === 'unit');
+        setUnitSelectedPkgId(prev => prev || (firstUnit?.id || ''));
+      } catch (e) {
+        if (!cancelled) setError('فشل في جلب بيانات المنتج');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     if (id) fetchData();
+    return () => { cancelled = true; };
   }, [id, user]);
 
   const getPrice = (pkg: Package) => {
@@ -125,6 +131,8 @@ export default function ProductDetailsPage() {
   const openModal = (pkg: Package) => {
     if (!pkg.isActive) return;
     if (pkg.type === 'unit') {
+      // لا تفتح المودال إذا لا توجد أي باقات وحدات نشطة (حماية)
+      if (!unitPkgs.length) return;
       setUnitSelectedPkgId(pkg.id);
       setUnitQuantity('');
       setGameId('');
@@ -185,6 +193,7 @@ export default function ProductDetailsPage() {
   useEffect(() => {
     let cancelled = false;
     async function loadEffectiveUnitPrice() {
+      if (!unitModalOpen) return; // المودال غير مفتوح
       if (!selectedUnitPackage) { setEffectiveUnitPrice(null); return; }
       try {
         const res = await fetch('/api/pricing/unit-price', {
@@ -196,14 +205,15 @@ export default function ProductDetailsPage() {
             baseUnitPrice: baseUnitPrice
           })
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error('unit-price endpoint failed');
         const j = await res.json();
         if (!cancelled) setEffectiveUnitPrice(typeof j?.price === 'number' ? j.price : baseUnitPrice);
-      } catch {
+      } catch (err) {
+        console.error('Failed to load effective unit price', err);
         if (!cancelled) setEffectiveUnitPrice(baseUnitPrice || null);
       }
     }
-    if (unitModalOpen) loadEffectiveUnitPrice();
+    loadEffectiveUnitPrice();
     return () => { cancelled = true; };
   }, [unitModalOpen, unitSelectedPkgId, baseUnitPrice, selectedUnitPackage, getUserPriceGroupId]);
 
@@ -243,6 +253,10 @@ export default function ProductDetailsPage() {
   async function submitUnitPurchase() {
     if (!product) return; // safeguard
     if (!validateUnitPurchase() || !selectedUnitPackage || unitQtyNum == null) return;
+    if (effectiveUnitPrice == null) {
+      setUnitError('تعذر الحصول على سعر الوحدة حالياً');
+      return;
+    }
     try {
       setUnitSubmitting(true);
       await api.post(API_ROUTES.orders.base, {
@@ -260,7 +274,8 @@ export default function ProductDetailsPage() {
       alert('تم إنشاء الطلب');
       router.push('/orders');
     } catch (e) {
-      alert('فشل في تنفيذ الطلب');
+  console.error(e);
+  alert('فشل في تنفيذ الطلب');
     } finally {
       setUnitSubmitting(false);
     }
