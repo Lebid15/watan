@@ -45,6 +45,7 @@ $HEALTH_PATH       = Default $env:HEALTH_PATH '/api/health'
 $BACKEND_SERVICE   = Default $env:BACKEND_SERVICE 'backend'
 $BACKEND_CONTAINER = Default $env:BACKEND_CONTAINER 'watan-backend'
 $DEBUG             = Default $env:DEBUG '0'
+$FORCE_RECREATE    = Default $env:FORCE_RECREATE '0'
 
 Section "Fast Remote Deploy"; Color Green "Target: $SSH_TARGET  Dir: $REMOTE_DIR  Services: $SERVICES"
 
@@ -83,6 +84,7 @@ HEALTH_PATH="__HEALTH_PATH__"
 BACKEND_SERVICE="__BACKEND_SERVICE__"
 BACKEND_CONTAINER="__BACKEND_CONTAINER__"
 DEBUG_FLAG="__DEBUG__"
+FORCE_RECREATE="__FORCE_RECREATE__"
 
 log(){ printf "\n[%s] %s\n" "$(date -u '+%H:%M:%S')" "$*"; }
 [ "$DEBUG_FLAG" = "1" ] && set -x
@@ -158,6 +160,18 @@ else
 fi
 
 log '4) up'
+if [ "$FORCE_RECREATE" = "1" ]; then
+  log '   (force removing previous containers for target services)'
+  # Attempt compose-aware removal first (ignores if not running)
+  (_dc rm -f -s $SERVICES 2>/dev/null || true)
+  # Safety: remove by conventional container_name (watan-<service>) if still present
+  for SVC in $SERVICES; do
+    CNAME="watan-$SVC"
+    if docker ps -a --format '{{.Names}}' | grep -q "^$CNAME$"; then
+      docker rm -f "$CNAME" 2>/dev/null || true
+    fi
+  done
+fi
 (_dc up -d $SERVICES) || fail "up"
 
 if [ "$NO_MIGRATIONS" != "1" ]; then
@@ -201,6 +215,7 @@ $replacements = @{
   '__BACKEND_SERVICE__'     = $BACKEND_SERVICE
   '__BACKEND_CONTAINER__'   = $BACKEND_CONTAINER
   '__DEBUG__'               = $DEBUG
+  '__FORCE_RECREATE__'      = $FORCE_RECREATE
 }
 
 foreach($k in $replacements.Keys){
@@ -214,11 +229,11 @@ foreach($k in $replacements.Keys){
 
 ## Send remote script via SSH
 try {
-  $args = @('-o','BatchMode=yes')
-  if ($env:SSH_KEY -and (Test-Path $env:SSH_KEY)) { $args += @('-i', $env:SSH_KEY) }
-  $args += @($SSH_TARGET, 'bash -s')
+  $sshCmdArgs = @('-o','BatchMode=yes')
+  if ($env:SSH_KEY -and (Test-Path $env:SSH_KEY)) { $sshCmdArgs += @('-i', $env:SSH_KEY) }
+  $sshCmdArgs += @($SSH_TARGET, 'bash -s')
   $remoteLF = $remote -replace "`r",""
-  $out = $remoteLF | & ssh @args 2>&1
+  $out = $remoteLF | & ssh @sshCmdArgs 2>&1
 
   if ($LASTEXITCODE -eq 0) {
     Section 'Fast Deployment SUCCESS'
