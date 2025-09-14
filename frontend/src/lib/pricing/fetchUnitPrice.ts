@@ -26,10 +26,18 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
     if (!res.ok) return baseUnitPrice ?? null;
     let json: any = null;
     try { json = await res.json(); } catch { return baseUnitPrice ?? null; }
-    if (json && typeof json.unitPrice === 'number') return json.unitPrice;
+    // Some endpoints (admin controller) return unitPrice as a fixed decimal string (e.g. "0.0700").
+    // Accept either number or numeric string.
+    if (json && (typeof json.unitPrice === 'number' || (typeof json.unitPrice === 'string' && json.unitPrice.trim() !== ''))) {
+      const n = Number(json.unitPrice);
+      if (Number.isFinite(n)) return n;
+    }
     if (json && Array.isArray(json.data)) {
       const item = json.data.find((x: any) => String(x?.packageId) === packageId);
-      if (item && typeof item.unitPrice === 'number') return item.unitPrice;
+      if (item && (typeof item.unitPrice === 'number' || (typeof item.unitPrice === 'string' && item.unitPrice.trim() !== ''))) {
+        const n = Number(item.unitPrice);
+        if (Number.isFinite(n)) return n;
+      }
     }
     return baseUnitPrice ?? null;
   } catch {
