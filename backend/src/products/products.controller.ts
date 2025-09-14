@@ -649,11 +649,14 @@ export class ProductsController {
   async getPackagesPricesQuery(
     @Req() req: Request,
     @Query('packageIds') packageIds: string,
+    @Query('packageId') packageId: string,
     @Query('groupId') groupId?: string,
   ) {
-    if (!packageIds) throw new BadRequestException('packageIds مطلوب');
+    // قبول الشكلين: packageIds=uuid1,uuid2 أو packageId=uuid مفرد لتسهيل التوافق
+    const raw = packageIds || packageId;
+    if (!raw) throw new BadRequestException('packageIds مطلوب');
 
-    const ids = packageIds
+    const ids = raw
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
