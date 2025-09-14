@@ -118,13 +118,12 @@ export class ProductsAdminController {
 				minUnits: (pkg as any).minUnits ?? null,
 				maxUnits: (pkg as any).maxUnits ?? null,
 				step: (pkg as any).step ?? null,
-				baseUnitPrice: (pkg as any).baseUnitPrice ?? null,
 			};
 		}
 
 		@Patch('packages/:id/unit')
-		@ApiOperation({ summary: 'Update unit (counter) fields for a unit-type package', description: 'Defines the measuring unit metadata and base price-per-unit. The baseUnitPrice is used when no price-group override (unitPrice) exists.' })
-		@ApiBody({ schema: { properties: { unitName: { type: 'string', example: 'Message' }, unitCode: { type: 'string', example: 'MSG' }, minUnits: { type: 'string', example: '10', description: 'Optional minimum allowed quantity (>=0) scale<=4' }, maxUnits: { type: 'string', example: '1000', description: 'Optional maximum allowed quantity (>= minUnits) scale<=4' }, step: { type: 'string', example: '1', description: 'Optional increment step (>0) scale<=4' }, baseUnitPrice: { type: 'string', example: '0.0500', description: 'Positive decimal (scale<=4). Rounded to 4 decimals.' } }, required: ['unitName','baseUnitPrice'] } })
+		@ApiOperation({ summary: 'Update unit (counter) fields for a unit-type package', description: 'Defines the measuring unit metadata only (pricing now comes solely from price group rows).' })
+		@ApiBody({ schema: { properties: { unitName: { type: 'string', example: 'Message' }, unitCode: { type: 'string', example: 'MSG' }, minUnits: { type: 'string', example: '10', description: 'Optional minimum allowed quantity (>=0) scale<=4' }, maxUnits: { type: 'string', example: '1000', description: 'Optional maximum allowed quantity (>= minUnits) scale<=4' }, step: { type: 'string', example: '1', description: 'Optional increment step (>0) scale<=4' } }, required: ['unitName'] } })
 		async updateUnitPackage(
 			@Param('id') id: string,
 			@Body() body: UpdateUnitPackageDto,
@@ -150,8 +149,7 @@ export class ProductsAdminController {
 			const minUnits = parseScaled('minUnits', body.minUnits);
 			const maxUnits = parseScaled('maxUnits', body.maxUnits);
 			const step = parseScaled('step', body.step);
-			const baseUnitPrice = parseScaled('baseUnitPrice', body.baseUnitPrice);
-			if (baseUnitPrice == null || baseUnitPrice <= 0) throw new BadRequestException(ERR_BASE_UNIT_REQUIRED);
+			// baseUnitPrice removed: unit pricing sourced from price group rows.
 			if (minUnits != null && maxUnits != null && maxUnits < minUnits) throw new BadRequestException(ERR_RANGE_INVALID);
 			if (step != null && step <= 0) throw new BadRequestException(ERR_STEP_INVALID);
 
@@ -160,14 +158,13 @@ export class ProductsAdminController {
 			(pkg as any).minUnits = minUnits;
 			(pkg as any).maxUnits = maxUnits;
 			(pkg as any).step = step;
-			(pkg as any).baseUnitPrice = baseUnitPrice;
 			await this.packagesRepo.save(pkg);
 			await this.audit.log('package.unit.update', {
 				actorUserId: (req as any)?.user?.id ?? null,
 				targetTenantId: tenantId,
 				meta: { packageId: pkg.id, productId: pkg.product?.id, unitName: (pkg as any).unitName }
 			});
-			return { ok: true, id: pkg.id, productId: pkg.product?.id, unitName: (pkg as any).unitName, baseUnitPrice: (pkg as any).baseUnitPrice };
+			return { ok: true, id: pkg.id, productId: pkg.product?.id, unitName: (pkg as any).unitName };
 		}
 
 	@Put(':id/image/custom')

@@ -38,7 +38,11 @@ d('Orders E2E (Postgres)', () => {
   await ds.query(`INSERT INTO tenant (id, name, "isActive") VALUES ($1,'E2ETenant',true)`, [tenantId]);
   await ds.query(`INSERT INTO users (id, "tenantId", email, password, balance, role, "isActive", overdraftLimit) VALUES ($1,$2,'unit-e2e@x.test','x',0,'user',true,0)`, [userId, tenantId]);
   await ds.query(`INSERT INTO product (id, "tenantId", name, "isActive", "supportsCounter") VALUES ($1,$2,'TestProductUnit',true,true)`, [productId, tenantId]);
-  await ds.query(`INSERT INTO product_packages (id, "tenantId", "product_id", type, "baseUnitPrice", "minUnits", "maxUnits", step, capital, "isActive", "basePrice") VALUES ($1,$2,$3,'unit',1.2500,2,10,0.5,0.4000,true,0)`, [packageId, tenantId, productId]);
+  await ds.query(`INSERT INTO product_packages (id, "tenantId", "product_id", type, "minUnits", "maxUnits", step, capital, "isActive", "basePrice") VALUES ($1,$2,$3,'unit',2,10,0.5,0.4000,true,0)`, [packageId, tenantId, productId]);
+  // seed price group + price row (simulate row price 1.2500)
+  const pgId = gen();
+  await ds.query(`INSERT INTO price_group (id, name, "tenantId") VALUES ($1,'Default',$2)`, [pgId, tenantId]);
+  await ds.query(`INSERT INTO package_price (id, "tenantId", "packageId", "priceGroupId", price) VALUES ($1,$2,$3,$4,1.2500)`, [gen(), tenantId, packageId, pgId]);
   // Simplistic auth bypass: many e2e tests rely on actual JWT; here we assume guard permissive or token not strictly validated.
   authHeader = {}; // Adjust if real auth required.
   });
@@ -53,8 +57,8 @@ d('Orders E2E (Postgres)', () => {
     // Accept 200 or 201 depending on controller; here expecting 201? current controller returns 200.
     expect([200, 201]).toContain(res.status);
     expect(res.body.quantity).toBe('2.5');
-    expect(res.body.unitPriceApplied).toBe('1.2500');
-    expect(res.body.sellPrice).toBe('3.1250');
+  expect(res.body.unitPriceApplied).toBe('1.2500');
+  expect(res.body.sellPrice).toBe('3.1250');
   });
 
   it('rejects below min', async () => {

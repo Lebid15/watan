@@ -97,7 +97,7 @@ describe('Admin Unit Pricing API (e2e)', () => {
 
     // Product A supports counter
     productA = await productsRepo.save(productsRepo.create({ name: 'Product A', tenantId: 't1', supportsCounter: true } as any)) as any;
-    packageA1 = await packagesRepo.save(packagesRepo.create({ name: 'Pkg A1', tenantId: 't1', product: productA, type: 'unit', unitName: 'Message', unitCode: 'MSG', baseUnitPrice: 0.0500, step: 1, minUnits: 1, maxUnits: 1000 } as any)) as any;
+  packageA1 = await packagesRepo.save(packagesRepo.create({ name: 'Pkg A1', tenantId: 't1', product: productA, type: 'unit', unitName: 'Message', unitCode: 'MSG', step: 1, minUnits: 1, maxUnits: 1000 } as any)) as any;
 
     // create base price row (no unit override yet)
     await priceRepo.save(priceRepo.create({ tenantId: 't1', priceGroup: groupVIP, package: packageA1, price: 10 } as any));
@@ -120,15 +120,15 @@ describe('Admin Unit Pricing API (e2e)', () => {
       .expect(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.unitName).toBe('Message');
-    expect(res.body.baseUnitPrice).toBe(0.05); // من seeding
+  // No baseUnitPrice now; price returned is the group row price (seeded below when we add rows)
   });
 
   // لم يعد هناك مسار override، لذلك اختبار PACKAGE_NOT_UNIT الخاص بالـ override أزيل.
 
-  it('PATCH unit meta validates and persists', async () => {
+  it('PATCH unit meta validates and persists (without baseUnitPrice)', async () => {
     const resOk = await request(app.getHttpServer())
-      .patch(`${baseUrl}/packages/${packageA1.id}/unit`)
-      .send({ unitName: 'Message Updated', baseUnitPrice: '0.0600', step: '2', minUnits: '2', maxUnits: '200' })
+  .patch(`${baseUrl}/packages/${packageA1.id}/unit`)
+  .send({ unitName: 'Message Updated', step: '2', minUnits: '2', maxUnits: '200' })
       .expect(200);
     expect(resOk.body.ok).toBe(true);
     const res2 = await request(app.getHttpServer())
@@ -136,21 +136,21 @@ describe('Admin Unit Pricing API (e2e)', () => {
       .query({ packageId: packageA1.id })
       .expect(200);
     expect(res2.body.unitName).toBe('Message Updated');
-    expect(res2.body.baseUnitPrice).toBe(0.06);
+  // price group row unaffected by meta update; no baseUnitPrice field anymore
   });
 
   it('Fails when min>max', async () => {
     const res = await request(app.getHttpServer())
-      .patch(`${baseUrl}/packages/${packageA1.id}/unit`)
-      .send({ unitName: 'X', baseUnitPrice: '0.0500', minUnits: '5', maxUnits: '2' })
+  .patch(`${baseUrl}/packages/${packageA1.id}/unit`)
+  .send({ unitName: 'X', minUnits: '5', maxUnits: '2' })
       .expect(400);
     expect(res.body.message).toBe('RANGE_INVALID');
   });
 
   it('Fails when step<=0', async () => {
     const res = await request(app.getHttpServer())
-      .patch(`${baseUrl}/packages/${packageA1.id}/unit`)
-      .send({ unitName: 'X', baseUnitPrice: '0.0500', step: '0' })
+  .patch(`${baseUrl}/packages/${packageA1.id}/unit`)
+  .send({ unitName: 'X', step: '0' })
       .expect(400);
     expect(res.body.message).toBe('STEP_INVALID');
   });
@@ -170,7 +170,7 @@ describe('Admin Unit Pricing API (e2e)', () => {
       .query({ packageId: packageA1.id })
       .expect(200);
     const keys = Object.keys(res.body).sort();
-  const expected = ['ok','groupId','groupName','packageId','priceId','price','packageType','supportsCounter','unitName','unitCode','minUnits','maxUnits','step','baseUnitPrice'];
+  const expected = ['ok','groupId','groupName','packageId','priceId','price','packageType','supportsCounter','unitName','unitCode','minUnits','maxUnits','step'];
     expected.forEach(k => expect(keys).toContain(k));
   });
 });

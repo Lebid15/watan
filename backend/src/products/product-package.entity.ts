@@ -67,9 +67,8 @@ export class ProductPackage {
   @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   step?: number | null;
 
-  // السعر الأساسي للوحدة (يُستخدم إن لم توجد price group override)
-  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
-  baseUnitPrice?: number | null;
+  // تم إزالة baseUnitPrice: الآن سعر الوحدة يؤخذ حصراً من صف price group (PackagePrice)
+  // الاحتفاظ بالتعليق التاريخي للمرجعية فقط.
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   capital: number;

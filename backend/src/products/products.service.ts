@@ -1146,14 +1146,7 @@ export class ProductsService {
       if (!rawUnitName) throw new BadRequestException('unitName مطلوب');
       (newPackage as any).unitName = rawUnitName;
       if ((data as any).unitCode) (newPackage as any).unitCode = String((data as any).unitCode).trim();
-      if ((data as any).baseUnitPrice != null && String((data as any).baseUnitPrice).trim() !== '') {
-        const raw = String((data as any).baseUnitPrice).trim().replace(',', '.');
-        const num = Number(raw);
-        if (!(num > 0)) throw new BadRequestException('baseUnitPrice غير صالح (>0)');
-        (newPackage as any).baseUnitPrice = Number(num.toFixed(4));
-      } else {
-        throw new BadRequestException('baseUnitPrice مطلوب');
-      }
+      // baseUnitPrice removed: pricing must be set via price group rows after creation.
     }
 
     let saved: ProductPackage;
@@ -2510,7 +2503,6 @@ export class ProductsService {
           minUnits: (pkg as any).minUnits ?? null,
           maxUnits: (pkg as any).maxUnits ?? null,
           step: (pkg as any).step ?? null,
-          baseUnitPrice: (pkg as any).baseUnitPrice ?? null,
           basePrice: Number(effectiveUSD) * rate,
           prices: (pkg.prices ?? []).map((p) => ({
             id: p.id,

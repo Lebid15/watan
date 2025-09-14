@@ -55,15 +55,19 @@ describe('PricingService', () => {
     // seed product, package, user
     const product: any = { id: productId, tenantId, supportsCounter: true };
     productsRepo._data.push(product);
-    const pkg: any = { id: packageId, tenantId, type: 'unit', baseUnitPrice: 1.1000, product, minUnits: 2, maxUnits: 10, step: 0.5, capital: 0.4000, prices: [] };
+  const pkg: any = { id: packageId, tenantId, type: 'unit', product, minUnits: 2, maxUnits: 10, step: 0.5, capital: 0.4000, prices: [] };
     packagesRepo._data.push(pkg);
     const user: any = { id: userId, tenantId, priceGroup: { id: priceGroupId } };
     usersRepo._data.push(user);
   });
 
-  test('returns baseUnitPrice (no override logic anymore)', async () => {
+  test('returns price group row price', async () => {
+    // add price group row
+    const row: any = { id: 'row1', tenantId, package: { id: packageId }, priceGroup: { id: priceGroupId }, price: 1.2500 };
+    packagePriceRepo._data.push(row);
+    packagesRepo._data[0].prices.push(row);
     const p = await service.getEffectiveUnitPrice({ tenantId, userId, packageId });
-    expect(p).toBe('1.1000');
+    expect(p).toBe('1.2500');
   });
 
   test('rejects when product.supportsCounter=false → ERR_UNIT_NOT_SUPPORTED', async () => {
@@ -92,14 +96,16 @@ describe('PricingService', () => {
     expect(() => service.validateQuantity({ quantity: '2.6', minUnits: '2', step: '0.5' })).toThrow('ERR_QTY_STEP_MISMATCH');
   });
 
-  test('missing baseUnitPrice → ERR_UNIT_PRICE_MISSING', async () => {
-    packagesRepo._data[0].baseUnitPrice = null;
-    await expect(service.getEffectiveUnitPrice({ tenantId, userId, packageId })).rejects.toThrow('ERR_UNIT_PRICE_MISSING');
+  test('missing price group row → ERR_UNIT_PRICE_GROUP_MISSING', async () => {
+    await expect(service.getEffectiveUnitPrice({ tenantId, userId, packageId })).rejects.toThrow('ERR_UNIT_PRICE_GROUP_MISSING');
   });
 
-  test('quote uses baseUnitPrice', async () => {
+  test('quote uses price group row price', async () => {
+    const row: any = { id: 'row1', tenantId, package: { id: packageId }, priceGroup: { id: priceGroupId }, price: 2.0000 };
+    packagePriceRepo._data.push(row);
+    packagesRepo._data[0].prices.push(row);
     const quote = await service.quoteUnitOrder({ tenantId, userId, packageId, quantity: '2.5' });
-    expect(quote.unitPriceApplied).toBe('1.1000');
-    expect(quote.sellPrice).toBe('2.7500');
+    expect(quote.unitPriceApplied).toBe('2.0000');
+    expect(quote.sellPrice).toBe('5.0000');
   });
 });

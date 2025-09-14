@@ -27,6 +27,5 @@ export class UpdateUnitPackageDto {
   @ValidateIf(o => o.step != null)
   step?: string;
 
-  @IsOptional() // further validated in controller for >0 & format
-  baseUnitPrice?: string;
+  // baseUnitPrice تمت إزالته: لا حاجة لهذا الحقل الآن.
 }

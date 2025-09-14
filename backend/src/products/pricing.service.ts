@@ -61,15 +61,14 @@ export class PricingService {
     if (!user) throw new NotFoundException('المستخدم غير موجود');
     if (String(user.tenantId) !== tenantId) throw new BadRequestException('TENANT_MISMATCH');
 
-    let chosen: number | null = null;
-    // لم يعد هناك override لكل مجموعة؛ السعر الفعلي للوحدة هو baseUnitPrice دائماً.
-    if (pkg.baseUnitPrice != null && Number(pkg.baseUnitPrice) > 0) {
-      chosen = Number(pkg.baseUnitPrice);
+    // المنطق الجديد: سعر الوحدة يأتي من صف السعر الخاص بالمجموعة (price) لنفس الباقة.
+    const userGroupId = user.priceGroup?.id;
+    if (!userGroupId) throw new BadRequestException('ERR_PRICE_GROUP_REQUIRED');
+  const row = (pkg.prices || []).find(r => String(r.priceGroup?.id) === String(userGroupId));
+    if (!row || row.price == null || !(Number(row.price) > 0)) {
+      throw new BadRequestException('ERR_UNIT_PRICE_GROUP_MISSING');
     }
-    if (chosen == null || !(chosen > 0)) {
-      throw new BadRequestException('ERR_UNIT_PRICE_MISSING');
-    }
-    return Number(chosen).toFixed(getPriceDecimals());
+    return Number(row.price).toFixed(getPriceDecimals());
   }
 
   validateQuantity(params: { quantity: string; minUnits?: string; maxUnits?: string; step?: string }): void {
