@@ -1268,6 +1268,8 @@ export class ProductsService {
       groupName: p.priceGroup.name,
       priceId: p.id,
       price: Number(p.price) || 0,
+      // expose unitPrice override if present (used by frontend to avoid extra fetch)
+      unitPrice: p.unitPrice != null ? Number(p.unitPrice) : null,
     }));
   }
 

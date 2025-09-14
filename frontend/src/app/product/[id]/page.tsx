@@ -208,14 +208,23 @@ export default function ProductDetailsPage() {
       }
       const map: Record<string, number> = {};
       for (const p of unitPkgs) {
-        const eff = await fetchUnitPrice({
-          groupId: userPriceGroupId,
-          packageId: p.id,
-          baseUnitPrice: p.baseUnitPrice ?? null
-        });
-        if (eff != null) {
-          map[p.id] = code === 'USD' ? eff : eff * rate;
+        let eff: number | null = null;
+        // حاول إيجاد override محلي في p.prices (بعد تعديل الباك لإرجاع unitPrice)
+        if (userPriceGroupId && Array.isArray(p.prices)) {
+          const row: any = p.prices.find(pr => pr.groupId === userPriceGroupId && (pr as any).unitPrice != null);
+          if (row && row.unitPrice != null && Number(row.unitPrice) > 0) {
+            eff = Number(row.unitPrice);
+          }
         }
+        // fallback إلى النداء الشبكي السابق فقط إذا لم نجد override محلي
+        if (eff == null) {
+          eff = await fetchUnitPrice({
+            groupId: userPriceGroupId,
+            packageId: p.id,
+            baseUnitPrice: p.baseUnitPrice ?? null
+          });
+        }
+        if (eff != null) map[p.id] = code === 'USD' ? eff : eff * rate;
       }
       if (!cancelled) setUnitCardPrices(map);
     }
@@ -235,11 +244,18 @@ export default function ProductDetailsPage() {
     async function loadEffectiveUnitPrice() {
       if (!unitModalOpen) return;
       if (!selectedUnitPackage) { setEffectiveUnitPriceUSD(null); return; }
-      const price = await fetchUnitPrice({
-        groupId: userPriceGroupId,
-        packageId: selectedUnitPackage.id,
-        baseUnitPrice: baseUnitPrice
-      });
+      let price: number | null = null;
+      if (userPriceGroupId && Array.isArray(selectedUnitPackage?.prices)) {
+        const row: any = selectedUnitPackage.prices.find(pr => pr.groupId === userPriceGroupId && (pr as any).unitPrice != null);
+        if (row && row.unitPrice != null && Number(row.unitPrice) > 0) price = Number(row.unitPrice);
+      }
+      if (price == null) {
+        price = await fetchUnitPrice({
+          groupId: userPriceGroupId,
+          packageId: selectedUnitPackage.id,
+          baseUnitPrice: baseUnitPrice
+        });
+      }
       if (!cancelled) setEffectiveUnitPriceUSD(price);
     }
     loadEffectiveUnitPrice();

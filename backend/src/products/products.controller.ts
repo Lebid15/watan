@@ -568,7 +568,8 @@ export class ProductsController {
         id: r.priceId ?? null,
         groupId: r.groupId,
         groupName: r.groupName,
-        price: r.price
+        price: r.price,
+        unitPrice: (r as any).unitPrice != null ? (r as any).unitPrice : null,
       })),
     };
   }
