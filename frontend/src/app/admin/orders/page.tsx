@@ -1126,6 +1126,9 @@ export default function AdminOrdersPage() {
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     {o.package?.name ?? '-'}
+                    {(o as any).quantity && (o as any).quantity > 1 ? (
+                      <span className="block text-[10px] text-text-secondary mt-0.5">الكمية: {(o as any).quantity}</span>
+                    ) : null}
                   </td>
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e w-28 max-w-[7rem]">
@@ -1281,7 +1284,12 @@ export default function AdminOrdersPage() {
               </div> */}
               <div>
                 <div className="text-text-secondary">الباقة</div>
-                <div>{detailOrder.package?.name ?? '-'}</div>
+                <div>
+                  {detailOrder.package?.name ?? '-'}{' '}
+                  {(detailOrder as any).quantity && (detailOrder as any).quantity > 1 ? (
+                    <span className="text-text-secondary text-[11px]">(الكمية: {(detailOrder as any).quantity})</span>
+                  ) : null}
+                </div>
               </div>
 
               <div>

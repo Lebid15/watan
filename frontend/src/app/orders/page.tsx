@@ -16,6 +16,7 @@ interface Order {
   createdAt: string;
   product: { name: string };
   package: { name: string };
+  quantity?: number;
   userIdentifier?: string | null;
   extraField?: string | null;
   orderNo?: number;
@@ -361,7 +362,12 @@ export default function OrdersPage() {
                 <div key={order.id} className="max-w-[980px] mx-auto relative card p-3 shadow text-xs flex justify-between items-center">
                   <div className="text-right">
                     <div className="text-text-secondary">رقم: {order.orderNo ?? `${order.id.slice(0, 8)}...`}</div>
-                    <div className="text-text-primary text-[11px]">{order.package?.name ?? order.product?.name ?? '—'}</div>
+                    <div className="text-text-primary text-[11px]">
+                      {order.package?.name ?? order.product?.name ?? '—'}
+                      {order.quantity && order.quantity > 1 ? (
+                        <span className="ml-1 text-[10px] text-text-secondary">× {order.quantity}</span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="flex flex-col items-center justify-center text-center max-w-[140px] break-words whitespace-normal">
@@ -414,7 +420,7 @@ export default function OrdersPage() {
                 <div className="space-y-3">
                   <p><span className="text-text-secondary">رقم الطلب:</span> {base.orderNo ?? (base.id?.slice ? `${base.id.slice(0, 8)}...` : base.id)}</p>
                   <p><span className="text-text-secondary">اسم المنتج:</span> {base.product.name}</p>
-                  <p><span className="text-text-secondary">الباقة:</span> {base.package.name}</p>
+                  <p><span className="text-text-secondary">الباقة:</span> {base.package.name} {base.quantity && base.quantity > 1 ? (<span className="text-text-secondary">(الكمية: {base.quantity})</span>) : null}</p>
                   <p><span className="text-text-secondary">المعرف:</span> {base.userIdentifier || '—'}</p>
                   {base.extraField ? (<p><span className="text-text-secondary">معلومة إضافية:</span> {base.extraField}</p>) : null}
                   <p><span className="text-text-secondary">السعر:</span> <span className="text-text-primary">{currencySymbol(view.currencyCode)} {formatGroupsDots(totalNum)}</span></p>

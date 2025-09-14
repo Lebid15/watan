@@ -391,10 +391,11 @@ export default function ProductDetailsPage() {
       {unitModalOpen && selectedUnitPackage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="card w-[340px] p-5 text-right">
-            <h2 className="text-sm font-bold mb-3 flex items-center justify-between">
-              <span>الشراء بالعداد</span>
+            <h2 className="text-sm font-bold mb-1 flex items-center justify-between">
+              <span>{selectedUnitPackage.name}{unitQuantity ? ` — ${unitQuantity} ${(selectedUnitPackage.unitName || 'وحدة')}` : ''}</span>
               <button onClick={() => setUnitModalOpen(false)} className="text-xs text-text-secondary hover:text-text-primary">إغلاق ✕</button>
             </h2>
+            <div className="text-[11px] text-text-secondary mb-3">الشراء بالعداد</div>
             {unitPkgs.length > 1 && (
               <div className="mb-3">
                 <label className="block text-[11px] mb-1 text-text-secondary">اختر باقة الوحدات</label>
