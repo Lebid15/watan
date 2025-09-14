@@ -20,29 +20,53 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
   const { groupId, packageId, baseUnitPrice, endpoint, fetchImpl } = options;
   if (!groupId) return baseUnitPrice ?? null;
   const f = fetchImpl || fetch;
-  const ep = endpoint || `/api/products/price-groups/${groupId}/package-prices?packageId=${encodeURIComponent(packageId)}`;
-  try {
-    const res = await f(ep);
-    if (!res.ok) return baseUnitPrice ?? null;
-    let json: any = null;
-    try { json = await res.json(); } catch { return baseUnitPrice ?? null; }
-    // Some endpoints (admin controller) return unitPrice as a fixed decimal string (e.g. "0.0700").
-    // Accept either number or numeric string.
-    if (json && (typeof json.unitPrice === 'number' || (typeof json.unitPrice === 'string' && json.unitPrice.trim() !== ''))) {
-      const n = Number(json.unitPrice);
-      if (Number.isFinite(n)) return n;
-    }
-    if (json && Array.isArray(json.data)) {
-      const item = json.data.find((x: any) => String(x?.packageId) === packageId);
-      if (item && (typeof item.unitPrice === 'number' || (typeof item.unitPrice === 'string' && item.unitPrice.trim() !== ''))) {
-        const n = Number(item.unitPrice);
+
+  // We now prefer the bulk packages/prices endpoint (it already returns unitPrice in array items)
+  const primaryEp = `/api/products/packages/prices?packageIds=${encodeURIComponent(packageId)}&groupId=${encodeURIComponent(groupId)}`;
+  // Legacy single endpoint
+  const legacyEp = `/api/products/price-groups/${groupId}/package-prices?packageId=${encodeURIComponent(packageId)}`;
+  // Allow explicit override (if provided by caller) – will be tried first
+  const candidates: string[] = [];
+  if (endpoint) candidates.push(endpoint);
+  candidates.push(primaryEp, legacyEp);
+
+  for (const ep of candidates) {
+    try {
+      const res = await f(ep);
+      if (!res.ok) continue;
+      let json: any = null;
+      try { json = await res.json(); } catch { continue; }
+
+      // Case 1: direct object with unitPrice
+      if (json && !Array.isArray(json) && (typeof json.unitPrice === 'number' || (typeof json.unitPrice === 'string' && json.unitPrice.trim() !== ''))) {
+        const n = Number(json.unitPrice);
         if (Number.isFinite(n)) return n;
       }
+
+      // Case 2: array root (e.g. packages/prices returns an array)
+      if (Array.isArray(json)) {
+        const row = json.find((r: any) => String(r?.packageId) === packageId);
+        if (row && (typeof row.unitPrice === 'number' || (typeof row.unitPrice === 'string' && row.unitPrice.trim() !== ''))) {
+          const n = Number(row.unitPrice);
+          if (Number.isFinite(n)) return n;
+        }
+      }
+
+      // Case 3: object with data array
+      if (json && Array.isArray(json.data)) {
+        const item = json.data.find((x: any) => String(x?.packageId) === packageId);
+        if (item && (typeof item.unitPrice === 'number' || (typeof item.unitPrice === 'string' && item.unitPrice.trim() !== ''))) {
+          const n = Number(item.unitPrice);
+          if (Number.isFinite(n)) return n;
+        }
+      }
+    } catch {
+      // try next candidate
+      continue;
     }
-    return baseUnitPrice ?? null;
-  } catch {
-    return baseUnitPrice ?? null;
   }
+
+  return baseUnitPrice ?? null;
 }
 
 export default fetchUnitPrice;
