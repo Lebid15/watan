@@ -85,6 +85,7 @@ export default function AdminProductDetailsPage() {
   const [editCustomAlt, setEditCustomAlt] = useState('');
   const [editSupportsCounter, setEditSupportsCounter] = useState<boolean>(false);
 
+
   // Package creation form
   const [pkgName, setPkgName] = useState('');
   const [pkgDesc, setPkgDesc] = useState('');
@@ -169,7 +170,7 @@ export default function AdminProductDetailsPage() {
           catalogAltText: editCatalogAlt || null,
             customAltText: editCustomAlt || null,
           isActive: editActive,
-              supportsCounter: editSupportsCounter,
+
         })
       });
       if (!updateRes.ok) throw new Error('فشل في تعديل المنتج');
