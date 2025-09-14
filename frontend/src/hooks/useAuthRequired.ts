@@ -8,11 +8,14 @@ import { useRouter } from 'next/navigation';
  */
 export function useAuthRequired(options?: { allowIf?: () => boolean }) {
   const router = useRouter();
+  const allowIf = options?.allowIf; // stable reference for dep array
   useEffect(() => {
-    const hasTokenLocal = typeof window !== 'undefined' && !!localStorage.getItem('token');
+    // لا تُنفذ على السيرفر
+    if (typeof window === 'undefined') return;
+    const hasTokenLocal = !!localStorage.getItem('token');
     const hasCookie = typeof document !== 'undefined' && /(?:^|; )access_token=/.test(document.cookie);
     if (hasTokenLocal || hasCookie) return; // authenticated
-    if (options?.allowIf && options.allowIf()) return; // custom allow
+    if (allowIf && allowIf()) return; // custom allow
     router.replace('/login');
-  }, [router, options]);
+  }, [router, allowIf]);
 }
