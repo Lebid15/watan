@@ -1,90 +1,367 @@
 {
-  "openapi": "3.0.3",
-  "info": {
-    "title": "Client API",
-    "version": "1.1.0",
-    "description": "External Client API (Barakat-compatible subset).\n\nSecurity: supply api-token header (api-key scheme).\nIdempotency: pass order_uuid (UUIDv4) to reuse a prior successful order.\nStatus checks: /client/api/check supports uuid=1 to treat inputs as order_uuid.\nErrors: ALWAYS HTTP 200 with body {code,message} (codes: 120,121,122,123,130,100,105,106,109,110,112,113,114,429).",
-    "x-release-date": "2025-09-05"
-  },
-  "servers": [
-        { "url": "https://api.example.com", "description": "Production" },
-        { "url": "https://sandbox.example.com", "description": "Sandbox" }
-      ],
-  "tags": [ { "name": "Client API", "description": "All endpoints require api-token header (40 hex)." } ],
+  "openapi": "3.0.0",
   "paths": {
-        "/client/api/profile": {
-          "get": { "tags": ["Client API"], "summary": "Profile", "responses": { "200": { "description": "OK" } }, "security": [{"api-token":[]}]} },
-        "/client/api/products": {
-          "get": {
-            "tags": ["Client API"],
-            "summary": "List products (optionally filter by product_id/products_id, base=1)",
-            "parameters": [
-              {"name": "product_id", "in": "query", "schema": {"type": "string"}},
-              {"name": "products_id", "in": "query", "schema": {"type": "string"}},
-              {"name": "base", "in": "query", "schema": {"type": "string", "enum": ["1"]}}
-            ],
-            "responses": {"200": {"description": "Products list", "content": {"application/json": {"schema": {"type": "array", "items": {"oneOf": [
-              {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}}, "required": ["id","name"]},
-              {"type": "object", "properties": {
-                "id": {"type": "string"},
-                "name": {"type": "string"},
-                "product_type": {"type": "string", "example": "package"},
-                "price": {"type": "number"},
-                "available": {"type": "boolean"},
-                "qty_values": {"oneOf": [
-                  {"type": "null"},
-                  {"type": "object", "properties": {"min": {"type": "integer"}, "max": {"type": "integer"}}, "required": ["min","max"]},
-                  {"type": "array", "items": {"type": "string"}, "example": ["110","150","210"]}
-                ], "description": "null|null (fixed) | {min,max} for range | [list] for list"},
-                "params": {"type": "array", "items": {"type": "string"}, "description": "Parameter keys (required+optional). Validation rules enforced server-side."}
-              }, "required": ["id","name","product_type","price","available","qty_values","params"] }
-            ]}}}}}, "security": [{"api-token":[]}]
+    "/client/api/openapi.json": {
+      "get": {
+        "operationId": "ClientApiOpenapiPublicController_openapi",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
           }
         },
-        "/client/api/newOrder/{productId}/params": {
-          "post": {
-            "tags": ["Client API"],
-            "summary": "Create order (idempotent via order_uuid)",
-            "parameters": [
-              {"name": "productId", "in": "path", "required": true, "schema": {"type": "string"}},
-              {"name": "qty", "in": "query", "schema": {"type": "string"}},
-              {"name": "order_uuid", "in": "query", "schema": {"type": "string", "format": "uuid"}},
-              {"name": "user_identifier", "in": "query", "schema": {"type": "string"}},
-              {"name": "extra_field", "in": "query", "schema": {"type": "string"}}
-            ],
-            "responses": {"200": {"description": "Success (order) or error envelope", "content": {"application/json": {"examples": {
-              "success": {"summary": "Success", "value": {"id": "ord123", "order_uuid": "0a7b5c5e-3e5f-4c1c-b6b2-123456789abc", "status": "wait", "quantity": 1, "created_at": "2025-09-05T10:00:00Z"}},
-              "qty_not_allowed": {"summary": "Quantity not allowed (106)", "value": {"code": 106, "message": "Quantity not allowed"}},
-              "qty_too_small": {"summary": "Quantity too small (112)", "value": {"code": 112, "message": "Quantity too small"}},
-                "qty_too_large": {"summary": "Quantity too large (113)", "value": {"code": 113, "message": "Quantity too large"}},
-              "missing_token": {"summary": "Missing token (120)", "value": {"code": 120, "message": "Api Token is required"}}
-            }}}},
-            "description": "Quantity rules by qty_values: null/fixed => qty must be 1 (else 106/112/113). range => {min,max} with 112/113 edges. list => must be one of list (else 106). Missing required param => 114 Missing param: <k>. Invalid param => 114 Invalid param: <k>. order_uuid ensures idempotency.",
-            "security": [{"api-token":[]}]
+        "tags": [
+          "ClientApiOpenapiPublic"
+        ]
+      }
+    },
+    "/client/api/docs": {
+      "get": {
+        "operationId": "ClientApiOpenapiPublicController_docs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
           }
         },
-        "/client/api/check": {
-          "get": {
-            "tags": ["Client API"],
-            "summary": "Check order statuses (uuid=1 to interpret inputs as order_uuid values)",
-            "parameters": [
-              {"name": "orders", "in": "query", "schema": {"type": "string"}},
-              {"name": "uuid", "in": "query", "schema": {"type": "string", "enum": ["1"]}}
-            ],
-            "responses": {"200": {"description": "Array of orders or empty array (no errors envelope even for unknown ids)", "content": {"application/json": {"examples": {
-              "success": {"value": [{"id": "ord123", "order_uuid": "0a7b5c5e-3e5f-4c1c-b6b2-123456789abc", "status": "wait", "quantity": 1, "created_at": "2025-09-05T10:00:00Z"}]},
-              "empty": {"value": []}
-            }}}}},
-            "security": [{"api-token":[]}]
+        "tags": [
+          "ClientApiOpenapiPublic"
+        ]
+      }
+    },
+    "/client/api/profile": {
+      "get": {
+        "operationId": "ClientApiController_profile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
           }
         },
-    "/client/api/openapi.json": {"get": {"tags": ["Client API"], "summary": "This schema (public, no auth)"}}
+        "tags": [
+          "Client API"
+        ]
+      }
+    },
+    "/client/api/products": {
+      "get": {
+        "operationId": "ClientApiController_products",
+        "parameters": [
+          {
+            "name": "product_id",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "products_id",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "base",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Client API"
+        ]
+      }
+    },
+    "/client/api/content/{categoryId}": {
+      "get": {
+        "operationId": "ClientApiController_content",
+        "parameters": [
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Client API"
+        ]
+      }
+    },
+    "/client/api/newOrder/{packageId}/params": {
+      "post": {
+        "operationId": "ClientApiController_newOrder",
+        "parameters": [
+          {
+            "name": "packageId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "qty",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "order_uuid",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Client API"
+        ]
+      }
+    },
+    "/client/api/check": {
+      "get": {
+        "operationId": "ClientApiController_check",
+        "parameters": [
+          {
+            "name": "orders",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "uuid",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Client API"
+        ]
+      }
+    }
   },
+  "info": {
+    "title": "Watan API",
+    "description": "API documentation for Watan project",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [
+    {
+      "name": "Client API"
+    }
+  ],
+  "servers": [
+    {
+      "url": ""
+    }
+  ],
   "components": {
-        "schemas": {
-          "Error": {"type": "object", "properties": {"code": {"type": "integer"}, "message": {"type": "string"}}, "required": ["code","message"], "description": "HTTP 200 on failures."}
+    "securitySchemes": {
+      "JWT-auth": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "name": "Authorization",
+        "in": "header"
+      }
+    },
+    "schemas": {
+      "CreateUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "test@example.com"
+          },
+          "password": {
+            "type": "string",
+            "example": "123456"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "أحمد محمد"
+          },
+          "username": {
+            "type": "string",
+            "example": "ahmad"
+          },
+          "countryCode": {
+            "type": "string",
+            "example": "+90"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "example": "5551234567"
+          },
+          "currencyId": {
+            "type": "string",
+            "example": "currency-uuid-here"
+          }
         },
-        "securitySchemes": {"api-token": {"type": "apiKey", "in": "header", "name": "api-token"}}
-  },
-  "x-error-codes": [120,121,122,123,130,100,105,106,109,110,112,113,114,429]
+        "required": [
+          "email",
+          "password",
+          "currencyId"
+        ]
+      },
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AdminSetPasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateIntegrationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateIntegrationDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdatePackageCodeDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "description": "معرّف المنتج",
+            "example": "uuid-product"
+          },
+          "packageId": {
+            "type": "string",
+            "description": "معرّف الباقة",
+            "example": "uuid-package"
+          },
+          "quantity": {
+            "type": "string",
+            "description": "الكمية مطلوبة فقط عندما تكون الباقة من النوع unit. تحترم minUnits/maxUnits/step (دقة 4). مثال: 2.5",
+            "example": "2.5"
+          },
+          "userIdentifier": {
+            "type": "string",
+            "description": "معرّف المستخدم داخل اللعبة/النظام الخارجي",
+            "example": "player123"
+          },
+          "extraField": {
+            "type": "string",
+            "description": "حقل إضافي"
+          },
+          "orderUuid": {
+            "type": "object",
+            "description": "مفتاح Idempotency (اختياري)"
+          }
+        },
+        "required": [
+          "productId",
+          "packageId"
+        ]
+      },
+      "PlaceOrderDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateDepositDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateDepositStatusDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreatePaymentMethodDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdatePaymentMethodDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateTenantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ProvisionTenantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateTenantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AddDomainDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PatchDomainDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpsertMuhammedDailyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "MuhAddPartyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "MuhUpdatePartyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "MuhUpdateRateDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
 }
