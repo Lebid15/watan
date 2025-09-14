@@ -21,14 +21,16 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
   if (!groupId) return baseUnitPrice ?? null;
   const f = fetchImpl || fetch;
 
-  // We now prefer the bulk packages/prices endpoint (it already returns unitPrice in array items)
-  const primaryEp = `/api/products/packages/prices?packageIds=${encodeURIComponent(packageId)}&groupId=${encodeURIComponent(groupId)}`;
+  // We now prefer the bulk packages/prices endpoint. Some environments might still expect singular 'packageId'
+  // so we will attempt BOTH query param variants to avoid silent mismatch.
+  const bulkPlural = `/api/products/packages/prices?packageIds=${encodeURIComponent(packageId)}&groupId=${encodeURIComponent(groupId)}`;
+  const bulkSingular = `/api/products/packages/prices?packageId=${encodeURIComponent(packageId)}&groupId=${encodeURIComponent(groupId)}`;
   // Legacy single endpoint
   const legacyEp = `/api/products/price-groups/${groupId}/package-prices?packageId=${encodeURIComponent(packageId)}`;
   // Allow explicit override (if provided by caller) – will be tried first
   const candidates: string[] = [];
   if (endpoint) candidates.push(endpoint);
-  candidates.push(primaryEp, legacyEp);
+  candidates.push(bulkPlural, bulkSingular, legacyEp);
 
   for (const ep of candidates) {
     try {
@@ -43,7 +45,7 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
         if (Number.isFinite(n)) return n;
       }
 
-      // Case 2: array root (e.g. packages/prices returns an array)
+      // Case 2: array root (e.g. packages/prices returns an array of rows)
       if (Array.isArray(json)) {
         const row = json.find((r: any) => String(r?.packageId) === packageId);
         if (row && (typeof row.unitPrice === 'number' || (typeof row.unitPrice === 'string' && row.unitPrice.trim() !== ''))) {
@@ -66,6 +68,7 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
     }
   }
 
+  // If nothing found return the provided base (may be null)
   return baseUnitPrice ?? null;
 }
 
