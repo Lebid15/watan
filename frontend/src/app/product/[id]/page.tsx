@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import toast from 'react-hot-toast';
 import { getDecimalDigits, formatPrice, priceInputStep, clampPriceDecimals } from '@/utils/pricingFormat';
 import CounterPurchaseCard from '@/components/CounterPurchaseCard';
@@ -30,7 +30,7 @@ interface Package {
   unitCode?: string | null;
   minUnits?: number | null;
   maxUnits?: number | null;
-  step?: number | null; // optional server-provided preferred step (fallback to env digits)
+  step?: number | null;
 }
 
 interface Product {
@@ -40,7 +40,7 @@ interface Product {
   isActive: boolean;
   packages: Package[];
   currencyCode?: string;
-  supportsCounter?: boolean; // feature flag
+  supportsCounter?: boolean;
 }
 
 function currencySymbol(code?: string) {
@@ -80,12 +80,12 @@ export default function ProductDetailsPage() {
   const [gameId, setGameId] = useState("");
   const [extraField, setExtraField] = useState("");
   const [buying, setBuying] = useState(false);
+  const counterRef = useRef<HTMLDivElement | null>(null);
 
   const apiHost = useMemo(
     () => API_ROUTES.products.base.replace(/\/api(?:\/products)?\/?$/, ''),
     []
   );
-
   const getUserPriceGroupId = () =>
     (user as any)?.priceGroupId ||
     (user as any)?.priceGroup?.id ||
@@ -118,9 +118,17 @@ export default function ProductDetailsPage() {
 
   const openModal = (pkg: Package) => {
     if (!pkg.isActive) return;
+    if (pkg.type === 'unit') {
+      if (counterRef.current) {
+        counterRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        counterRef.current.classList.add('ring-2','ring-primary');
+        setTimeout(() => counterRef.current && counterRef.current.classList.remove('ring-2','ring-primary'), 1200);
+      }
+      return;
+    }
     setSelectedPackage(pkg);
     setGameId('');
-    setExtraField(''); // 👈 نفرغه عند الفتح
+    setExtraField('');
   };
 
   const confirmBuy = async () => {
@@ -191,10 +199,18 @@ export default function ProductDetailsPage() {
                     />
                   </div>
                   <div className="min-w-0 text-right">
-                    <div className="text-sm truncate text-text-primary">{pkg.name}</div>
+                    <div className="text-sm truncate text-text-primary flex items-center gap-1 justify-end">
+                      <span className="truncate">{pkg.name}</span>
+                      {pkg.type === 'unit' && (
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary" title="الشراء بالعداد من الأسفل">وحدات</span>
+                      )}
+                    </div>
                     {pkg.description ? (
                       <div className="text-xs truncate text-text-secondary">{pkg.description}</div>
                     ) : null}
+                    {pkg.type === 'unit' && (
+                      <div className="text-[10px] text-text-secondary mt-0.5">السعر حسب الكمية</div>
+                    )}
                   </div>
                 </div>
 
@@ -208,7 +224,7 @@ export default function ProductDetailsPage() {
       )}
 
       {showCounterCard && (
-        <div className="mt-8 max-w-md mx-auto w-full">
+        <div ref={counterRef} className="mt-8 max-w-md mx-auto w-full scroll-mt-20">
           <CounterPurchaseCard
             product={product}
             packages={unitPkgs}
