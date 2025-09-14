@@ -646,7 +646,9 @@ export default function PriceGroupsPage() {
                       {priceGroups.map((group) => (
                         <th key={group.id}>{group.name}</th>
                       ))}
-                      <th>Unit price</th>
+                      {prodPkgs.some(p => p.type === 'unit') && (
+                        <th>Unit price</th>
+                      )}
                       <th className="w-28">الحالة</th>
                     </tr>
                   </thead>
@@ -684,19 +686,21 @@ export default function PriceGroupsPage() {
                             </td>
                           );
                         })}
-                        <td>
-                          {pkg.type === 'unit' && primaryGroupId ? (
-                            <UnitPriceOverrideCell
-                              key={pkg.id + '-unit'}
-                              packageId={pkg.id}
-                              groupId={primaryGroupId}
-                              baseUnitPrice={pkg.baseUnitPrice ?? null}
-                              digits={DECIMAL_DIGITS}
-                            />
-                          ) : (
-                            <span className="text-text-secondary">—</span>
-                          )}
-                        </td>
+                        {prodPkgs.some(p => p.type === 'unit') && (
+                          <td>
+                            {pkg.type === 'unit' && primaryGroupId ? (
+                              <UnitPriceOverrideCell
+                                key={pkg.id + '-unit'}
+                                packageId={pkg.id}
+                                groupId={primaryGroupId}
+                                baseUnitPrice={pkg.baseUnitPrice ?? null}
+                                digits={DECIMAL_DIGITS}
+                              />
+                            ) : (
+                              <span className="text-text-secondary">—</span>
+                            )}
+                          </td>
+                        )}
                         <td className="text-sm text-center">
                           {savingMap[pkg.id] ? (
                             <span className="text-warning">يحفظ…</span>
@@ -911,31 +915,26 @@ function UnitPriceOverrideCell({ packageId, groupId, baseUnitPrice, digits }: { 
   }
 
   if (!editing) {
+    const baseVal = baseUnitPrice != null ? clampPriceDecimals(baseUnitPrice, digits) : '—';
+    const overridden = overrideValue != null && overrideValue !== baseUnitPrice;
+    const effective = overrideValue != null ? clampPriceDecimals(overrideValue, digits) : baseVal;
     return (
-      <div className="flex items-center gap-1">
-        {overrideValue != null ? (
-          <>
-            <span className="text-sm font-medium">{clampPriceDecimals(overrideValue, digits)}</span>
-            <span className="text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary">Overridden</span>
-            <button
-              aria-label="تعديل سعر الوحدة"
-              onClick={startEdit}
-              className="text-xs px-1.5 py-0.5 rounded bg-bg-surface-alt border border-border hover:bg-primary/10"
-            >تعديل</button>
-            <button
-              aria-label="حذف التخصيص"
-              onClick={removeOverride}
-              className="text-xs px-1.5 py-0.5 rounded bg-danger text-text-inverse hover:brightness-110"
-            >×</button>
-          </>
-        ) : (
-          <>
-            <button
-              aria-label="تعديل سعر الوحدة"
-              onClick={startEdit}
-              className="text-xs px-2 py-1 rounded bg-bg-surface-alt border border-border hover:bg-primary/10"
-            >{baseUnitPrice != null ? clampPriceDecimals(baseUnitPrice, digits) : '—'}</button>
-          </>
+      <div className="flex items-center gap-1" title={overridden ? `الأساس: ${baseVal} | التخصيص: ${effective}` : ''}>
+        <span className="text-sm font-medium">{effective}</span>
+        {overridden && (
+          <span className="text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary">معدل</span>
+        )}
+        <button
+          aria-label="تعديل سعر الوحدة"
+          onClick={startEdit}
+          className="text-xs px-1.5 py-0.5 rounded bg-bg-surface-alt border border-border hover:bg-primary/10"
+        >تعديل</button>
+        {overrideValue != null && (
+          <button
+            aria-label="حذف التخصيص"
+            onClick={removeOverride}
+            className="text-xs px-1.5 py-0.5 rounded bg-danger text-text-inverse hover:brightness-110"
+          >×</button>
         )}
       </div>
     );
