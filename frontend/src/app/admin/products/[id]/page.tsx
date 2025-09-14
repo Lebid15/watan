@@ -83,6 +83,7 @@ export default function AdminProductDetailsPage() {
   const [editUseCatalog, setEditUseCatalog] = useState<boolean>(false);
   const [editCatalogAlt, setEditCatalogAlt] = useState('');
   const [editCustomAlt, setEditCustomAlt] = useState('');
+  const [editSupportsCounter, setEditSupportsCounter] = useState<boolean>(false);
 
   // Package creation form
   const [pkgName, setPkgName] = useState('');
@@ -117,6 +118,7 @@ export default function AdminProductDetailsPage() {
       setEditUseCatalog(Boolean(data.useCatalogImage));
       setEditCatalogAlt(data.catalogAltText || '');
       setEditCustomAlt(data.customAltText || '');
+  setEditSupportsCounter(Boolean(data.supportsCounter));
     } catch (e: any) {
       setError(e.message || 'حدث خطأ غير متوقع');
     } finally {
@@ -167,6 +169,7 @@ export default function AdminProductDetailsPage() {
           catalogAltText: editCatalogAlt || null,
             customAltText: editCustomAlt || null,
           isActive: editActive,
+              supportsCounter: editSupportsCounter,
         })
       });
       if (!updateRes.ok) throw new Error('فشل في تعديل المنتج');
@@ -288,6 +291,16 @@ export default function AdminProductDetailsPage() {
               <input type="checkbox" checked={editActive} onChange={e => setEditActive(e.target.checked)} />
               فعال؟
             </label>
+
+              <label className="flex items-center gap-2 mb-4 text-text-secondary">
+                <input type="checkbox" checked={editSupportsCounter} onChange={e => setEditSupportsCounter(e.target.checked)} />
+                تفعيل نمط العداد (الوحدة)
+              </label>
+              {editSupportsCounter && (
+                <div className="text-[11px] text-amber-500 mb-4">
+                  لتظهر تبويب "إعدادات العداد" يجب أن تضيف باقة نوعها Unit (يتم تعديل نوع الباقة لاحقاً إلى unit واعداد baseUnitPrice).
+                </div>
+              )}
 
             <div className="mb-6">
               {imgSrc ? (
