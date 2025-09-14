@@ -92,6 +92,9 @@ export default function AdminProductDetailsPage() {
   const [pkgPrice, setPkgPrice] = useState<number>(0);
   const [pkgBridge, setPkgBridge] = useState('');
   const [showPackageForm, setShowPackageForm] = useState(false);
+  const [pkgType, setPkgType] = useState<'fixed' | 'unit'>('fixed');
+  const [pkgUnitName, setPkgUnitName] = useState('');
+  const [pkgBaseUnitPrice, setPkgBaseUnitPrice] = useState('');
 
   // Bridges
   const [bridges, setBridges] = useState<number[]>([]);
@@ -193,15 +196,27 @@ export default function AdminProductDetailsPage() {
   const handleAddPackage = async () => {
     if (!pkgName) return alert('يرجى إدخال اسم الباقة');
     if (!pkgBridge) return alert('يرجى اختيار الجسر');
+    if (pkgType === 'unit' && !editSupportsCounter) {
+      return alert('فعّل نمط العداد أولاً ثم أضف باقة من نوع unit');
+    }
+    if (pkgType === 'unit') {
+      if (!pkgUnitName.trim()) return alert('أدخل اسم الوحدة');
+      if (!pkgBaseUnitPrice.trim()) return alert('أدخل سعر الوحدة الأساسي');
+    }
     try {
       const token = localStorage.getItem('token') || '';
+      const payload: any = { name: pkgName, description: pkgDesc, basePrice: pkgPrice, publicCode: pkgBridge, isActive: true, type: pkgType };
+      if (pkgType === 'unit') {
+        payload.unitName = pkgUnitName.trim();
+        payload.baseUnitPrice = parseFloat(pkgBaseUnitPrice);
+      }
       const res = await fetch(`${API_ROUTES.products.base}/${id}/packages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: pkgName, description: pkgDesc, basePrice: pkgPrice, publicCode: pkgBridge, isActive: true })
+        body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('فشل في إضافة الباقة');
-      setPkgName(''); setPkgDesc(''); setPkgPrice(0); setPkgBridge(''); setShowPackageForm(false);
+      setPkgName(''); setPkgDesc(''); setPkgPrice(0); setPkgBridge(''); setShowPackageForm(false); setPkgType('fixed'); setPkgUnitName(''); setPkgBaseUnitPrice('');
       fetchProduct(); fetchBridges();
     } catch (e: any) { alert(e.message || 'حدث خطأ غير متوقع'); }
   };
@@ -349,25 +364,57 @@ export default function AdminProductDetailsPage() {
             )}
 
             {showPackageForm && (
-              <div className="mt-4 p-4 border border-border rounded bg-bg-surface-alt">
-                <input className="w-full border border-border p-2 mb-2 rounded bg-bg-surface text-text-primary" placeholder="اسم الباقة" value={pkgName} onChange={e => setPkgName(e.target.value)} />
-                <textarea className="w-full border border-border p-2 mb-2 rounded bg-bg-surface text-text-primary" placeholder="الوصف (اختياري)" value={pkgDesc} onChange={e => setPkgDesc(e.target.value)} />
-                <h2 className="text-text-secondary">رأس المال (يمكن أن يكون صفراً)</h2>
-                <input type="number" className="w-full border border-border p-2 mb-2 rounded bg-bg-surface text-text-primary" placeholder="رأس المال" value={pkgPrice} onChange={e => setPkgPrice(Number(e.target.value))} />
-                <div className="mb-2">
-                  <label className="block text-text-secondary text-sm mb-1 flex items-center gap-2">
-                    <span>الجسر (مطلوب)</span>
-                    <button type="button" onClick={fetchBridges} className="text-[11px] px-2 py-0.5 rounded bg-bg-surface border border-border hover:bg-bg-surface-alt" disabled={bridgesLoading}>تحديث</button>
-                  </label>
-                  <select className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgBridge} onChange={e => setPkgBridge(e.target.value)}>
-                    <option value="">-- اختر الجسر --</option>
-                    {bridgesLoading && <option value="" disabled>جاري التحميل...</option>}
-                    {!bridgesLoading && bridges.length === 0 && <option value="" disabled>لا توجد جسور متاحة (اطلب من المطوّر إضافة كود)</option>}
-                    {bridges.filter(b => !isNaN(Number(b))).sort((a, b) => a - b).map(b => (<option key={b} value={b}>{b}</option>))}
-                  </select>
-                  <div className="text-[11px] mt-1 text-text-secondary">يتم جلب الأكواد من مصدر المطوّر؛ لا يمكنك إدخال رقم جديد يدويًا.</div>
+              <div className="border border-border rounded p-4 mb-4 bg-bg-surface-alt space-y-3">
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[12px] text-text-secondary mb-1">نوع الباقة</label>
+                    <select className="w-full border border-border rounded p-2 bg-bg-surface text-text-primary" value={pkgType} onChange={e => setPkgType(e.target.value as any)}>
+                      <option value="fixed">Fixed (ثابت)</option>
+                      <option value="unit">Unit (عداد)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-text-secondary mb-1">اسم الباقة</label>
+                    <input className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgName} onChange={e => setPkgName(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[12px] text-text-secondary mb-1">الوصف (اختياري)</label>
+                    <textarea className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgDesc} onChange={e => setPkgDesc(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-text-secondary mb-1">رأس المال (يمكن أن يكون صفراً)</label>
+                    <input type="number" className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgPrice} onChange={e => setPkgPrice(Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] text-text-secondary mb-1">الجسر (مطلوب)</label>
+                    <select className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgBridge} onChange={e => setPkgBridge(e.target.value)}>
+                      <option value="">-- اختر الجسر --</option>
+                      {bridges.map((b: any, idx: number) => {
+  const val = typeof b === 'string' ? b : (b?.code ?? b?.value ?? '');
+  if (!val) return <option key={idx} value="">—</option>;
+  return <option key={val} value={val}>{val}</option>;
+})}
+                    </select>
+                  </div>
+                  {pkgType === 'unit' && (
+                    <>
+                      <div>
+                        <label className="block text-[12px] text-text-secondary mb-1">اسم الوحدة (مثال: نقطة، رسالة)</label>
+                        <input className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgUnitName} onChange={e => setPkgUnitName(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] text-text-secondary mb-1">سعر الوحدة الأساسي (baseUnitPrice)</label>
+                        <input className="w-full border border-border p-2 rounded bg-bg-surface text-text-primary" value={pkgBaseUnitPrice} onChange={e => setPkgBaseUnitPrice(e.target.value)} placeholder="0.0500" />
+                      </div>
+                    </>
+                  )}
                 </div>
-                <button onClick={handleAddPackage} className="px-4 py-2 bg-success text-text-inverse rounded hover:brightness-110">حفظ الباقة</button>
+                {pkgType === 'unit' && !editSupportsCounter && (
+                  <div className="text-[11px] text-amber-500">فعّل نمط العداد أولاً من أعلى الصفحة قبل إنشاء باقة وحدة.</div>
+                )}
+                <div className="flex justify-end">
+                  <button onClick={handleAddPackage} className="px-4 py-2 bg-primary text-primary-contrast rounded hover:bg-primary-hover">حفظ الباقة</button>
+                </div>
               </div>
             )}
         </>
