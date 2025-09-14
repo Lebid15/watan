@@ -188,6 +188,18 @@ export default function ProductDetailsPage() {
   const selectedUnitPackage = unitPkgs.find(p => p.id === unitSelectedPkgId) || unitPkgs[0];
   // خريطة أسعار الوحدات (محولة لعملة المستخدم) لعرضها على الكروت
   const [unitCardPrices, setUnitCardPrices] = useState<Record<string, number>>({});
+  // توقيع للتغيرات في أسعار الوحدات (baseUnitPrice أو unitPrice overrides)
+  const unitPricesSignature = useMemo(() => {
+    return unitPkgs.map(p => {
+      const base = p.baseUnitPrice != null ? Number(p.baseUnitPrice) : 'null';
+      let override: any = 'null';
+      if (Array.isArray(p.prices) && p.prices.length) {
+        const row: any = userPriceGroupId ? p.prices.find(r => r.groupId === userPriceGroupId && (r as any).unitPrice != null) : null;
+        if (row && row.unitPrice != null) override = Number(row.unitPrice);
+      }
+      return `${p.id}:${base}:${override}`;
+    }).join('|');
+  }, [unitPkgs, userPriceGroupId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -230,7 +242,7 @@ export default function ProductDetailsPage() {
     }
     loadUnitCardPrices();
     return () => { cancelled = true; };
-  }, [activePkgs.length, currencyCode, userPriceGroupId]);
+  }, [activePkgs.length, currencyCode, userPriceGroupId, unitPricesSignature]);
 
   // ====== منطق التسعير للوحدات داخل المودال ======
   const digits = getDecimalDigits();
@@ -260,7 +272,8 @@ export default function ProductDetailsPage() {
     }
     loadEffectiveUnitPrice();
     return () => { cancelled = true; };
-  }, [unitModalOpen, userPriceGroupId, selectedUnitPackage?.id, baseUnitPrice]);
+  // أعد تحميل سعر الوحدة في المودال إذا تغير override أو baseUnitPrice
+  }, [unitModalOpen, userPriceGroupId, selectedUnitPackage?.id, baseUnitPrice, unitPricesSignature]);
 
   // جلب معدل التحويل للعملة الحالية إذا لم تكن USD
   useEffect(() => {
