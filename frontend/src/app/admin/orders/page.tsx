@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useToast } from '@/context/ToastContext';
 import { createPortal } from 'react-dom';
+import { fmtDateStable } from '@/lib/fmtDateStable';
 
 type OrderStatus = 'pending' | 'approved' | 'rejected';
 type FilterMethod = '' | 'manual' | string;
@@ -1368,7 +1369,7 @@ export default function AdminOrdersPage() {
               </div> */}
               <div>
                 <div className="text-text-secondary">تاريخ الوصول</div>
-                <div>{detailOrder.completedAt ? new Date(detailOrder.completedAt).toLocaleString('en-GB') : '-'}</div>
+                <div>{detailOrder.completedAt ? fmtDateStable(detailOrder.completedAt) : '-'}</div>
               </div>
 {/* 
               <div>
@@ -1378,7 +1379,7 @@ export default function AdminOrdersPage() {
 
               <div>
                 <div className="text-text-secondary">تاريخ الإنشاء</div>
-                <div>{new Date(detailOrder.createdAt).toLocaleString('en-GB')}</div>
+                <div>{fmtDateStable(detailOrder.createdAt)}</div>
               </div>
             </div>
 
