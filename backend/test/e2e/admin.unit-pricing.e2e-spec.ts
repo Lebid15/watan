@@ -1,3 +1,5 @@
+// Ensure tests run with 4 decimal precision so inputs like 0.0500 validate
+process.env.PRICE_DECIMALS = '4';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -18,6 +20,7 @@ import { AuditService } from '../../src/audit/audit.service';
 import { ProductImageMetricsService } from '../../src/products/product-image-metrics.service';
 import { WebhooksService } from '../../src/webhooks/webhooks.service';
 import { ThumbnailService } from '../../src/products/thumbnail.service';
+import { resetPriceDecimalsForTest } from '../../src/config/pricing.config';
 
 // Minimal stub services where full behavior not required
 class AuditServiceStub { async log() { /* noop */ } }
@@ -49,6 +52,8 @@ describe('Admin Unit Pricing API (e2e)', () => {
   let groupVIP: PriceGroup;
 
   beforeAll(async () => {
+    // Recompute pricing decimals after setting env override above
+    resetPriceDecimalsForTest();
     // Ensure entity decorators that switch on this flag use sqlite-friendly column types
     process.env.TEST_DB_SQLITE = 'true';
     const moduleRef = await Test.createTestingModule({

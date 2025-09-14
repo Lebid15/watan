@@ -297,9 +297,15 @@ export default function AdminProductDetailsPage() {
                 <input type="checkbox" checked={editSupportsCounter} onChange={e => setEditSupportsCounter(e.target.checked)} />
                 تفعيل نمط العداد (الوحدة)
               </label>
-              {editSupportsCounter && (
-                <div className="text-[11px] text-amber-500 mb-4">
-                  لتظهر تبويب "إعدادات العداد" يجب أن تضيف باقة نوعها Unit (يتم تعديل نوع الباقة لاحقاً إلى unit واعداد baseUnitPrice).
+              {editSupportsCounter && unitPackages.length === 0 && (
+                <div className="text-[11px] text-amber-500 mb-4 leading-relaxed">
+                  لتفعيل تبويب <span className="font-semibold">إعدادات العداد</span>:
+                  <br />
+                  1- أضف باقة جديدة أو عدّل باقة موجودة واجعل نوعها <span className="font-mono bg-bg-surface-alt px-1 rounded border border-border">unit</span>.
+                  <br />
+                  2- حدّد الحقل <span className="font-semibold">baseUnitPrice</span> (السعر لكل وحدة) وأدخل اسم الوحدة (مثال: رسالة، نقطة، دقيقة).
+                  <br />
+                  بعد حفظ الباقة ستظهر لك تبويب إعدادات العداد لإدارة الحد الأدنى والأقصى و قيمة الخطوة (Step) وأسعار المجموعات.
                 </div>
               )}
 
