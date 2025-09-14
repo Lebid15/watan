@@ -9,7 +9,7 @@
     "prebuild": "node scripts/generate-build-meta.cjs",
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
-    "start": "next start -H 0.0.0.0 -p 3000",
+  "start": "PORT=\"${PORT:-3000}\" next start -H 0.0.0.0 -p $PORT",
     "lint": "next lint"
   },
   "cacheDirectories": [
