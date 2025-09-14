@@ -101,7 +101,12 @@ export default function AdminProductDetailsPage() {
   const [bridgesLoading, setBridgesLoading] = useState(false);
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<'basic' | 'unit'>('basic');
+  // Removed separate unit tab (only one unit package allowed now)
+  const [activeTab] = useState<'basic'>('basic');
+  const [showUnitModal, setShowUnitModal] = useState(false);
+  const [unitModalPkg, setUnitModalPkg] = useState<ProductPackage | null>(null);
+  const [unitForm, setUnitForm] = useState({ unitName: '', unitCode: '', baseUnitPrice: '', minUnits: '', maxUnits: '', step: '' });
+  const [unitSaving, setUnitSaving] = useState(false);
   const DECIMAL_DIGITS = getDecimalDigits();
 
   const apiHost = API_ROUTES.products.base.replace('/api/products', '');
@@ -245,8 +250,49 @@ export default function AdminProductDetailsPage() {
   if (!product) return <p className="p-4 text-text-secondary">المنتج غير موجود</p>;
 
   const unitPackages = (product.packages || []).filter(p => p.type === 'unit');
-  const showUnitTab = Boolean(product.supportsCounter && unitPackages.length > 0);
-  if (activeTab === 'unit' && !showUnitTab) setActiveTab('basic');
+  const unitExists = unitPackages.length > 0;
+
+  function openUnitModal(pkg: ProductPackage) {
+    setUnitModalPkg(pkg);
+    setUnitForm({
+      unitName: pkg.unitName ? String(pkg.unitName) : '',
+      unitCode: pkg.unitCode ? String(pkg.unitCode) : '',
+      baseUnitPrice: pkg.baseUnitPrice != null ? String(pkg.baseUnitPrice) : '',
+      minUnits: pkg.minUnits != null ? String(pkg.minUnits) : '',
+      maxUnits: pkg.maxUnits != null ? String(pkg.maxUnits) : '',
+      step: pkg.step != null ? String(pkg.step) : '',
+    });
+    setShowUnitModal(true);
+  }
+
+  async function saveUnitModal() {
+    if (!unitModalPkg) return;
+    if (!unitForm.unitName.trim()) { alert('اسم الوحدة مطلوب'); return; }
+    if (!unitForm.baseUnitPrice.trim()) { alert('سعر الوحدة الأساسي مطلوب'); return; }
+    const min = unitForm.minUnits.trim() ? Number(unitForm.minUnits) : null;
+    const max = unitForm.maxUnits.trim() ? Number(unitForm.maxUnits) : null;
+    if (min != null && max != null && max < min) { alert('الحد الأقصى يجب أن يكون أكبر أو يساوي الحد الأدنى'); return; }
+    const stepNum = unitForm.step.trim() ? Number(unitForm.step) : null;
+    if (stepNum != null && stepNum <= 0) { alert('Step يجب أن يكون > 0'); return; }
+    setUnitSaving(true);
+    try {
+      const token = localStorage.getItem('token') || '';
+      const body: any = {
+        unitName: unitForm.unitName.trim(),
+        unitCode: unitForm.unitCode.trim() || null,
+        baseUnitPrice: unitForm.baseUnitPrice.trim(),
+        minUnits: unitForm.minUnits.trim() || null,
+        maxUnits: unitForm.maxUnits.trim() || null,
+        step: unitForm.step.trim() || null,
+      };
+      const res = await fetch(`/api/admin/packages/${unitModalPkg.id}/unit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      if (!res.ok) { let payload: any = null; try { payload = await res.json(); } catch {} throw new Error(payload?.message || 'فشل الحفظ'); }
+      // Optimistic local update
+      setProduct(prev => prev ? ({ ...prev, packages: (prev.packages||[]).map(p => p.id === unitModalPkg.id ? { ...p, unitName: body.unitName, unitCode: body.unitCode, baseUnitPrice: Number(body.baseUnitPrice), minUnits: min, maxUnits: max, step: stepNum } : p) }) : prev);
+      setShowUnitModal(false);
+    } catch (e: any) { alert(e.message || 'خطأ'); }
+    finally { setUnitSaving(false); }
+  }
 
   const imgSrc = product.imageUrl
     ? (product.imageUrl.startsWith('http')
@@ -266,14 +312,8 @@ export default function AdminProductDetailsPage() {
 
   return (
     <div className="p-6 bg-bg-surface rounded shadow max-w-3xl mx-auto text-text-primary border border-border">
-      <div className="flex items-center gap-4 mb-5 border-b border-border pb-2">
-        <button onClick={() => setActiveTab('basic')} className={`text-sm pb-1 px-1 border-b-2 ${activeTab === 'basic' ? 'border-primary text-primary font-semibold' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>الأساسي</button>
-        {showUnitTab && <button onClick={() => setActiveTab('unit')} className={`text-sm pb-1 px-1 border-b-2 ${activeTab === 'unit' ? 'border-primary text-primary font-semibold' : 'border-transparent text-text-secondary hover:text-text-primary'}`}>إعدادات العداد</button>}
-        {!showUnitTab && product.supportsCounter && <span className="text-[11px] text-text-secondary">لا توجد باقات Unit لعرضها</span>}
-      </div>
-      {activeTab === 'unit' ? (
-        <UnitSettings productId={product.id} packages={unitPackages} digits={DECIMAL_DIGITS} onSaved={fetchProduct} />
-      ) : (
+      <div className="mb-4" />
+      {
         <>
           <div className="flex justify-between items-center mb-4">
             <h1 className="text-2xl font-bold">المنتج: {product.name}</h1>
@@ -355,16 +395,26 @@ export default function AdminProductDetailsPage() {
                   <thead className="bg-bg-surface-alt text-text-secondary text-xs">
                     <tr>
                       <th className="p-2 text-right">الاسم</th>
+                      <th className="p-2 text-right">النوع</th>
                       <th className="p-2 text-right">الكود / الجسر</th>
                       <th className="p-2 text-right">الوصف</th>
                       <th className="p-2 text-right">رأس المال</th>
                       <th className="p-2 text-right">الحالة</th>
+                      <th className="p-2 text-right">إعدادات العداد</th>
                       <th className="p-2 text-right">إجراءات</th>
                     </tr>
                   </thead>
                   <tbody>
                     {product.packages.map(pkg => (
-                      <PackageRow key={pkg.id} pkg={pkg} allPackages={product.packages || []} availableBridges={bridges} onChanged={() => { fetchProduct(); fetchBridges(); }} onDelete={() => handleDeletePackage(pkg.id)} />
+                      <PackageRow
+                        key={pkg.id}
+                        pkg={pkg}
+                        allPackages={product.packages || []}
+                        availableBridges={bridges}
+                        onChanged={() => { fetchProduct(); fetchBridges(); }}
+                        onDelete={() => handleDeletePackage(pkg.id)}
+                        onOpenUnit={() => openUnitModal(pkg)}
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -380,8 +430,9 @@ export default function AdminProductDetailsPage() {
                     <label className="block text-[12px] text-text-secondary mb-1">نوع الباقة</label>
                     <select className="w-full border border-border rounded p-2 bg-bg-surface text-text-primary" value={pkgType} onChange={e => setPkgType(e.target.value as any)}>
                       <option value="fixed">Fixed (ثابت)</option>
-                      <option value="unit">Unit (عداد)</option>
+                      <option value="unit" disabled={unitExists}>Unit (عداد)</option>
                     </select>
+                    {unitExists && <div className="text-[10px] mt-1 text-text-secondary">هناك باقة عداد واحدة بالفعل</div>}
                   </div>
                   <div>
                     <label className="block text-[12px] text-text-secondary mb-1">اسم الباقة</label>
@@ -402,7 +453,7 @@ export default function AdminProductDetailsPage() {
                       {bridges.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
                   </div>
-                  {pkgType === 'unit' && (
+                  {pkgType === 'unit' && !unitExists && (
                     <>
                       <div>
                         <label className="block text-[12px] text-text-secondary mb-1">اسم الوحدة (مثال: نقطة، رسالة)</label>
@@ -415,83 +466,67 @@ export default function AdminProductDetailsPage() {
                     </>
                   )}
                 </div>
-                {pkgType === 'unit' && !editSupportsCounter && (
+                {pkgType === 'unit' && !editSupportsCounter && !unitExists && (
                   <div className="text-[11px] text-amber-500">فعّل نمط العداد أولاً من أعلى الصفحة قبل إنشاء باقة وحدة.</div>
+                )}
+                {pkgType === 'unit' && unitExists && (
+                  <div className="text-[11px] text-text-secondary">لا يمكن إنشاء أكثر من باقة عداد واحدة.</div>
                 )}
                 <div className="flex justify-end">
                   <button onClick={handleAddPackage} className="px-4 py-2 bg-primary text-primary-contrast rounded hover:bg-primary-hover">حفظ الباقة</button>
                 </div>
               </div>
             )}
+            {/* Unit Settings Modal */}
+            {showUnitModal && unitModalPkg && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="bg-bg-surface rounded shadow-lg w-full max-w-md border border-border p-4 space-y-3">
+                  <div className="flex justify-between items-center mb-1">
+                    <h3 className="font-semibold text-lg">إعدادات العداد: {unitModalPkg.name}</h3>
+                    <button onClick={() => setShowUnitModal(false)} className="text-text-secondary hover:text-text-primary text-sm">✕</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-[11px] text-text-secondary mb-1">اسم الوحدة (مطلوب)</label>
+                      <input className="w-full border border-border rounded p-2 bg-bg-surface-alt" value={unitForm.unitName} onChange={e => setUnitForm(f => ({ ...f, unitName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-text-secondary mb-1">رمز (اختياري)</label>
+                      <input className="w-full border border-border rounded p-2 bg-bg-surface-alt" value={unitForm.unitCode} onChange={e => setUnitForm(f => ({ ...f, unitCode: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-text-secondary mb-1">سعر الوحدة الأساسي</label>
+                      <input className="w-full border border-border rounded p-2 bg-bg-surface-alt" value={unitForm.baseUnitPrice} onChange={e => setUnitForm(f => ({ ...f, baseUnitPrice: e.target.value }))} placeholder="0.0500" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-text-secondary mb-1">الحد الأدنى (اختياري)</label>
+                      <input type="number" className="w-full border border-border rounded p-2 bg-bg-surface-alt" value={unitForm.minUnits} onChange={e => setUnitForm(f => ({ ...f, minUnits: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-text-secondary mb-1">الحد الأقصى (اختياري)</label>
+                      <input type="number" className="w-full border border-border rounded p-2 bg-bg-surface-alt" value={unitForm.maxUnits} onChange={e => setUnitForm(f => ({ ...f, maxUnits: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-text-secondary mb-1">Step (اختياري)</label>
+                      <input type="number" className="w-full border border-border rounded p-2 bg-bg-surface-alt" value={unitForm.step} onChange={e => setUnitForm(f => ({ ...f, step: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-text-secondary leading-relaxed">اترك الحقول الفارغة لإلغاء التقييد. يجب أن يكون سعر الوحدة &gt; 0. ويجب أن يكون الحد الأقصى ≥ الحد الأدنى إن تم تعبئتهما.</div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button onClick={() => setShowUnitModal(false)} className="px-3 py-1.5 rounded bg-gray-600 text-text-inverse text-sm">إلغاء</button>
+                    <button disabled={unitSaving} onClick={saveUnitModal} className="px-4 py-1.5 rounded bg-primary text-primary-contrast text-sm disabled:opacity-50">{unitSaving ? 'جارٍ الحفظ...' : 'حفظ'}</button>
+                  </div>
+                </div>
+              </div>
+            )}
         </>
-      )}
-    </div>
-  );
-}
-
-// ===== Unit Settings =====
-function UnitSettings({ productId, packages, digits, onSaved }: { productId: string; packages: ProductPackage[]; digits: number; onSaved: () => void }) {
-  const [rows, setRows] = useState<ProductPackage[]>(() => packages.map(p => ({ ...p })));
-  const [savingMap, setSavingMap] = useState<Record<string, boolean>>({});
-  useEffect(() => { setRows(packages.map(p => ({ ...p }))); }, [packages.map(p => p.id).join(','), packages.length]);
-
-  function updateField(id: string, field: keyof ProductPackage, value: any) { setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r)); }
-  function validate(r: ProductPackage) { const errs: string[] = []; if (r.step != null && Number(r.step) <= 0) errs.push('step'); if (r.minUnits != null && r.maxUnits != null && Number(r.minUnits) > Number(r.maxUnits)) errs.push('range'); return errs; }
-  async function saveRow(id: string) {
-    const row = rows.find(r => r.id === id); if (!row) return;
-    const errs = validate(row); if (errs.length) { alert('تحقق من الحقول'); return; }
-    setSavingMap(m => ({ ...m, [id]: true }));
-    try {
-      const token = localStorage.getItem('token') || '';
-      const body = { unitName: row.unitName || null, unitCode: row.unitCode || null, minUnits: row.minUnits ?? null, maxUnits: row.maxUnits ?? null, step: row.step ?? null, baseUnitPrice: row.baseUnitPrice ?? null };
-      const res = await fetch(`/api/admin/packages/${id}/unit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-      if (!res.ok) { let payload: any = null; try { payload = await res.json(); } catch { } throw new Error(payload?.message || 'فشل الحفظ'); }
-      onSaved();
-    } catch (e: any) { alert(e.message || 'خطأ'); } finally { setSavingMap(m => ({ ...m, [id]: false })); }
-  }
-  const stepVal = priceInputStep(digits);
-  function onBlurPrice(id: string) { const row = rows.find(r => r.id === id); if (!row || row.baseUnitPrice == null) return; const fixed = clampPriceDecimals(Number(row.baseUnitPrice), digits); updateField(id, 'baseUnitPrice', fixed); }
-
-  return (
-    <div className="mb-6">
-      <table className="min-w-full text-sm border border-border rounded">
-        <thead className="bg-bg-surface-alt text-text-secondary text-xs">
-          <tr>
-            <th className="p-2 text-right">الباقة</th>
-            <th className="p-2 text-right">unitName</th>
-            <th className="p-2 text-right">unitCode</th>
-            <th className="p-2 text-right">minUnits</th>
-            <th className="p-2 text-right">maxUnits</th>
-            <th className="p-2 text-right">step</th>
-            <th className="p-2 text-right">baseUnitPrice</th>
-            <th className="p-2 text-right">حفظ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(r => {
-            const errs = new Set(validate(r));
-            return (
-              <tr key={r.id} className="border-t border-border">
-                <td className="p-2 align-top font-medium w-32">{r.name}</td>
-                <td className="p-2 align-top"><input className="input w-32" value={r.unitName || ''} onChange={e => updateField(r.id, 'unitName', e.target.value)} /></td>
-                <td className="p-2 align-top"><input className="input w-28" value={r.unitCode || ''} onChange={e => updateField(r.id, 'unitCode', e.target.value)} /></td>
-                <td className="p-2 align-top"><input type="number" className={`input w-20 ${errs.has('range') ? 'border-danger' : ''}`} value={r.minUnits == null ? '' : r.minUnits} onChange={e => updateField(r.id, 'minUnits', e.target.value === '' ? null : Number(e.target.value))} /></td>
-                <td className="p-2 align-top"><input type="number" className={`input w-20 ${errs.has('range') ? 'border-danger' : ''}`} value={r.maxUnits == null ? '' : r.maxUnits} onChange={e => updateField(r.id, 'maxUnits', e.target.value === '' ? null : Number(e.target.value))} /></td>
-                <td className="p-2 align-top"><input type="number" step={stepVal} className={`input w-16 ${errs.has('step') ? 'border-danger' : ''}`} value={r.step == null ? '' : r.step} onChange={e => updateField(r.id, 'step', e.target.value === '' ? null : Number(e.target.value))} /></td>
-                <td className="p-2 align-top"><input type="text" inputMode="decimal" className="input w-24" value={r.baseUnitPrice == null ? '' : r.baseUnitPrice} onChange={e => updateField(r.id, 'baseUnitPrice', e.target.value === '' ? null : Number(e.target.value.replace(',', '.')))} onBlur={() => onBlurPrice(r.id)} /></td>
-                <td className="p-2 align-top"><button disabled={savingMap[r.id]} onClick={() => saveRow(r.id)} className="px-3 py-1 rounded bg-primary text-primary-contrast text-xs disabled:opacity-50">{savingMap[r.id] ? '...' : 'حفظ'}</button></td>
-              </tr>
-            );
-          })}
-          {rows.length === 0 && (<tr><td colSpan={8} className="p-3 text-center text-text-secondary">لا توجد باقات</td></tr>)}
-        </tbody>
-      </table>
+      }
     </div>
   );
 }
 
 // ===== Package Row (basic tab) =====
-function PackageRow({ pkg, allPackages, availableBridges, onChanged, onDelete }: { pkg: ProductPackage; allPackages: ProductPackage[]; availableBridges: (number|string)[]; onChanged: () => void; onDelete: () => void }) {
+function PackageRow({ pkg, allPackages, availableBridges, onChanged, onDelete, onOpenUnit }: { pkg: ProductPackage; allPackages: ProductPackage[]; availableBridges: (number|string)[]; onChanged: () => void; onDelete: () => void; onOpenUnit: () => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(pkg.name);
   const [desc, setDesc] = useState(pkg.description || '');
@@ -526,13 +561,41 @@ function PackageRow({ pkg, allPackages, availableBridges, onChanged, onDelete }:
   };
 
   return (
-    <tr className="border-t border-border">
-      <td className="p-2 align-top">{editing ? (<input className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={name} onChange={e => setName(e.target.value)} />) : (<span className="font-medium">{pkg.name}</span>)}</td>
+    <tr className={`border-t border-border ${pkg.type === 'unit' ? 'bg-violet-950/20' : ''}`}>
+      <td className="p-2 align-top font-medium flex flex-col gap-1">
+        {editing ? (
+          <input className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={name} onChange={e => setName(e.target.value)} />
+        ) : (
+          <span>{pkg.name}</span>
+        )}
+      </td>
+      <td className="p-2 align-top text-xs">{pkg.type === 'unit' ? <span className="inline-block px-2 py-0.5 rounded-full bg-violet-600 text-white">Unit</span> : <span className="inline-block px-2 py-0.5 rounded-full bg-slate-600 text-white">Fixed</span>}</td>
       <td className="p-2 align-top">{editing ? (<select className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" value={code} onChange={e => setCode(e.target.value)}><option value="">اختر</option>{codeOptions.map(c => (<option key={c} value={c}>{c}</option>))}</select>) : (pkg.publicCode ? <span>{pkg.publicCode}</span> : <span className="text-text-secondary">—</span>)}</td>
       <td className="p-2 align-top max-w-[200px]">{editing ? (<textarea className="w-full text-sm p-1 rounded bg-bg-surface-alt border border-border" rows={2} value={desc} onChange={e => setDesc(e.target.value)} />) : (pkg.description ? (<span title={pkg.description} className="line-clamp-2 whitespace-pre-wrap text-[12px] text-text-secondary">{pkg.description}</span>) : <span className="text-text-secondary">—</span>)}</td>
       <td className="p-2 align-top">{editing ? (<input type="number" className="w-24 text-sm p-1 rounded bg-bg-surface-alt border border-border" value={basePrice} onChange={e => setBasePrice(Number(e.target.value))} />) : (<span>{pkg.basePrice}</span>)}</td>
       <td className="p-2 align-top">{editing ? (<label className="inline-flex items-center gap-1 text-xs"><input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} /><span>{isActive ? 'فعال' : 'متوقف'}</span></label>) : (<span className={`text-xs px-2 py-1 rounded-full ${pkg.isActive ? 'bg-emerald-600/20 text-emerald-500' : 'bg-gray-600/30 text-gray-400'}`}>{pkg.isActive ? 'فعال' : 'متوقف'}</span>)}</td>
-      <td className="p-2 align-top flex gap-2">{editing ? (<><button disabled={saving} onClick={saveBasic} className="px-2 py-1 bg-success text-text-inverse rounded text-xs disabled:opacity-50">حفظ</button><button disabled={saving} onClick={() => { setEditing(false); setName(pkg.name); setDesc(pkg.description || ''); setBasePrice(pkg.basePrice); setIsActive(pkg.isActive); setCode(pkg.publicCode ? String(pkg.publicCode) : ''); }} className="px-2 py-1 bg-gray-600 text-text-inverse rounded text-xs">إلغاء</button></>) : (<><button onClick={() => setEditing(true)} className="px-2 py-1 bg-primary text-primary-contrast rounded text-xs">تعديل</button><button onClick={onDelete} className="px-2 py-1 bg-danger text-text-inverse rounded text-xs">حذف</button></>)}</td>
+      <td className="p-2 align-top text-center">
+        {pkg.type === 'unit' ? (
+          <button onClick={onOpenUnit} className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded text-xs">⚙</button>
+        ) : <span className="text-text-secondary text-xs">—</span>}
+      </td>
+      <td className="p-2 align-top flex gap-2 flex-wrap">
+        {editing ? (
+          <>
+            <button disabled={saving} onClick={saveBasic} className="px-2 py-1 bg-success text-text-inverse rounded text-xs disabled:opacity-50">حفظ</button>
+            <button disabled={saving} onClick={() => { setEditing(false); setName(pkg.name); setDesc(pkg.description || ''); setBasePrice(pkg.basePrice); setIsActive(pkg.isActive); setCode(pkg.publicCode ? String(pkg.publicCode) : ''); }} className="px-2 py-1 bg-gray-600 text-text-inverse rounded text-xs">إلغاء</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setEditing(true)} className="px-2 py-1 bg-primary text-primary-contrast rounded text-xs">تعديل</button>
+            <button onClick={onDelete} className="px-2 py-1 bg-danger text-text-inverse rounded text-xs">حذف</button>
+          </>
+        )}
+      </td>
     </tr>
   );
 }
+
+// ===== Unit Modal Logic =====
+// (openUnitModal defined inside component above)
+
