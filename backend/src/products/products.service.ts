@@ -1261,16 +1261,33 @@ export class ProductsService {
         : ({ tenantId, package: { id: In(ids) } } as any),
       relations: ['package', 'priceGroup'],
     });
-
-    return rows.map((p) => ({
-      packageId: p.package.id,
-      groupId: p.priceGroup.id,
-      groupName: p.priceGroup.name,
-      priceId: p.id,
-      price: Number(p.price) || 0,
-      // expose unitPrice override if present (used by frontend to avoid extra fetch)
-      unitPrice: p.unitPrice != null ? Number(p.unitPrice) : null,
-    }));
+    // نبني خريطة للتجميع حسب packageId لتسهيل حساب effectiveUnitPrice حتى لو لم نرجع كل المجموعات.
+    return rows.map((p) => {
+      const pkg: any = p.package;
+      const isUnit = pkg?.type === 'unit';
+      // السعر الأساسي للوحدة (الآن نستخدم baseUnitPrice كمرجع افتراضي)
+      const baseUnit = pkg?.baseUnitPrice != null ? Number(pkg.baseUnitPrice) : null;
+      // override قديم (unitPrice) إن وجد
+      const overrideUnit = (p as any).unitPrice != null ? Number((p as any).unitPrice) : null;
+      // السعر الجاري المخزن (price) – نستخدمه كسعر الوحدة الفعلي لو كانت الباقة من نوع unit حسب السياسة الجديدة
+      const rowPrice = Number(p.price) || 0;
+      let effectiveUnitPrice: number | null = null;
+      if (isUnit) {
+        // الترتيب: overrideUnit (متروك للتوافق) ثم row.price ثم baseUnit
+        if (overrideUnit != null && Number.isFinite(overrideUnit) && overrideUnit > 0) effectiveUnitPrice = overrideUnit;
+        else if (rowPrice > 0) effectiveUnitPrice = rowPrice;
+        else if (baseUnit != null) effectiveUnitPrice = baseUnit;
+      }
+      return {
+        packageId: p.package.id,
+        groupId: p.priceGroup.id,
+        groupName: p.priceGroup.name,
+        priceId: p.id,
+        price: rowPrice,
+        unitPrice: overrideUnit, // إبقاءه للتوافق الخلفي
+        effectiveUnitPrice,      // الحقل الجديد المقترح للاعتماد في الواجهة
+      };
+    });
   }
 
   // ================== التسعير الأساس (بالدولار) ==================

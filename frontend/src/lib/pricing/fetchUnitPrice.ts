@@ -39,35 +39,42 @@ export async function fetchUnitPrice(options: FetchUnitPriceOptions): Promise<nu
       let json: any = null;
       try { json = await res.json(); } catch { continue; }
 
-      // Case 1: direct object with unitPrice
-      if (json && !Array.isArray(json) && (typeof json.unitPrice === 'number' || (typeof json.unitPrice === 'string' && json.unitPrice.trim() !== ''))) {
-        const n = Number(json.unitPrice);
-        if (Number.isFinite(n)) return n;
+      // Case 1: direct object – prefer effectiveUnitPrice then unitPrice then price
+      if (json && !Array.isArray(json)) {
+        const candidatesNums = [json.effectiveUnitPrice, json.unitPrice, json.price];
+        for (const val of candidatesNums) {
+          if (val != null && (typeof val === 'number' || (typeof val === 'string' && String(val).trim() !== ''))) {
+            const n = Number(val);
+            if (Number.isFinite(n) && n > 0) return n;
+          }
+        }
       }
 
       // Case 2: array root (e.g. packages/prices returns an array of rows)
       if (Array.isArray(json)) {
         const row = json.find((r: any) => String(r?.packageId) === packageId);
         if (row) {
-          // Prefer explicit unitPrice
-            if (row.unitPrice != null && (typeof row.unitPrice === 'number' || (typeof row.unitPrice === 'string' && row.unitPrice.trim() !== ''))) {
-              const n = Number(row.unitPrice);
-              if (Number.isFinite(n)) return n;
+          const candidatesNums = [row.effectiveUnitPrice, row.unitPrice, row.price];
+          for (const val of candidatesNums) {
+            if (val != null && (typeof val === 'number' || (typeof val === 'string' && String(val).trim() !== ''))) {
+              const n = Number(val);
+              if (Number.isFinite(n) && n > 0) return n;
             }
-            // Fallback: some older rows may only expose 'price' (override) for unit packages
-            if (row.price != null && (typeof row.price === 'number' || (typeof row.price === 'string' && row.price.trim() !== ''))) {
-              const np = Number(row.price);
-              if (Number.isFinite(np)) return np;
-            }
+          }
         }
       }
 
       // Case 3: object with data array
       if (json && Array.isArray(json.data)) {
         const item = json.data.find((x: any) => String(x?.packageId) === packageId);
-        if (item && (typeof item.unitPrice === 'number' || (typeof item.unitPrice === 'string' && item.unitPrice.trim() !== ''))) {
-          const n = Number(item.unitPrice);
-          if (Number.isFinite(n)) return n;
+        if (item) {
+          const candidatesNums = [item.effectiveUnitPrice, item.unitPrice, item.price];
+          for (const val of candidatesNums) {
+            if (val != null && (typeof val === 'number' || (typeof val === 'string' && String(val).trim() !== ''))) {
+              const n = Number(val);
+              if (Number.isFinite(n) && n > 0) return n;
+            }
+          }
         }
       }
     } catch {
