@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import toast from 'react-hot-toast';
 import { getDecimalDigits, formatPrice, priceInputStep, clampPriceDecimals } from '@/utils/pricingFormat';
+import fetchUnitPrice from '@/lib/pricing/fetchUnitPrice';
 // CounterPurchaseCard (old always-visible component) removed in favor of on-demand modal
 import { useParams, useRouter  } from "next/navigation";
 import api, { API_ROUTES } from '@/utils/api';
@@ -92,10 +93,10 @@ export default function ProductDetailsPage() {
     () => API_ROUTES.products.base.replace(/\/api(?:\/products)?\/?$/, ''),
     []
   );
-  const getUserPriceGroupId = () =>
-    (user as any)?.priceGroupId ||
-    (user as any)?.priceGroup?.id ||
-    null;
+  // Memoize priceGroupId to avoid recreating function dependency loops
+  const userPriceGroupId = useMemo(() => {
+    return (user as any)?.priceGroupId || (user as any)?.priceGroup?.id || null;
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +121,7 @@ export default function ProductDetailsPage() {
   }, [id, user]);
 
   const getPrice = (pkg: Package) => {
-    const gid = getUserPriceGroupId();
+    const gid = userPriceGroupId;
     if (gid && Array.isArray(pkg.prices) && pkg.prices.length) {
       const match = pkg.prices.find(p => p.groupId === gid);
       if (match && typeof match.price === 'number') return Number(match.price);
@@ -191,29 +192,18 @@ export default function ProductDetailsPage() {
   useEffect(() => {
     let cancelled = false;
     async function loadEffectiveUnitPrice() {
-      if (!unitModalOpen) return; // المودال غير مفتوح
+      if (!unitModalOpen) return;
       if (!selectedUnitPackage) { setEffectiveUnitPrice(null); return; }
-      try {
-        const res = await fetch('/api/pricing/unit-price', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            groupId: getUserPriceGroupId(),
-            packageId: selectedUnitPackage.id,
-            baseUnitPrice: baseUnitPrice
-          })
-        });
-        if (!res.ok) throw new Error('unit-price endpoint failed');
-        const j = await res.json();
-        if (!cancelled) setEffectiveUnitPrice(typeof j?.price === 'number' ? j.price : baseUnitPrice);
-      } catch (err) {
-        console.error('Failed to load effective unit price', err);
-        if (!cancelled) setEffectiveUnitPrice(baseUnitPrice || null);
-      }
+      const price = await fetchUnitPrice({
+        groupId: userPriceGroupId,
+        packageId: selectedUnitPackage.id,
+        baseUnitPrice: baseUnitPrice
+      });
+      if (!cancelled) setEffectiveUnitPrice(price);
     }
     loadEffectiveUnitPrice();
     return () => { cancelled = true; };
-  }, [unitModalOpen, unitSelectedPkgId, baseUnitPrice, selectedUnitPackage, getUserPriceGroupId]);
+  }, [unitModalOpen, userPriceGroupId, selectedUnitPackage?.id, baseUnitPrice]);
 
   const unitQtyNum = unitQuantity === '' ? null : Number(unitQuantity);
   const unitValidNumber = unitQtyNum != null && !isNaN(unitQtyNum);
