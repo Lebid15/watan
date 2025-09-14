@@ -236,10 +236,14 @@ export default function ProductDetailsPage() {
     return true;
   }
 
-  const unitPriceDisplay = effectiveUnitPrice != null ? formatPrice(effectiveUnitPrice, digits) : '—';
+  // عرض الأسعار بعملة المستخدم (كما في عرض الباقات خارج المودال)
+  const unitPriceDisplay = effectiveUnitPrice != null
+    ? formatMoney(effectiveUnitPrice, currencyCode, { fractionDigits: 2, withSymbol: false })
+    : '—';
   const unitTotalDisplay = (() => {
     if (!effectiveUnitPrice || !unitValidNumber) return '—';
-    return formatPrice(effectiveUnitPrice * (unitQtyNum || 0), digits);
+    const total = effectiveUnitPrice * (unitQtyNum || 0);
+    return formatMoney(total, currencyCode, { fractionDigits: 2, withSymbol: false });
   })();
 
   const hintParts: string[] = [];
@@ -448,8 +452,12 @@ export default function ProductDetailsPage() {
             </div>
 
             <div className="text-[12px] mb-3">
-              <span className="text-text-secondary">السعر الفوري: </span>
-              {unitPriceDisplay} × {unitQuantity || 0} = <span className="font-semibold">{unitTotalDisplay}</span>
+              <span className="text-text-secondary">السعر الفوري:</span>{' '}
+              {unitPriceDisplay !== '—' ? (
+                <span className="font-medium">{unitPriceDisplay} {sym}</span>
+              ) : '—'}
+              {' '}× {unitQuantity || 0} ={' '}
+              <span className="font-semibold">{unitTotalDisplay !== '—' ? `${unitTotalDisplay} ${sym}` : '—'}</span>
             </div>
 
             <button
