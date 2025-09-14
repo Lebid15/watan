@@ -89,7 +89,9 @@ export default function ProductDetailsPage() {
   // أخطاء مفصولة: خطأ الكمية وخطأ معرف اللعبة
   const [unitQtyError, setUnitQtyError] = useState<string>('');
   const [unitGameIdError, setUnitGameIdError] = useState<string>('');
-  const [effectiveUnitPrice, setEffectiveUnitPrice] = useState<number | null>(null);
+  // سعر الوحدة الأساس (يفترض أنه بالدولار من الباك) + معدل التحويل + نسخة محوّلة
+  const [effectiveUnitPriceUSD, setEffectiveUnitPriceUSD] = useState<number | null>(null);
+  const [currencyRate, setCurrencyRate] = useState<number>(1); // معدل تحويل من USD -> عملة المستخدم
 
   const apiHost = useMemo(
     () => API_ROUTES.products.base.replace(/\/api(?:\/products)?\/?$/, ''),
@@ -196,17 +198,38 @@ export default function ProductDetailsPage() {
     let cancelled = false;
     async function loadEffectiveUnitPrice() {
       if (!unitModalOpen) return;
-      if (!selectedUnitPackage) { setEffectiveUnitPrice(null); return; }
+      if (!selectedUnitPackage) { setEffectiveUnitPriceUSD(null); return; }
       const price = await fetchUnitPrice({
         groupId: userPriceGroupId,
         packageId: selectedUnitPackage.id,
         baseUnitPrice: baseUnitPrice
       });
-      if (!cancelled) setEffectiveUnitPrice(price);
+      if (!cancelled) setEffectiveUnitPriceUSD(price);
     }
     loadEffectiveUnitPrice();
     return () => { cancelled = true; };
   }, [unitModalOpen, userPriceGroupId, selectedUnitPackage?.id, baseUnitPrice]);
+
+  // جلب معدل التحويل للعملة الحالية إذا لم تكن USD
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRate() {
+      if (!unitModalOpen) return;
+      const code = currencyCode || 'USD';
+      if (code === 'USD') { setCurrencyRate(1); return; }
+      try {
+        const res = await api.get<any[]>(API_ROUTES.currencies.base);
+        const list = Array.isArray(res.data) ? res.data : [];
+        const row = list.find((c:any) => (c.code || c.currency || c.symbol) === code);
+        if (!cancelled && row) {
+          const r = Number(row.rate ?? row.factor ?? row.value ?? row.usdRate ?? 0);
+          if (r > 0) setCurrencyRate(r); else setCurrencyRate(1);
+        }
+      } catch { /* تجاهل */ }
+    }
+    loadRate();
+    return () => { cancelled = true; };
+  }, [unitModalOpen, currencyCode]);
 
   const unitQtyNum = unitQuantity === '' ? null : Number(unitQuantity);
   const unitValidNumber = unitQtyNum != null && !isNaN(unitQtyNum);
@@ -237,12 +260,15 @@ export default function ProductDetailsPage() {
   }
 
   // عرض الأسعار بعملة المستخدم (كما في عرض الباقات خارج المودال)
-  const unitPriceDisplay = effectiveUnitPrice != null
-    ? formatMoney(effectiveUnitPrice, currencyCode, { fractionDigits: 2, withSymbol: false })
+  const unitPriceDisplay = effectiveUnitPriceUSD != null
+    ? (currencyCode === 'USD'
+        ? formatMoney(effectiveUnitPriceUSD, currencyCode, { fractionDigits: 2, withSymbol: false })
+        : formatMoney(effectiveUnitPriceUSD * currencyRate, currencyCode, { fractionDigits: 2, withSymbol: false }))
     : '—';
   const unitTotalDisplay = (() => {
-    if (!effectiveUnitPrice || !unitValidNumber) return '—';
-    const total = effectiveUnitPrice * (unitQtyNum || 0);
+    if (!effectiveUnitPriceUSD || !unitValidNumber) return '—';
+    const totalBase = effectiveUnitPriceUSD * (unitQtyNum || 0);
+    const total = currencyCode === 'USD' ? totalBase : totalBase * currencyRate;
     return formatMoney(total, currencyCode, { fractionDigits: 2, withSymbol: false });
   })();
 
@@ -254,7 +280,7 @@ export default function ProductDetailsPage() {
   async function submitUnitPurchase() {
     if (!product) return; // safeguard
     if (!validateUnitPurchase() || !selectedUnitPackage || unitQtyNum == null) return;
-    if (effectiveUnitPrice == null) {
+    if (effectiveUnitPriceUSD == null) {
       setUnitQtyError('تعذر الحصول على سعر الوحدة حالياً');
       return;
     }
