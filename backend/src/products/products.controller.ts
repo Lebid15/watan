@@ -28,6 +28,7 @@ import { UpdatePackageCodeDto } from './dto/update-package-code.dto';
 import { Product } from './product.entity';
 import { ProductPackage } from './product-package.entity';
 import { PriceGroup } from './price-group.entity';
+import { getPriceDecimals } from '../config/pricing.config';
 import { AuthGuard } from '@nestjs/passport';
 import { configureCloudinary } from '../utils/cloudinary';
 // Guards & Roles
@@ -677,6 +678,33 @@ export class ProductsController {
   async getOneForUser(@Req() req, @Param('id') id: string) {
     // ✅ استخدم tenant context من middleware
     return this.productsService.findOneForUser((req as any).tenant?.id || (req as any).user?.tenantId, id, req.user.id);
+  }
+
+  // ✅ واجهة عامة (JWT) لجلب سعر وحدة الباقة داخل مجموعة أسعار محددة (للاستخدام في الواجهة بدون صلاحيات admin)
+  @UseGuards(AuthGuard('jwt'))
+  @Get('price-groups/:groupId/package-prices')
+  async getGroupPackageUnitPrice(
+    @Req() req: any,
+    @Param('groupId') groupId: string,
+    @Query('packageId') packageId: string,
+  ) {
+    if (!packageId) throw new BadRequestException('packageId مطلوب');
+    const tenantId = (req as any).tenant?.id || (req as any).user?.tenantId;
+    // جلب الحزمة عبر service (حتى لا نعتمد على repository خاص غير معرف هنا)
+    const pkg = await this.productsService.findPackageById(packageId);
+    if (!pkg) throw new NotFoundException('الباقة غير موجودة');
+    if (String((pkg as any).tenantId) !== tenantId || String(pkg.product?.tenantId) !== tenantId) throw new BadRequestException('TENANT_MISMATCH');
+    const prices = (pkg as any).prices || [];
+    const row = prices.find((p: any) => p.priceGroup?.id === groupId);
+    return {
+      ok: true,
+      groupId,
+      packageId: pkg.id,
+      unitPrice: pkg.type === 'unit' && pkg.product?.supportsCounter ? (row && (row as any).unitPrice != null ? Number((row as any).unitPrice).toFixed(getPriceDecimals()) : null) : null,
+      baseUnitPrice: (pkg as any).baseUnitPrice ?? null,
+      packageType: pkg.type,
+      supportsCounter: !!pkg.product?.supportsCounter,
+    };
   }
 
 }
