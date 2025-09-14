@@ -204,10 +204,7 @@ export default function ProductDetailsPage() {
       }
       return `${p.id}:${grp}`;
     }).join('|');
-    // Debug log once per change signature
-    if (typeof window !== 'undefined') {
-      console.log('[UNIT_DEBUG] signature', sig, 'raw unitPkgs snapshot:', unitPkgs.map(p => ({ id: p.id, name: p.name, prices: p.prices })));
-    }
+    // (debug signature logging removed)
     return sig;
   }, [unitPkgs, userPriceGroupId]);
 
@@ -249,9 +246,7 @@ export default function ProductDetailsPage() {
           // إذا كانت العملة الأساس ليست USD نعتبر القيمة eff نهائية بالفعل.
           const converted = (baseCode === 'USD' && code !== 'USD') ? eff * rate : eff;
           map[p.id] = converted;
-          if (typeof window !== 'undefined') {
-            console.log('[UNIT_DEBUG] cardPrice', { pkgId: p.id, name: p.name, effUSD: eff, rate, code, converted });
-          }
+          // (debug cardPrice logging removed)
         }
       }
       if (!cancelled) setUnitCardPrices(map);

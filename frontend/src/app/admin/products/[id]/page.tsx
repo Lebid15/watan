@@ -222,11 +222,11 @@ export default function AdminProductDetailsPage() {
       if (pkgType === 'unit') {
         payload.unitName = pkgUnitName.trim();
       }
-      // استخدم مسار الإدارة لضمان دعم type وحقول العداد
-      const res = await fetch(`/api/admin/products/${id}/packages`, {
+      // NOTE: backend does NOT expose POST /admin/products/:id/packages (404). Use products controller route instead.
+      const res = await fetch(`${API_ROUTES.products.base}/${id}/packages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, publicCode: pkgBridge })
       });
       if (!res.ok) throw new Error('فشل في إضافة الباقة');
   setPkgName(''); setPkgDesc(''); setPkgPrice(0); setPkgBridge(''); setShowPackageForm(false); setPkgType('fixed'); setPkgUnitName('');
