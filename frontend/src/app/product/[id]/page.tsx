@@ -186,6 +186,42 @@ export default function ProductDetailsPage() {
   const imageSrc = normalizeImageUrl(product?.imageUrl || null, apiHost);
   const unitPkgs = activePkgs.filter(p => p.type === 'unit');
   const selectedUnitPackage = unitPkgs.find(p => p.id === unitSelectedPkgId) || unitPkgs[0];
+  // خريطة أسعار الوحدات (محولة لعملة المستخدم) لعرضها على الكروت
+  const [unitCardPrices, setUnitCardPrices] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadUnitCardPrices() {
+      if (!activePkgs.length) return;
+      const code = currencyCode || 'USD';
+      let rate = 1;
+      if (code !== 'USD') {
+        try {
+          const res = await api.get<any[]>(API_ROUTES.currencies.base);
+            const list = Array.isArray(res.data) ? res.data : [];
+            const row = list.find((c:any) => (c.code || c.currency || c.symbol) === code);
+            if (row) {
+              const r = Number(row.rate ?? row.factor ?? row.value ?? row.usdRate ?? 0);
+              if (r > 0) rate = r;
+            }
+        } catch { /* ignore */ }
+      }
+      const map: Record<string, number> = {};
+      for (const p of unitPkgs) {
+        const eff = await fetchUnitPrice({
+          groupId: userPriceGroupId,
+          packageId: p.id,
+          baseUnitPrice: p.baseUnitPrice ?? null
+        });
+        if (eff != null) {
+          map[p.id] = code === 'USD' ? eff : eff * rate;
+        }
+      }
+      if (!cancelled) setUnitCardPrices(map);
+    }
+    loadUnitCardPrices();
+    return () => { cancelled = true; };
+  }, [activePkgs.length, currencyCode, userPriceGroupId]);
 
   // ====== منطق التسعير للوحدات داخل المودال ======
   const digits = getDecimalDigits();
@@ -324,7 +360,9 @@ export default function ProductDetailsPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {activePkgs.map((pkg) => {
-                const price = getPrice(pkg);
+                const price = pkg.type === 'unit'
+                  ? (unitCardPrices[pkg.id] ?? null)
+                  : getPrice(pkg);
                 return (
                   <div
                     key={pkg.id}
@@ -363,7 +401,9 @@ export default function ProductDetailsPage() {
                     </div>
 
                     <div className="text-sm shrink-0 text-primary font-medium">
-                      {formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: false })} {sym}
+                      {price != null ? (
+                        <>{formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: false })} {sym}</>
+                      ) : '—'}
                     </div>
                   </div>
                 );
