@@ -147,6 +147,21 @@ interface Order {
   productId?: string | null;
 }
 
+// تطبيع القيم المالية (USD / TRY) لضمان أن الربح بالليرة = فرق البيع والشراء بالليرة
+function normalizeFinancial(o: any) {
+  const costUSD = o.costUsdAtOrder != null ? Number(o.costUsdAtOrder)
+    : (o.costCurrency === 'USD' && o.costAmount != null ? Number(o.costAmount) : null);
+  const sellUSD = o.sellUsdAtOrder != null ? Number(o.sellUsdAtOrder) : null;
+  const costTRY = o.costTRY != null ? Number(o.costTRY)
+    : (o.costCurrency === 'TRY' && o.costAmount != null ? Number(o.costAmount) : null);
+  const sellTRY = o.sellTRY ?? o.sellPriceAmount ?? o.price ?? null;
+  const profitUSD = o.profitUsdAtOrder != null ? Number(o.profitUsdAtOrder)
+    : (sellUSD != null && costUSD != null ? sellUSD - costUSD : null);
+  const profitTRY = o.profitTRY != null ? Number(o.profitTRY)
+    : (sellTRY != null && costTRY != null ? Number(sellTRY) - Number(costTRY) : null);
+  return { costUSD, sellUSD, costTRY, sellTRY, profitUSD, profitTRY };
+}
+
 interface Filters {
   q: string;
   status: '' | OrderStatus;
@@ -1141,71 +1156,36 @@ export default function AdminOrdersPage() {
                   </td>
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
-                    <div className="text-[12px] font-medium text-text-secondary">
-                      {(() => {
-                        // Always show USD on top:
-                        // 1) If original cost is USD, show that directly.
-                        if ((o as any).costCurrency === 'USD' && (o as any).costAmount != null) {
-                          return `$${Number((o as any).costAmount).toFixed(2)}`;
-                        }
-                        // 2) Fallback to USD snapshot at order time if available.
-                        if ((o as any).costUsdAtOrder != null) {
-                          return `$${Number((o as any).costUsdAtOrder).toFixed(2)}`;
-                        }
-                        // 3) Otherwise, show placeholder when we only have TRY/other currency without a USD value.
-                        return (o.costTRY != null || o.costAmount != null) ? '$-' : '-';
-                      })()}
-                    </div>
-                    <div className="text-accent font-semibold">{money(o.costTRY ?? o.costAmount, o.currencyTRY ?? o.costCurrency)}</div>
+                    {(() => { const f = normalizeFinancial(o); return (
+                      <>
+                        <div className="text-[12px] font-medium text-text-secondary">
+                          {f.costUSD != null ? `$${f.costUSD.toFixed(2)}` : (f.costTRY != null ? '$-' : '-')}
+                        </div>
+                        <div className="text-accent font-semibold">{f.costTRY != null ? money(f.costTRY, o.currencyTRY || 'TRY') : '—'}</div>
+                      </>
+                    ); })()}
                   </td>
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
-                    <div className="text-[12px] font-medium text-text-secondary">
-                      {o.sellUsdAtOrder != null ? `$${Number(o.sellUsdAtOrder).toFixed(2)}` : (o.sellTRY != null || o.sellPriceAmount != null || o.price != null ? '$-' : '-')}
-                    </div>
-                    <div className="font-semibold">{money(
-                      o.sellTRY ?? o.sellPriceAmount ?? o.price,
-                      o.currencyTRY ?? o.sellPriceCurrency
-                    )}</div>
+                    {(() => { const f = normalizeFinancial(o); return (
+                      <>
+                        <div className="text-[12px] font-medium text-text-secondary">
+                          {f.sellUSD != null ? `$${f.sellUSD.toFixed(2)}` : (f.sellTRY != null ? '$-' : '-')}
+                        </div>
+                        <div className="font-semibold">{f.sellTRY != null ? money(f.sellTRY, o.currencyTRY || o.sellPriceCurrency || 'TRY') : '—'}</div>
+                      </>
+                    ); })()}
                   </td>
 
-                  <td
-                    className={[
-                      'text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]',
-                      (o.profitTRY ??
-                        ((o.sellTRY ?? o.sellPriceAmount ?? o.price) as number) -
-                          (o.costTRY ?? o.costAmount ?? 0)) > 0
-                        ? 'text-success'
-                        : (o.profitTRY ??
-                            ((o.sellTRY ?? o.sellPriceAmount ?? o.price) as number) -
-                              (o.costTRY ?? o.costAmount ?? 0)) < 0
-                        ? 'text-danger'
-                        : '',
-                    ].join(' ')}
-                  >
-                    <div
-                      dir="rtl"
-                      className={[
-                        'text-[12px] font-medium',
-                        ((o as any)._usdProfitVal ?? 0) < 0 && (o as any)._usdProfitVal !== null
-                          ? 'text-danger'
-                          : 'text-text-secondary',
-                      ].join(' ')}
-                    >
-                      {(() => {
-                        const v = (o as any)._usdProfitVal as number | null;
-                        if (v === null || v === undefined) return (o.profitTRY != null || o.sellTRY != null) ? '$-' : '-';
-                        const abs = Math.abs(Number(v)).toFixed(2);
-                        // RTL visual order like TRY: minus, then number, then symbol
-                        return `${v < 0 ? '-' : ''}${abs} $`;
-                      })()}
-                    </div>
-                    <div className="font-semibold">{money(
-                      o.profitTRY ??
-                        (Number(o.sellTRY ?? o.sellPriceAmount ?? o.price) || 0) -
-                          (Number(o.costTRY ?? o.costAmount) || 0),
-                      o.currencyTRY ?? (o.sellPriceCurrency || o.costCurrency)
-                    )}</div>
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
+                    {(() => { const f = normalizeFinancial(o); const color = f.profitTRY != null ? (f.profitTRY > 0 ? 'text-success' : f.profitTRY < 0 ? 'text-danger' : 'text-text-secondary') : 'text-text-secondary'; return (
+                      <>
+                        <div className={`text-[12px] font-medium ${f.profitUSD != null && f.profitUSD < 0 ? 'text-danger' : 'text-text-secondary'}`}>
+                          {f.profitUSD != null ? `${f.profitUSD < 0 ? '-' : ''}${Math.abs(f.profitUSD).toFixed(2)} $` : (f.profitTRY != null ? '$-' : '-')}
+                        </div>
+                        <div className={`font-semibold ${color}`}>{f.profitTRY != null ? money(f.profitTRY, o.currencyTRY || 'TRY') : '—'}</div>
+                      </>
+                    ); })()}
                   </td>
 
                   {/* تقليل الحشو في خلية الحالة */}
