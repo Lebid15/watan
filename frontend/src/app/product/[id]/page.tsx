@@ -190,7 +190,7 @@ export default function ProductDetailsPage() {
   // توقيع للتغيرات في أسعار الوحدات (بعد إزالة baseUnitPrice نعتمد فقط على صف السعر حسب المجموعة)
   const unitPricesSignature = useMemo(() => {
     // تتبع التغير في سعر مجموعة المستخدم. دعم كلّا من groupId و priceGroupId لاحتمال اختلاف التسمية.
-    return unitPkgs.map(p => {
+    const sig = unitPkgs.map(p => {
       let grp: any = 'null';
       if (Array.isArray(p.prices) && p.prices.length) {
         let row: any = null;
@@ -204,6 +204,11 @@ export default function ProductDetailsPage() {
       }
       return `${p.id}:${grp}`;
     }).join('|');
+    // Debug log once per change signature
+    if (typeof window !== 'undefined') {
+      console.log('[UNIT_DEBUG] signature', sig, 'raw unitPkgs snapshot:', unitPkgs.map(p => ({ id: p.id, name: p.name, prices: p.prices })));
+    }
+    return sig;
   }, [unitPkgs, userPriceGroupId]);
 
   useEffect(() => {
@@ -241,6 +246,9 @@ export default function ProductDetailsPage() {
         if (eff != null) {
           const converted = code === 'USD' ? eff : eff * rate;
           map[p.id] = converted;
+          if (typeof window !== 'undefined') {
+            console.log('[UNIT_DEBUG] cardPrice', { pkgId: p.id, name: p.name, effUSD: eff, rate, code, converted });
+          }
         }
       }
       if (!cancelled) setUnitCardPrices(map);
