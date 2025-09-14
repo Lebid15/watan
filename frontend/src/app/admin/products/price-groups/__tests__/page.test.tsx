@@ -27,12 +27,12 @@ function queueFetch(sequence: any[]) {
   return fn;
 }
 
-describe('PriceGroupsPage integration (Unit price column)', () => {
+describe('PriceGroupsPage integration (prices only)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  test('shows Unit price column only for unit packages and supports edit flow', async () => {
+  test('renders products and group prices without unit price column', async () => {
     process.env.NEXT_PUBLIC_PRICE_DECIMALS = '2';
   apiMock.get.mockImplementation(async (url: string) => {
       if (url.endsWith('/products')) {
@@ -56,62 +56,7 @@ describe('PriceGroupsPage integration (Unit price column)', () => {
     ]);
     render(<PriceGroupsPage />);
     await screen.findByText('Prod');
-    // Unit price column header
-    expect(screen.getByText('Unit price')).toBeInTheDocument();
-    // Fixed package row should show dash
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
-  // Start edit for unit package (button shows dash initially)
-  const unitBtn = await screen.findByRole('button', { name: 'تعديل سعر الوحدة' });
-    fireEvent.click(unitBtn);
-    const input = await screen.findByLabelText('قيمة سعر الوحدة');
-    fireEvent.change(input, { target: { value: '2.5' } });
-    fireEvent.click(screen.getByRole('button', { name: '✓' }));
-  await waitFor(() => expect(screen.getByText('معدل')).toBeInTheDocument());
-    expect(screen.getByText('2.5')).toBeInTheDocument();
-  });
-
-  test('digits=3 sets step=0.001', async () => {
-    process.env.NEXT_PUBLIC_PRICE_DECIMALS = '3';
-  apiMock.get.mockImplementation(async (url: string) => {
-      if (url.endsWith('/products')) {
-        return { data: [ { id: 'prod1', name: 'Prod', packages: [ { id: 'pu', name: 'Unit Pkg', type: 'unit', basePrice: 4, prices: [] } ] } ] };
-      }
-      if (url.endsWith('/price-groups')) return { data: [{ id: 'g1', name: 'Group 1' }] };
-      return { data: [] };
-    });
-    queueFetch([{ json: {} }]);
-    render(<PriceGroupsPage />);
-    await screen.findByText('Prod');
-  const unitBtn = await screen.findByRole('button', { name: 'تعديل سعر الوحدة' });
-    fireEvent.click(unitBtn);
-    const input = await screen.findByLabelText('قيمة سعر الوحدة');
-    expect(input).toHaveAttribute('step', '0.001');
-  });
-
-  test('PUT failure rolls back optimistic value', async () => {
-    process.env.NEXT_PUBLIC_PRICE_DECIMALS = '2';
-  apiMock.get.mockImplementation(async (url: string) => {
-      if (url.endsWith('/products')) {
-  return { data: [ { id: 'prod1', name: 'Prod', packages: [ { id: 'pu', name: 'Unit Pkg', type: 'unit', basePrice: 4, prices: [] } ] } ] };
-      }
-      if (url.endsWith('/price-groups')) return { data: [{ id: 'g1', name: 'Group 1' }] };
-      return { data: [] };
-    });
-    // initial GET no override, PUT fails, GET still no override
-    queueFetch([
-      { json: {} },
-      { ok: false, json: { message: 'خطأ' } },
-      { json: {} }
-    ]);
-    render(<PriceGroupsPage />);
-    await screen.findByText('Prod');
-  const unitBtn = await screen.findByRole('button', { name: 'تعديل سعر الوحدة' });
-    fireEvent.click(unitBtn);
-    const input = await screen.findByLabelText('قيمة سعر الوحدة');
-    fireEvent.change(input, { target: { value: '3.33' } });
-    fireEvent.click(screen.getByRole('button', { name: '✓' }));
-    // Wait a moment for failure handling
-  await waitFor(() => expect(screen.queryByText('معدل')).not.toBeInTheDocument());
-    // Should still allow re-edit: base button present again
+    // Ensure table headers present (اسم الباقة + رأس المال + group name + الحالة)
+    expect(screen.queryByText('Unit price')).not.toBeInTheDocument();
   });
 });

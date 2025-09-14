@@ -646,9 +646,7 @@ export default function PriceGroupsPage() {
                       {priceGroups.map((group) => (
                         <th key={group.id}>{group.name}</th>
                       ))}
-                      {prodPkgs.some(p => p.type === 'unit') && (
-                        <th>Unit price</th>
-                      )}
+                      {/* Unit price column removed */}
                       <th className="w-28">الحالة</th>
                     </tr>
                   </thead>
@@ -686,18 +684,7 @@ export default function PriceGroupsPage() {
                             </td>
                           );
                         })}
-                        {prodPkgs.some(p => p.type === 'unit') && (
-                          <td>
-                            {pkg.type === 'unit' && primaryGroupId ? (
-                              <UnitPriceOverrideCell
-                                key={pkg.id + '-unit'}
-                                packageId={pkg.id}
-                                groupId={primaryGroupId}
-                                digits={DECIMAL_DIGITS}
-                              />
-                            ) : <span className="text-text-secondary">—</span>}
-                          </td>
-                        )}
+                        {/* Unit price cell removed */}
                         <td className="text-sm text-center">
                           {savingMap[pkg.id] ? (
                             <span className="text-warning">يحفظ…</span>
