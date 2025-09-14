@@ -86,7 +86,9 @@ export default function ProductDetailsPage() {
   const [unitSelectedPkgId, setUnitSelectedPkgId] = useState<string>('');
   const [unitQuantity, setUnitQuantity] = useState<string>('');
   const [unitSubmitting, setUnitSubmitting] = useState(false);
-  const [unitError, setUnitError] = useState<string>('');
+  // أخطاء مفصولة: خطأ الكمية وخطأ معرف اللعبة
+  const [unitQtyError, setUnitQtyError] = useState<string>('');
+  const [unitGameIdError, setUnitGameIdError] = useState<string>('');
   const [effectiveUnitPrice, setEffectiveUnitPrice] = useState<number | null>(null);
 
   const apiHost = useMemo(
@@ -138,7 +140,8 @@ export default function ProductDetailsPage() {
       setUnitQuantity('');
       setGameId('');
       setExtraField('');
-      setUnitError('');
+      setUnitQtyError('');
+      setUnitGameIdError('');
       setUnitModalOpen(true);
       return;
     }
@@ -207,23 +210,29 @@ export default function ProductDetailsPage() {
 
   const unitQtyNum = unitQuantity === '' ? null : Number(unitQuantity);
   const unitValidNumber = unitQtyNum != null && !isNaN(unitQtyNum);
-
-  function validateUnitPurchase(): boolean {
-    if (!selectedUnitPackage) { setUnitError('الباقة غير صالحة'); return false; }
-    if (unitQtyNum == null || !unitValidNumber) { setUnitError('أدخل كمية صحيحة'); return false; }
-    if (unitQtyNum <= 0) { setUnitError('الكمية يجب أن تكون أكبر من صفر'); return false; }
-    if (minUnits != null && unitQtyNum < minUnits) { setUnitError('الكمية أقل من الحد الأدنى'); return false; }
-    if (maxUnits != null && unitQtyNum > maxUnits) { setUnitError('الكمية أعلى من الحد الأقصى'); return false; }
+  function validateQuantity(): boolean {
+    setUnitQtyError('');
+    if (!selectedUnitPackage) { setUnitQtyError('الباقة غير صالحة'); return false; }
+    if (unitQtyNum == null || !unitValidNumber) { setUnitQtyError('أدخل كمية صحيحة'); return false; }
+    if (unitQtyNum <= 0) { setUnitQtyError('الكمية يجب أن تكون أكبر من صفر'); return false; }
+    if (minUnits != null && unitQtyNum < minUnits) { setUnitQtyError('الكمية أقل من الحد الأدنى'); return false; }
+    if (maxUnits != null && unitQtyNum > maxUnits) { setUnitQtyError('الكمية أعلى من الحد الأقصى'); return false; }
     const base = minUnits != null ? minUnits : 0;
     const diff = unitQtyNum - base;
     const tol = 1e-9;
     if (step > 0) {
       const multiples = Math.round(diff / step);
       const reconstructed = multiples * step;
-      if (Math.abs(reconstructed - diff) > tol) { setUnitError('الكمية لا تطابق خطوة الزيادة'); return false; }
+      if (Math.abs(reconstructed - diff) > tol) { setUnitQtyError('الكمية لا تطابق خطوة الزيادة'); return false; }
     }
-    if (!gameId.trim()) { setUnitError('الرجاء إدخال معرف اللعبة'); return false; }
-    setUnitError('');
+    return true;
+  }
+
+  function validateUnitPurchase(): boolean {
+    const okQty = validateQuantity();
+    setUnitGameIdError('');
+    if (!okQty) return false;
+    if (!gameId.trim()) { setUnitGameIdError('الرجاء إدخال معرف اللعبة'); return false; }
     return true;
   }
 
@@ -242,7 +251,7 @@ export default function ProductDetailsPage() {
     if (!product) return; // safeguard
     if (!validateUnitPurchase() || !selectedUnitPackage || unitQtyNum == null) return;
     if (effectiveUnitPrice == null) {
-      setUnitError('تعذر الحصول على سعر الوحدة حالياً');
+      setUnitQtyError('تعذر الحصول على سعر الوحدة حالياً');
       return;
     }
     try {
@@ -348,7 +357,6 @@ export default function ProductDetailsPage() {
               type="text"
               value={gameId}
               onChange={e => setGameId(e.target.value)}
-              placeholder="هنا اكتب الايدي"
               className="input w-full mb-4 bg-bg-input border-border"
             />
 
@@ -358,7 +366,6 @@ export default function ProductDetailsPage() {
               type="text"
               value={extraField}
               onChange={e => setExtraField(e.target.value)}
-              placeholder="مثلاً: السيرفر / المنطقة / ملاحظة…"
               className="input w-full mb-4 bg-bg-input border-border"
             />
 
@@ -394,7 +401,7 @@ export default function ProductDetailsPage() {
                 <select
                   className="input w-full"
                   value={unitSelectedPkgId || selectedUnitPackage.id}
-                  onChange={e => { setUnitSelectedPkgId(e.target.value); setUnitQuantity(''); setUnitError(''); }}
+                  onChange={e => { setUnitSelectedPkgId(e.target.value); setUnitQuantity(''); setUnitQtyError(''); setUnitGameIdError(''); }}
                 >
                   {unitPkgs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
@@ -405,11 +412,11 @@ export default function ProductDetailsPage() {
               <label className="block text-[11px] mb-1 text-text-secondary">معرف اللعبة</label>
               <input
                 type="text"
-                className={`input w-full ${unitError === 'الرجاء إدخال معرف اللعبة' ? 'border-danger' : ''}`}
+                className={`input w-full ${unitGameIdError ? 'border-danger' : ''}`}
                 value={gameId}
-                onChange={e => setGameId(e.target.value)}
-                placeholder="اكتب المعرف هنا"
+                onChange={e => { setGameId(e.target.value); if (e.target.value.trim()) setUnitGameIdError(''); }}
               />
+              {unitGameIdError && <div className="text-[11px] mt-1 text-danger">{unitGameIdError}</div>}
             </div>
 
             <div className="mb-3">
@@ -419,7 +426,6 @@ export default function ProductDetailsPage() {
                 className="input w-full"
                 value={extraField}
                 onChange={e => setExtraField(e.target.value)}
-                placeholder="مثلاً: السيرفر / المنطقة"
               />
             </div>
 
@@ -431,13 +437,13 @@ export default function ProductDetailsPage() {
                 step={step}
                 min={minUnits != null ? minUnits : undefined}
                 max={maxUnits != null ? maxUnits : undefined}
-                className={`input w-full ${unitError ? 'border-danger' : ''}`}
+                className={`input w-full ${unitQtyError ? 'border-danger' : ''}`}
                 value={unitQuantity}
-                onChange={e => setUnitQuantity(e.target.value)}
-                onBlur={() => { if (unitQuantity) setUnitQuantity(String(clampPriceDecimals(Number(unitQuantity), digits))); validateUnitPurchase(); }}
+                onChange={e => { setUnitQuantity(e.target.value); if (unitQtyError) setUnitQtyError(''); }}
+                onBlur={() => { if (unitQuantity) setUnitQuantity(String(clampPriceDecimals(Number(unitQuantity), digits))); validateQuantity(); }}
               />
               <div className="text-[11px] text-text-secondary mt-1">{hintParts.join(' | ')}</div>
-              {unitError && <div className="text-[11px] mt-1 text-danger">{unitError}</div>}
+              {unitQtyError && <div className="text-[11px] mt-1 text-danger">{unitQtyError}</div>}
             </div>
 
             <div className="text-[12px] mb-3">
@@ -447,7 +453,7 @@ export default function ProductDetailsPage() {
 
             <button
               className="btn btn-primary w-full disabled:opacity-60"
-              disabled={unitSubmitting || !unitQuantity || !!unitError}
+              disabled={unitSubmitting || !unitQuantity || !!unitQtyError || !!unitGameIdError}
               onClick={submitUnitPurchase}
             >
               {unitSubmitting ? 'جارٍ الإرسال...' : 'شراء'}
