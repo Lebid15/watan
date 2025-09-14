@@ -11,7 +11,8 @@ export const ERR_PRODUCT_NOT_FOUND = 'Product not found';
 export const ERR_PACKAGE_NOT_UNIT = 'PACKAGE_NOT_UNIT';
 export const ERR_PRODUCT_COUNTER_DISABLED = 'PRODUCT_COUNTER_DISABLED';
 export const ERR_TENANT_MISMATCH = 'TENANT_MISMATCH';
-export const ERR_UNIT_PRICE_REQUIRED = 'unitPrice_REQUIRED';
+// تمت إزالة unitPrice override لذا لم نعد نستخدم أخطاءه الخاصة
+export const ERR_UNIT_PRICE_REQUIRED = 'unitPrice_REQUIRED'; // مبدئياً للإبقاء على التوافق في حال ظهورها في سجلات قديمة
 export const ERR_UNIT_PRICE_INVALID = 'unitPrice_INVALID';
 export const ERR_UNIT_NAME_REQUIRED = 'unitName مطلوب';
 export const ERR_BASE_UNIT_REQUIRED = 'baseUnitPrice_REQUIRED';

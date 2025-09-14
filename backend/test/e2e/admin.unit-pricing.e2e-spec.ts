@@ -113,48 +113,17 @@ describe('Admin Unit Pricing API (e2e)', () => {
 
   const baseUrl = '/api/admin/products';
 
-  it('GET admin price for unit package returns unit meta + no override by default', async () => {
+  it('GET admin price for unit package returns unit meta (no override concept)', async () => {
     const res = await request(app.getHttpServer())
       .get(`${baseUrl}/price-groups/${groupVIP.id}/package-prices`)
       .query({ packageId: packageA1.id })
       .expect(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.unitName).toBe('Message');
-    expect(res.body.unitPrice).toBeNull(); // no override yet
-    expect(res.body.baseUnitPrice).toBe(0.05); // from seeding
+    expect(res.body.baseUnitPrice).toBe(0.05); // من seeding
   });
 
-  it('PUT unit override applies and GET reflects it', async () => {
-    await request(app.getHttpServer())
-      .put(`${baseUrl}/price-groups/${groupVIP.id}/package-prices/${packageA1.id}/unit`)
-      .send({ unitPrice: '9.0000' })
-  .expect(200);
-    const res = await request(app.getHttpServer())
-      .get(`${baseUrl}/price-groups/${groupVIP.id}/package-prices`)
-      .query({ packageId: packageA1.id })
-      .expect(200);
-    expect(res.body.unitPrice).toBe('9.0000');
-  });
-
-  it('DELETE override falls back to base', async () => {
-    await request(app.getHttpServer())
-      .delete(`${baseUrl}/price-groups/${groupVIP.id}/package-prices/${packageA1.id}/unit`)
-      .expect(200);
-    const res = await request(app.getHttpServer())
-      .get(`${baseUrl}/price-groups/${groupVIP.id}/package-prices`)
-      .query({ packageId: packageA1.id })
-      .expect(200);
-    expect(res.body.unitPrice).toBeNull();
-  });
-
-  it('ERR_UNIT_NOT_SUPPORTED when product not supportsCounter or package fixed', async () => {
-    // Attempt override on fixed package
-    const res = await request(app.getHttpServer())
-      .put(`${baseUrl}/price-groups/${groupVIP.id}/package-prices/${packageB1.id}/unit`)
-      .send({ unitPrice: '1.0000' })
-      .expect(400);
-    expect(res.body.message).toBe('PACKAGE_NOT_UNIT');
-  });
+  // لم يعد هناك مسار override، لذلك اختبار PACKAGE_NOT_UNIT الخاص بالـ override أزيل.
 
   it('PATCH unit meta validates and persists', async () => {
     const resOk = await request(app.getHttpServer())
@@ -201,7 +170,7 @@ describe('Admin Unit Pricing API (e2e)', () => {
       .query({ packageId: packageA1.id })
       .expect(200);
     const keys = Object.keys(res.body).sort();
-    const expected = ['ok','groupId','groupName','packageId','priceId','price','packageType','supportsCounter','unitName','unitCode','minUnits','maxUnits','step','baseUnitPrice','unitPrice'];
+  const expected = ['ok','groupId','groupName','packageId','priceId','price','packageType','supportsCounter','unitName','unitCode','minUnits','maxUnits','step','baseUnitPrice'];
     expected.forEach(k => expect(keys).toContain(k));
   });
 });

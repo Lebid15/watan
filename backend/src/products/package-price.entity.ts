@@ -25,9 +25,7 @@ export class PackagePrice {
   @Column('decimal', { precision: 10, scale: 2, default: 0 })
   price: number;
 
-  // سعر الوحدة المخصص لمجموعة الأسعار (يغلب على baseUnitPrice عند type=unit)
-  @Column('decimal', { precision: 12, scale: 4, nullable: true })
-  unitPrice?: number | null;
+  // NOTE: كان يوجد عمود unitPrice (override) وتم حذفه نهائياً واعتمدنا فقط على price (لكل الباقات) أو baseUnitPrice كـ fallback للوحدة.
 
   @Index('idx_package_prices_package_id')
   @ManyToOne(() => ProductPackage, (pkg) => pkg.prices, { onDelete: 'CASCADE' })

@@ -1,17 +1,7 @@
 import { IsBoolean, IsNotEmpty, IsOptional, ValidateIf } from 'class-validator';
-import { ERR_SUPPORTS_COUNTER_REQUIRED, ERR_UNIT_PRICE_REQUIRED, ERR_UNIT_PRICE_INVALID, ERR_UNIT_NAME_REQUIRED } from '../unit-pricing.constants';
-import { isValidDec } from '../../products/decimal.util';
+import { ERR_SUPPORTS_COUNTER_REQUIRED, ERR_UNIT_NAME_REQUIRED } from '../unit-pricing.constants';
 
-// Helper decorator for decimal strings (scale <=4 enforced by code via toFixed)
-export class SetUnitPriceOverrideDto {
-  @IsNotEmpty({ message: ERR_UNIT_PRICE_REQUIRED })
-  unitPrice!: string; // validation refined manually
-
-  validate() {
-    if (!isValidDec(this.unitPrice)) throw new Error(ERR_UNIT_PRICE_INVALID);
-    if (!(parseFloat(this.unitPrice) > 0)) throw new Error(ERR_UNIT_PRICE_INVALID);
-  }
-}
+// تم حذف دعم override لسعر الوحدة؛ لم نعد نحتاج DTO خاص به.
 
 export class ToggleSupportsCounterDto {
   @IsBoolean({ message: ERR_SUPPORTS_COUNTER_REQUIRED })

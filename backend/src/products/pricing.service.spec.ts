@@ -61,14 +61,7 @@ describe('PricingService', () => {
     usersRepo._data.push(user);
   });
 
-  test('uses user group unitPrice over baseUnitPrice', async () => {
-    // attach group unitPrice
-    packagesRepo._data[0].prices = [ { priceGroup: { id: priceGroupId }, unitPrice: 1.2500 } ];
-    const p = await service.getEffectiveUnitPrice({ tenantId, userId, packageId });
-    expect(p).toBe('1.2500');
-  });
-
-  test('falls back to baseUnitPrice when group price missing', async () => {
+  test('returns baseUnitPrice (no override logic anymore)', async () => {
     const p = await service.getEffectiveUnitPrice({ tenantId, userId, packageId });
     expect(p).toBe('1.1000');
   });
@@ -99,17 +92,14 @@ describe('PricingService', () => {
     expect(() => service.validateQuantity({ quantity: '2.6', minUnits: '2', step: '0.5' })).toThrow('ERR_QTY_STEP_MISMATCH');
   });
 
-  test('missing price (no group, no base) → ERR_UNIT_PRICE_MISSING', async () => {
+  test('missing baseUnitPrice → ERR_UNIT_PRICE_MISSING', async () => {
     packagesRepo._data[0].baseUnitPrice = null;
-    packagesRepo._data[0].prices = []; // no unitPrice
     await expect(service.getEffectiveUnitPrice({ tenantId, userId, packageId })).rejects.toThrow('ERR_UNIT_PRICE_MISSING');
   });
 
-  test('quote returns unitPriceApplied & sellPrice with scale=4', async () => {
-    packagesRepo._data[0].prices = [ { priceGroup: { id: priceGroupId }, unitPrice: 1.2500 } ];
+  test('quote uses baseUnitPrice', async () => {
     const quote = await service.quoteUnitOrder({ tenantId, userId, packageId, quantity: '2.5' });
-    expect(quote.unitPriceApplied).toBe('1.2500');
-    expect(quote.sellPrice).toBe('3.1250');
-    expect(quote.quantity).toContain('2.5');
+    expect(quote.unitPriceApplied).toBe('1.1000');
+    expect(quote.sellPrice).toBe('2.7500');
   });
 });

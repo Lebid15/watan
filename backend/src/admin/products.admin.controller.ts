@@ -18,7 +18,7 @@ import { ProductPackage } from '../products/product-package.entity';
 import { PackagePrice } from '../products/package-price.entity';
 import { PriceGroup } from '../products/price-group.entity';
 import { DataSource } from 'typeorm';
-import { SetUnitPriceOverrideDto, ToggleSupportsCounterDto, UpdateUnitPackageDto } from './dto/unit-pricing.dto';
+import { ToggleSupportsCounterDto, UpdateUnitPackageDto } from './dto/unit-pricing.dto';
 import { isValidDec } from '../products/decimal.util';
 import { PRICE_DECIMALS } from './unit-pricing.constants';
 import { getPriceDecimals } from '../config/pricing.config';
@@ -86,78 +86,8 @@ export class ProductsAdminController {
 		return { ok: true, id: product.id, supportsCounter: body.supportsCounter };
 	}
 
-		@Put('price-groups/:groupId/package-prices/:packageId/unit')
-		@ApiOperation({ summary: 'Set unit price override for a price group/package', description: 'Stores a price-per-unit override specific to a price group. Requires: product.supportsCounter = true and package.type = unit.' })
-		@ApiBody({ schema: { properties: { unitPrice: { type: 'string', example: '0.1250', description: 'Positive decimal price per single unit (scale up to 4). Will be rounded to 4 decimals.' } }, required: ['unitPrice'] } })
-		async setUnitPriceOverride(
-			@Param('groupId') groupId: string,
-			@Param('packageId') packageId: string,
-			@Body() body: SetUnitPriceOverrideDto,
-			@Req() req: Request,
-		) {
-			const tenantId = this.getTenantId(req);
-			if (!tenantId) throw new BadRequestException(ERR_MISSING_TENANT);
-			const packagePricesRepo = this.dataSource.getRepository(PackagePrice);
-			const priceGroupsRepo = this.dataSource.getRepository(PriceGroup);
-			const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any, relations: ['product', 'prices', 'prices.priceGroup'] });
-			if (!pkg) throw new NotFoundException(ERR_PACKAGE_NOT_FOUND);
-			if (pkg.type !== 'unit') throw new BadRequestException(ERR_PACKAGE_NOT_UNIT);
-			if (!pkg.product?.supportsCounter) throw new BadRequestException(ERR_PRODUCT_COUNTER_DISABLED);
-			if (String((pkg as any).tenantId) !== tenantId || String(pkg.product?.tenantId) !== tenantId) throw new BadRequestException(ERR_TENANT_MISMATCH);
-			const group = await priceGroupsRepo.findOne({ where: { id: groupId, tenantId } as any });
-			if (!group) throw new NotFoundException(ERR_PRICE_GROUP_NOT_FOUND);
-			const raw = String(body.unitPrice).trim();
-			if (!isValidDec(raw)) throw new BadRequestException(ERR_UNIT_PRICE_INVALID);
-			const num = Number(raw);
-			if (!(num > 0)) throw new BadRequestException(ERR_UNIT_PRICE_INVALID);
-			const scaled = Number(num.toFixed(getPriceDecimals()));
-			let row = (pkg.prices || []).find(p => p.priceGroup?.id === group.id);
-			if (!row) {
-				row = packagePricesRepo.create({ tenantId, package: pkg, priceGroup: group, price: 0, unitPrice: scaled });
-			} else {
-				(row as any).unitPrice = scaled;
-			}
-			await packagePricesRepo.save(row);
-			await this.audit.log('package.unitPrice.override.set', {
-				actorUserId: (req as any)?.user?.id ?? null,
-				targetTenantId: tenantId,
-				meta: { packageId: pkg.id, groupId: group.id, unitPrice: scaled }
-			});
-			return { ok: true, packageId: pkg.id, groupId: group.id, unitPrice: scaled.toFixed(4) };
-		}
-
-		@Delete('price-groups/:groupId/package-prices/:packageId/unit')
-		@ApiOperation({ summary: 'Remove unit price override for a price group/package', description: 'Nullifies the stored unitPrice override (does not delete the base row). Subsequent pricing uses baseUnitPrice from the package.' })
-		async deleteUnitPriceOverride(
-			@Param('groupId') groupId: string,
-			@Param('packageId') packageId: string,
-			@Req() req: Request,
-		) {
-			const tenantId = this.getTenantId(req);
-			if (!tenantId) throw new BadRequestException(ERR_MISSING_TENANT);
-			const packagePricesRepo = this.dataSource.getRepository(PackagePrice);
-			const priceGroupsRepo = this.dataSource.getRepository(PriceGroup);
-			const pkg = await this.packagesRepo.findOne({ where: { id: packageId } as any, relations: ['product', 'prices', 'prices.priceGroup'] });
-			if (!pkg) throw new NotFoundException(ERR_PACKAGE_NOT_FOUND);
-			if (pkg.type !== 'unit') throw new BadRequestException(ERR_PACKAGE_NOT_UNIT);
-			if (!pkg.product?.supportsCounter) throw new BadRequestException(ERR_PRODUCT_COUNTER_DISABLED);
-			if (String((pkg as any).tenantId) !== tenantId || String(pkg.product?.tenantId) !== tenantId) throw new BadRequestException(ERR_TENANT_MISMATCH);
-			const group = await priceGroupsRepo.findOne({ where: { id: groupId, tenantId } as any });
-			if (!group) throw new NotFoundException(ERR_PRICE_GROUP_NOT_FOUND);
-			const row = (pkg.prices || []).find(p => p.priceGroup?.id === group.id);
-			if (!row) return { ok: true, removed: false };
-			(row as any).unitPrice = null;
-			await packagePricesRepo.save(row);
-			await this.audit.log('package.unitPrice.override.delete', {
-				actorUserId: (req as any)?.user?.id ?? null,
-				targetTenantId: tenantId,
-				meta: { packageId: pkg.id, groupId: group.id }
-			});
-			return { ok: true, removed: true };
-		}
-
 		@Get('price-groups/:groupId/package-prices')
-		@ApiOperation({ summary: 'Get price group package price including unitPrice (if unit package)', description: 'Fetches pricing row for a package within a given price group. Includes unit metadata and unitPrice override when applicable.' })
+		@ApiOperation({ summary: 'Get price group package price', description: 'Returns pricing row for a package within a price group plus unit metadata (no unitPrice override anymore).' })
 		async getPriceGroupPackagePrice(
 			@Param('groupId') groupId: string,
 			@Query('packageId') packageId: string,
@@ -181,7 +111,6 @@ export class ProductsAdminController {
 				packageId: pkg.id,
 				priceId: row?.id || null,
 				price: row ? Number(row.price) || 0 : 0,
-				// unit meta always returned for convenience
 				packageType: pkg.type,
 				supportsCounter: !!pkg.product?.supportsCounter,
 				unitName: (pkg as any).unitName || null,
@@ -190,7 +119,6 @@ export class ProductsAdminController {
 				maxUnits: (pkg as any).maxUnits ?? null,
 				step: (pkg as any).step ?? null,
 				baseUnitPrice: (pkg as any).baseUnitPrice ?? null,
-				unitPrice: pkg.type === 'unit' && pkg.product?.supportsCounter ? (row && (row as any).unitPrice != null ? Number((row as any).unitPrice).toFixed(getPriceDecimals()) : null) : null,
 			};
 		}
 

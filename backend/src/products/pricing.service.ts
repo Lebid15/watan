@@ -62,14 +62,9 @@ export class PricingService {
     if (String(user.tenantId) !== tenantId) throw new BadRequestException('TENANT_MISMATCH');
 
     let chosen: number | null = null;
-    if (user.priceGroup) {
-      const match = (pkg.prices || []).find(p => p.priceGroup?.id === user.priceGroup!.id && p.unitPrice != null);
-      if (match && match.unitPrice != null && Number(match.unitPrice) > 0) {
-        chosen = Number(match.unitPrice);
-      }
-    }
-    if (chosen == null) {
-      if (pkg.baseUnitPrice != null && Number(pkg.baseUnitPrice) > 0) chosen = Number(pkg.baseUnitPrice);
+    // لم يعد هناك override لكل مجموعة؛ السعر الفعلي للوحدة هو baseUnitPrice دائماً.
+    if (pkg.baseUnitPrice != null && Number(pkg.baseUnitPrice) > 0) {
+      chosen = Number(pkg.baseUnitPrice);
     }
     if (chosen == null || !(chosen > 0)) {
       throw new BadRequestException('ERR_UNIT_PRICE_MISSING');
