@@ -1017,25 +1017,28 @@ export class ProductsService {
     // في حال منتج تينانت: يجب أن يطابق tenantId القادم من السياق وإلا منع
     if (!isGlobal) {
       if (!tenantId) {
-        throw new ForbiddenException('لا يوجد سياق مستأجر صالح للحذف');
+        throw new ForbiddenException({ code: 'PRODUCT_DELETE_NO_TENANT_CTX', message: 'لا يوجد سياق مستأجر صالح للحذف' });
       }
       if (product.tenantId !== tenantId) {
-        throw new ForbiddenException('عدم تطابق سياق المنتج مع التينانت');
+        throw new ForbiddenException({ code: 'PRODUCT_DELETE_TENANT_MISMATCH', message: 'عدم تطابق سياق المنتج مع التينانت' });
       }
-      // السماح: مالك التينانت (instance_owner) أو developer فقط
       if (!(isDev)) {
-        throw new ForbiddenException('دورك لا يسمح بحذف هذا المنتج');
+        throw new ForbiddenException({ code: 'PRODUCT_DELETE_ROLE_FORBIDDEN', message: 'دورك لا يسمح بحذف هذا المنتج' });
       }
     } else {
-      // منتج عالمي: يكفي أن يكون الدور مطور أو مالك مثيل (لا يهم وجود tenantId في الطلب)
       if (!isDev) {
-        throw new ForbiddenException('غير مصرح بحذف منتج عالمي');
+        throw new ForbiddenException({ code: 'PRODUCT_DELETE_GLOBAL_FORBIDDEN', message: 'غير مصرح بحذف منتج عالمي' });
       }
     }
 
     console.log('[PRODUCTS][DELETE][REQ]', { id: product.id, productTenant: product.tenantId, byRole: roleLower, isGlobal, reqTenant: tenantId, allowGlobal });
-    await this.productsRepo.remove(product);
-    console.log('[PRODUCTS][DELETE][DONE]', { id: product.id, global: isGlobal });
+    try {
+      await this.productsRepo.remove(product);
+      console.log('[PRODUCTS][DELETE][DONE]', { id: product.id, global: isGlobal });
+    } catch (e) {
+      console.error('[PRODUCTS][DELETE][FAIL]', { id: product.id, global: isGlobal, error: (e as any)?.message });
+      throw e;
+    }
   }
 
   async createPriceGroup(

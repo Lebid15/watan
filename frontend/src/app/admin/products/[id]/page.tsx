@@ -204,7 +204,19 @@ export default function AdminProductDetailsPage() {
     try {
       const token = localStorage.getItem('token') || '';
       const res = await fetch(`${API_ROUTES.products.base}/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error(t('product.delete.fail'));
+      if (!res.ok) {
+        let serverMsg = '';
+        try {
+          const data = await res.json();
+          const code = data?.code || data?.error || data?.statusCode;
+          const msg = data?.message;
+          if (typeof msg === 'string') serverMsg = msg;
+          else if (Array.isArray(msg)) serverMsg = msg.join(', ');
+          if (code && !serverMsg) serverMsg = String(code);
+          if (code && serverMsg) serverMsg = `${serverMsg} (code: ${code})`;
+        } catch {}
+        throw new Error(serverMsg || t('product.delete.fail'));
+      }
       router.push('/admin/products');
   } catch (e: any) { alert(e.message || t('errors.unexpected')); }
   };
