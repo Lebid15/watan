@@ -830,10 +830,27 @@ export class ProductsService {
     return products.map((product: any) => {
       // أعد استخدام المنطق نفسه لإضافة الصورة الفعالة والأسعار بطريقة موحدة
       const mapped = this.mapEffectiveImage(product);
+      // ترتيب خاص: ضمان إظهار باقة العداد (unit) أولاً دائماً إن وُجدت
+      const sortPackages = (list: any[]) => {
+        if (!Array.isArray(list)) return list;
+        return [...list].sort((a, b) => {
+          // باقات type = 'unit' أولاً
+          const aUnit = (a?.type === 'unit') ? 0 : 1;
+          const bUnit = (b?.type === 'unit') ? 0 : 1;
+          if (aUnit !== bUnit) return aUnit - bUnit;
+          // ثم حسب publicCode الأصغر (إن وجد) لثبات العرض
+          const aCode = (a?.publicCode ?? 9999999);
+            const bCode = (b?.publicCode ?? 9999999);
+          if (aCode !== bCode) return aCode - bCode;
+          // fallback بالاسم
+          const an = (a?.name || '').localeCompare(b?.name || '');
+          return an;
+        });
+      };
       return {
         ...product,
         ...mapped,
-        packages: (product.packages || []).filter((pkg: any) => pkg.publicCode != null && pkg.isActive).map((pkg: any) => ({
+        packages: sortPackages((product.packages || []).filter((pkg: any) => pkg.publicCode != null && pkg.isActive)).map((pkg: any) => ({
           ...pkg,
           basePrice: pkg.basePrice ?? pkg.capital ?? 0,
           prices: allPriceGroups.map((group) => {
@@ -866,10 +883,23 @@ export class ProductsService {
 
     const allPriceGroups = await this.priceGroupsRepo.find({ where: { tenantId } as any });
     const mapped = this.mapEffectiveImage(product);
+    // ترتيب خاص: ضمان إظهار باقة العداد (unit) أولاً دائماً إن وُجدت
+    const sortPackages = (list: any[]) => {
+      if (!Array.isArray(list)) return list;
+      return [...list].sort((a, b) => {
+        const aUnit = (a?.type === 'unit') ? 0 : 1;
+        const bUnit = (b?.type === 'unit') ? 0 : 1;
+        if (aUnit !== bUnit) return aUnit - bUnit;
+        const aCode = (a?.publicCode ?? 9999999);
+        const bCode = (b?.publicCode ?? 9999999);
+        if (aCode !== bCode) return aCode - bCode;
+        return (a?.name || '').localeCompare(b?.name || '');
+      });
+    };
     return {
       ...product,
       ...mapped,
-      packages: (product.packages || []).filter((pkg: any) => pkg.publicCode != null && pkg.isActive).map((pkg: any) => ({
+      packages: sortPackages((product.packages || []).filter((pkg: any) => pkg.publicCode != null && pkg.isActive)).map((pkg: any) => ({
         ...pkg,
         basePrice: pkg.basePrice ?? pkg.capital ?? 0,
         prices: allPriceGroups.map((group) => {

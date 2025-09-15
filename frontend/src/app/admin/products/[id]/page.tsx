@@ -321,6 +321,9 @@ export default function AdminProductDetailsPage() {
           <input className="w-full border border-border p-2 rounded mb-2 bg-bg-surface-alt text-text-primary" value={editName} onChange={e => setEditName(e.target.value)} placeholder="اسم المنتج" />
           <textarea className="w-full border border-border p-2 rounded mb-2 bg-bg-surface-alt text-text-primary" value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="الوصف" />
 
+          {/* ===================== معطّل مؤقتاً حسب الطلب =====================
+              القسم التالي (نصوص بديلة + رفع صورة مخصصة) تم التعليق عليه لأنه غير مطلوب حالياً.
+              لإعادة تفعيله، احذف هذا التعليق وأعد الكتلة كما كانت.
           <div className="grid md:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-[12px] text-text-secondary mb-1">نص بديل (كتالوج)</label>
@@ -332,21 +335,22 @@ export default function AdminProductDetailsPage() {
             </div>
           </div>
 
-            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${badgeColor}`}>{sourceLabelMap[imageSource]}</span>
-                {imageSource !== 'none' && (<span className="text-[11px] text-text-secondary">(المصدر الحالي)</span>)}
-              </div>
-              <label className="flex items-center gap-2 text-text-secondary">
-                <input type="checkbox" checked={editUseCatalog} onChange={e => setEditUseCatalog(e.target.checked)} />
-                استخدم صورة الكتالوج
-              </label>
-              <div>
-                <label className="block text-[12px] text-text-secondary mb-1">صورة مخصصة (تجاوز)</label>
-                <input type="file" accept="image/*" onChange={e => e.target.files && setEditImage(e.target.files[0])} className="text-text-secondary max-w-xs" disabled={editUseCatalog} />
-                {editUseCatalog && (<div className="text-[11px] mt-1 text-text-secondary">إلغاء التحديد لتفعيل الرفع المخصص</div>)}
-              </div>
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-white ${badgeColor}`}>{sourceLabelMap[imageSource]}</span>
+              {imageSource !== 'none' && (<span className="text-[11px] text-text-secondary">(المصدر الحالي)</span>)}
             </div>
+            <label className="flex items-center gap-2 text-text-secondary">
+              <input type="checkbox" checked={editUseCatalog} onChange={e => setEditUseCatalog(e.target.checked)} />
+              استخدم صورة الكتالوج
+            </label>
+            <div>
+              <label className="block text-[12px] text-text-secondary mb-1">صورة مخصصة (تجاوز)</label>
+              <input type="file" accept="image/*" onChange={e => e.target.files && setEditImage(e.target.files[0])} className="text-text-secondary max-w-xs" disabled={editUseCatalog} />
+              {editUseCatalog && (<div className="text-[11px] mt-1 text-text-secondary">إلغاء التحديد لتفعيل الرفع المخصص</div>)}
+            </div>
+          </div>
+          ===================== نهاية القسم المعطّل ===================== */}
 
             <label className="flex items-center gap-2 mb-4 text-text-secondary">
               <input type="checkbox" checked={editActive} onChange={e => setEditActive(e.target.checked)} />

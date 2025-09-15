@@ -190,3 +190,56 @@ describe('ProductsService - getUsersPriceGroups Optimization', () => {
     ]);
   });
 });
+
+describe('ProductsService - ordering counter (unit) package first', () => {
+  let service: ProductsService;
+  const tenantId = 'tenant-1';
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ProductsService,
+        { provide: PricingService, useValue: { getEffectiveUnitPrice: jest.fn(), validateQuantity: jest.fn(), quoteUnitOrder: jest.fn() } },
+        { provide: ClientApiWebhookEnqueueService, useValue: { enqueue: jest.fn() } },
+        { provide: getRepositoryToken(Product), useValue: { createQueryBuilder: jest.fn(() => ({
+          leftJoinAndSelect: function() { return this; },
+          where: function() { return this; },
+          andWhere: function() { return this; },
+          getMany: jest.fn().mockResolvedValue([
+            {
+              id: 'prod1', tenantId, name: 'Test', isActive: true,
+              packages: [
+                { id: 'p2', type: 'fixed', publicCode: 20, isActive: true, basePrice: 0, capital: 0, prices: [] },
+                { id: 'p1', type: 'unit', publicCode: 10, isActive: true, basePrice: 0, capital: 0, prices: [] },
+              ],
+            },
+          ])
+        })) } },
+        { provide: getRepositoryToken(ProductPackage), useValue: {} },
+        { provide: getRepositoryToken(IdempotentRequest), useValue: {} },
+        { provide: getRepositoryToken(PackagePrice), useValue: {} },
+        { provide: getRepositoryToken(PriceGroup), useValue: { find: jest.fn().mockResolvedValue([]) } },
+        { provide: getRepositoryToken(User), useValue: {} },
+        { provide: getRepositoryToken(ProductOrder), useValue: {} },
+        { provide: getRepositoryToken(DistributorPackagePrice), useValue: {} },
+        { provide: getRepositoryToken(DistributorUserPriceGroup), useValue: {} },
+        { provide: getRepositoryToken(Currency), useValue: {} },
+        { provide: getRepositoryToken(OrderDispatchLog), useValue: {} },
+        { provide: getRepositoryToken(PackageRouting), useValue: {} },
+        { provide: getRepositoryToken(PackageMapping), useValue: {} },
+        { provide: getRepositoryToken(PackageCost), useValue: {} },
+        { provide: NotificationsService, useValue: { sendNotification: jest.fn() } },
+        { provide: IntegrationsService, useValue: { checkOrders: jest.fn(), list: jest.fn().mockResolvedValue([]) } },
+        { provide: AccountingPeriodsService, useValue: { getCurrentPeriod: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('places unit package first', async () => {
+    const list = await service.getTenantVisibleProducts(tenantId);
+    expect(list[0].packages[0].type).toBe('unit');
+    expect(list[0].packages.map((p: any) => p.id)).toEqual(['p1', 'p2']);
+  });
+});

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+### Changed
+- Store product listing: Always sorts counter (unit) package first ("باقة العداد") for end-user visibility. Other packages follow ordered by `publicCode` then name. No API contract change besides ordering.
+
 ## v1.2 - Webhook Dispatch (Client API)
 
 Features:
