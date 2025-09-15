@@ -1630,8 +1630,10 @@ export class ProductsService {
       this.ensureSameTenant((product as any).tenantId, (user as any).tenantId);
       this.ensureSameTenant((pkg as any).tenantId, (user as any).tenantId);
 
-      let unitPriceUSD = await this.getEffectivePriceUSD(packageId, userId);
-      let totalUSD = Number(unitPriceUSD) * Number(quantity);
+  let unitPriceUSD = await this.getEffectivePriceUSD(packageId, userId);
+  let totalUSD = Number(unitPriceUSD) * Number(quantity);
+  // حفظ تكلفة الوحدة لاحقاً في حالة الباقات من نوع عداد (unit)
+  let unitCostPerUnitUSD: number | null = null;
 
       // دعم الباقة من نوع unit
       if ((product as any).supportsCounter === true && (pkg as any).type === 'unit') {
@@ -1688,6 +1690,22 @@ export class ProductsService {
           const cost = unitCost * Number(quantity);
             (order as any).cost = Number(cost).toFixed(getPriceDecimals());
             (order as any).profit = Number(totalUSD - cost).toFixed(getPriceDecimals());
+            unitCostPerUnitUSD = unitCost; // حفظ تكلفة الوحدة للاستخدام لاحقاً
+        }
+      }
+
+      // ملء الحقول legacy (sellPriceAmount/costAmount/profitAmount) لباقات العداد حتى لا تحتاج الواجهة لحساب إضافي
+      if ((product as any).supportsCounter === true && (pkg as any).type === 'unit') {
+        const rLegacy = user.currency ? Number(user.currency.rate) : 1;
+        const cLegacy = user.currency ? user.currency.code : 'USD';
+        const sellUserTotalLegacy = totalUSD * rLegacy;
+        (order as any).sellPriceCurrency = cLegacy;
+        (order as any).sellPriceAmount = Number(sellUserTotalLegacy.toFixed(2));
+        if (unitCostPerUnitUSD && unitCostPerUnitUSD > 0) {
+          const costUserTotalLegacy = unitCostPerUnitUSD * Number(quantity) * rLegacy;
+          (order as any).costCurrency = cLegacy;
+          (order as any).costAmount = Number(costUserTotalLegacy.toFixed(2));
+          (order as any).profitAmount = Number((sellUserTotalLegacy - costUserTotalLegacy).toFixed(2));
         }
       }
 
