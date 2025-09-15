@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 import { formatGroupsDots } from '@/utils/format';
 import { HiOutlineUserCircle } from 'react-icons/hi';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
 
 function currencySymbol(code?: string) {
   switch ((code || '').toUpperCase()) {
@@ -65,7 +66,7 @@ export default function MainHeader() {
   return (
     <header className="fixed top-0 left-0 w-full z-50 bg-bg-surface text-text-primary px-6 py-3 shadow">
       <div className="flex justify-between items-center">
-        {/* اليسار: رصيد المحفظة + زر الحساب */}
+        {/* اليسار: رصيد المحفظة + مبدل اللغة + زر الحساب */}
         <div className="flex items-center gap-2" dir="rtl">
           <span
             className={[
@@ -78,6 +79,7 @@ export default function MainHeader() {
           >
             {formatGroupsDots(Number(balanceStr))} {sym}
           </span>
+          <LanguageSwitcher className="ml-2" />
 
           <div className="relative" ref={dropdownRef}>
             <button

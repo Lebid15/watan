@@ -1,0 +1,21 @@
+{
+  "login.title": "تسجيل الدخول",
+  "login.identifier.label": "البريد الإلكتروني أو اسم المستخدم",
+  "login.identifier.placeholder": "example@mail.com",
+  "login.password.label": "كلمة المرور",
+  "login.password.show": "إظهار كلمة المرور",
+  "login.password.hide": "إخفاء كلمة المرور",
+  "login.submit": "دخول",
+  "login.forgot": "نسيت كلمة المرور؟",
+  "login.verifyEmail": "التحقق من البريد",
+  "login.noAccount": "لا تملك حساباً؟",
+  "login.register": "إنشاء حساب",
+  "nav.profile": "الملف الشخصي",
+  "nav.favorites": "المفضلة",
+  "nav.api": "API",
+  "nav.security": "الأمان",
+  "nav.logout": "تسجيل الخروج",
+  "lang.ar": "العربية",
+  "lang.en": "English",
+  "lang.tr": "Türkçe"
+}

@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { clearAuthArtifacts, hasAccessTokenCookie } from '@/utils/authCleanup';
 import MainHeader from '@/components/layout/MainHeader';
@@ -7,12 +7,37 @@ import BottomNav from '@/components/layout/BottomNav';
 import { UserProvider } from '../context/UserContext';
 import { ToastProvider } from '@/context/ToastContext';
 import ThemeFab from '@/components/ThemeFab';
+import i18n, { loadNamespace, setLocale } from '@/i18n/client';
 
-// مؤقتاً: I18nProvider محلي فقط لتغليف children بدون منطق ترجمة
-const I18nProvider: React.FC<{ locale?: string; children: React.ReactNode }> = ({ children }) => <>{children}</>;
+// مزود بسيط لضمان إعادة العرض بعد تحميل الموارد
+const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const handler = () => force(v => v + 1);
+    i18n.on('languageChanged', handler);
+    return () => { i18n.off('languageChanged', handler); };
+  }, []);
+  return <>{children}</>;
+};
 
 export default function ClientRoot({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // تهيئة اللغة من localStorage أو الكوكيز
+  useEffect(() => {
+    try {
+      let detected: string | null = null;
+      if (typeof document !== 'undefined') {
+        const m = document.cookie.match(/(?:^|; )NEXT_LOCALE=([^;]+)/);
+        if (m) detected = decodeURIComponent(m[1]);
+      }
+      if (!detected && typeof localStorage !== 'undefined') {
+        detected = localStorage.getItem('locale');
+      }
+      if (!detected) detected = 'ar';
+      setLocale(detected);
+      loadNamespace(detected, 'common');
+    } catch {}
+  }, []);
   const hideHeaderFooter = pathname === '/login' || pathname === '/register' || pathname === '/password-reset';
   const isBackoffice = pathname?.startsWith('/admin') || pathname?.startsWith('/dev');
   const hasRoleAreaLayout =

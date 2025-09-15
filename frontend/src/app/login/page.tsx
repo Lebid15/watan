@@ -1,8 +1,10 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
 import TotpVerification from '@/components/TotpVerification';
+import i18n, { loadNamespace, setLocale } from '@/i18n/client';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -82,6 +84,10 @@ export default function LoginPage() {
     } catch {}
     try { router.push(nextDest || '/'); } catch { window.location.href = nextDest || '/'; }
   }, [router, setError]);
+
+  // ensure common namespace loaded
+  useEffect(() => { (async () => { await loadNamespace(i18n.language || 'ar', 'common'); })(); }, []);
+  const t = (k: string) => (i18n.getResource(i18n.language || 'ar', 'common', k) as string) || k;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,27 +172,27 @@ export default function LoginPage() {
           </svg>
         </div>
   <form onSubmit={submit} className="p-5 sm:p-7 space-y-4 -mt-8 sm:-mt-10 relative z-10">
-          <h1 className="text-2xl font-semibold text-center mb-2 text-gray-900">تسجيل الدخول</h1>
+          <h1 className="text-2xl font-semibold text-center mb-2 text-gray-900">{t('login.title')}</h1>
           {error && <div className="text-center text-red-600 text-sm">{error}</div>}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-600">البريد الإلكتروني أو اسم المستخدم</label>
+            <label className="block text-sm font-medium mb-1 text-gray-600">{t('login.identifier.label')}</label>
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
                 {/* User icon (inline SVG) */}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70"><path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5z"/><path d="M3.5 21c1.916-3.419 5.223-5 8.5-5s6.584 1.581 8.5 5"/></svg>
               </span>
-              <input value={identifier} onChange={e=>setIdentifier(e.target.value)} autoComplete="username" className="w-full border rounded pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-gray-900 placeholder-gray-400 bg-white" placeholder="example@mail.com" />
+              <input value={identifier} onChange={e=>setIdentifier(e.target.value)} autoComplete="username" className="w-full border rounded pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-gray-900 placeholder-gray-400 bg-white" placeholder={t('login.identifier.placeholder')} />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-600">كلمة المرور</label>
+            <label className="block text-sm font-medium mb-1 text-gray-600">{t('login.password.label')}</label>
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
                 {/* Lock icon */}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </span>
               <input type={showPassword ? 'text' : 'password'} value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" className="w-full border rounded pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-gray-900 placeholder-gray-400 bg-white" placeholder="••••••••" />
-              <button type="button" onClick={()=>setShowPassword(p=>!p)} aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'} className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 hover:text-gray-700 focus:outline-none" tabIndex={-1}>
+              <button type="button" onClick={()=>setShowPassword(p=>!p)} aria-label={showPassword ? t('login.password.hide') : t('login.password.show')} className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 hover:text-gray-700 focus:outline-none" tabIndex={-1}>
                 {showPassword ? (
                   // Eye-off icon
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-6.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.83 21.83 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -197,14 +203,16 @@ export default function LoginPage() {
               </button>
             </div>
           </div>
-            <button disabled={loading || !identifier || !password} className="w-full bg-sky-600 text-white py-2 rounded text-sm disabled:opacity-60 hover:brightness-110 transition">{loading? '...' : 'دخول'}</button>
+            <button disabled={loading || !identifier || !password} className="w-full bg-sky-600 text-white py-2 rounded text-sm disabled:opacity-60 hover:brightness-110 transition">{loading? '...' : t('login.submit')}</button>
           <div className="flex justify-between text-xs text-gray-600">
-            <a href="/password-reset" className="underline">نسيت كلمة المرور؟</a>
-            <a href="/verify-email" className="underline">التحقق من البريد</a>
+            <a href="/password-reset" className="underline">{t('login.forgot')}</a>
+            <a href="/verify-email" className="underline">{t('login.verifyEmail')}</a>
           </div>
-          <p className="text-center text-xs text-gray-600 pt-2">لا تملك حساباً؟ <a href="/register" className="text-sky-600 underline">إنشاء حساب</a></p>
+          <p className="text-center text-xs text-gray-600 pt-2">{t('login.noAccount')} <a href="/register" className="text-sky-600 underline">{t('login.register')}</a></p>
         </form>
       </div>
+      {/* لغة في أعلى يمين الصفحة */}
+      <div className="absolute top-4 right-4"><LanguageSwitcher /></div>
       {totpPhase === 'verify' && (
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-5">

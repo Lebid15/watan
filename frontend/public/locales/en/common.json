@@ -1,0 +1,21 @@
+{
+  "login.title": "Login",
+  "login.identifier.label": "Email or Username",
+  "login.identifier.placeholder": "example@mail.com",
+  "login.password.label": "Password",
+  "login.password.show": "Show password",
+  "login.password.hide": "Hide password",
+  "login.submit": "Sign In",
+  "login.forgot": "Forgot password?",
+  "login.verifyEmail": "Verify Email",
+  "login.noAccount": "Don't have an account?",
+  "login.register": "Register",
+  "nav.profile": "Profile",
+  "nav.favorites": "Favorites",
+  "nav.api": "API",
+  "nav.security": "Security",
+  "nav.logout": "Logout",
+  "lang.ar": "Arabic",
+  "lang.en": "English",
+  "lang.tr": "Turkish"
+}

@@ -1,0 +1,21 @@
+{
+  "login.title": "Giriş Yap",
+  "login.identifier.label": "E-posta veya Kullanıcı Adı",
+  "login.identifier.placeholder": "example@mail.com",
+  "login.password.label": "Şifre",
+  "login.password.show": "Şifreyi göster",
+  "login.password.hide": "Şifreyi gizle",
+  "login.submit": "Giriş",
+  "login.forgot": "Şifreyi mi unuttun?",
+  "login.verifyEmail": "E-postayı Doğrula",
+  "login.noAccount": "Hesabın yok mu?",
+  "login.register": "Kayıt Ol",
+  "nav.profile": "Profil",
+  "nav.favorites": "Favoriler",
+  "nav.api": "API",
+  "nav.security": "Güvenlik",
+  "nav.logout": "Çıkış Yap",
+  "lang.ar": "Arapça",
+  "lang.en": "İngilizce",
+  "lang.tr": "Türkçe"
+}
