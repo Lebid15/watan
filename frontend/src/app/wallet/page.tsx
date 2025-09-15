@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { fmtDateStable } from '@/lib/fmtDateStable';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useAuthRequired } from '@/hooks/useAuthRequired';
@@ -54,6 +55,7 @@ const fmtDate = (d: string) => fmtDateStable(d);
 
 export default function WalletPage() {
   useAuthRequired();
+  const { t } = useTranslation();
 
   const [rows, setRows] = useState<MyDeposit[]>([]);
   const [sourceFilter, setSourceFilter] = useState<'all' | 'user_request' | 'admin_topup'>('all');
@@ -98,7 +100,7 @@ export default function WalletPage() {
         if (!cancelled) {
           const error = e as ErrorResponse;
           const msg =
-            error?.response?.data?.message || error?.message || 'تعذّر جلب الحركات';
+            error?.response?.data?.message || error?.message || t('wallet.fetch.fail');
           setErr(Array.isArray(msg) ? msg.join(', ') : msg);
           setRows([]);
         }
@@ -167,7 +169,7 @@ export default function WalletPage() {
     } catch (e: unknown) {
       const error = e as ErrorResponse;
       const msg =
-        error?.response?.data?.message || error?.message || 'تعذّر تحميل المزيد';
+        error?.response?.data?.message || error?.message || t('wallet.fetch.moreFail');
       setErr(Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setLoadingMore(false);
@@ -206,15 +208,15 @@ export default function WalletPage() {
       className="min-h-screen p-4 max-w-2xl mx-auto bg-bg-base text-text-primary"
       dir="rtl"
     >
-      <h1 className="text-xl font-bold mb-1">محفظتي</h1>
-      <p className="mb-4 text-text-secondary">سجل حركات الإيداع.</p>
+  <h1 className="text-xl font-bold mb-1">{t('wallet.pageTitle')}</h1>
+  <p className="mb-4 text-text-secondary">{t('wallet.description')}</p>
 
-      {err && <div className="mb-3 text-danger">{err}</div>}
+  {err && <div className="mb-3 text-danger">{err}</div>}
 
       {loadingFirst ? (
-        <div className="text-text-secondary">جارِ التحميل...</div>
+        <div className="text-text-secondary">{t('wallet.loading')}</div>
       ) : rows.length === 0 ? (
-        <div className="text-text-secondary">لا توجد حركات بعد.</div>
+        <div className="text-text-secondary">{t('wallet.empty')}</div>
       ) : (
         <>
           <div className="space-y-3">
@@ -249,7 +251,7 @@ export default function WalletPage() {
                           </div>
                         )}
                         <span className="text-text-primary flex items-center gap-2">
-                          {r.method?.name || 'وسيلة دفع'}
+                          {r.method?.name || t('wallet.deposit.method.fallback')}
                           {r.source && (
                             <span
                               className={[
@@ -259,7 +261,7 @@ export default function WalletPage() {
                                   : 'bg-primary/10 border-primary/30 text-primary'
                               ].join(' ')}
                             >
-                              {r.source === 'admin_topup' ? 'شحن إداري' : 'طلب مستخدم'}
+                              {r.source === 'admin_topup' ? t('wallet.deposit.source.admin_topup') : t('wallet.deposit.source.user_request')}
                             </span>
                           )}
                         </span>
@@ -275,11 +277,7 @@ export default function WalletPage() {
                         {fmtDate(r.createdAt)}
                       </span>
                       <span className={pillClass(r.status)}>
-                        {r.status === 'approved'
-                          ? 'مقبول'
-                          : r.status === 'rejected'
-                          ? 'مرفوض'
-                          : 'قيد المراجعة'}
+                        {t(`wallet.deposit.status.${r.status}`)}
                       </span>
                     </div>
                   </button>
@@ -289,32 +287,32 @@ export default function WalletPage() {
                     <div className="px-4 pb-4 bg-bg-surface">
                       <div className="grid sm:grid-cols-2 gap-3 text-sm">
                         <div className="bg-bg-surface-alt rounded-lg p-3">
-                          <div className="text-text-secondary">المبلغ الأصلي</div>
+                          <div className="text-text-secondary">{t('wallet.deposit.originalAmount')}</div>
                           <div className="font-medium text-text-primary">
                             {fmt(r.originalAmount)} {r.originalCurrency}
                           </div>
                         </div>
                         <div className="bg-bg-surface-alt rounded-lg p-3">
-                          <div className="text-text-secondary">المبلغ بعد التحويل</div>
+                          <div className="text-text-secondary">{t('wallet.deposit.convertedAmount')}</div>
                           <div className="font-medium text-text-primary">
                             {fmt(r.convertedAmount)} {r.walletCurrency}
                           </div>
                         </div>
                         <div className="bg-bg-surface-alt rounded-lg p-3">
-                          <div className="text-text-secondary">سعر الصرف</div>
+                          <div className="text-text-secondary">{t('wallet.deposit.rateUsed')}</div>
                           <div className="font-medium text-text-primary">
                             {fmt(r.rateUsed, 6)}
                           </div>
                         </div>
                         <div className="bg-bg-surface-alt rounded-lg p-3">
-                          <div className="text-text-secondary">رقم العملية</div>
+                          <div className="text-text-secondary">{t('wallet.deposit.operationId')}</div>
                           <div className="font-medium text-text-primary">
                             #{r.id.slice(0, 8)}
                           </div>
                         </div>
                         {r.note && (
                           <div className="bg-bg-surface-alt rounded-lg p-3 sm:col-span-2">
-                            <div className="text-text-secondary mb-1">ملاحظة</div>
+                            <div className="text-text-secondary mb-1">{t('wallet.deposit.note')}</div>
                             <div className="font-medium text-text-primary">
                               {r.note}
                             </div>
@@ -336,10 +334,10 @@ export default function WalletPage() {
                 disabled={loadingMore}
                 className="btn btn-primary text-xs disabled:opacity-60"
               >
-                {loadingMore ? 'جارِ التحميل…' : 'تحميل المزيد'}
+                {loadingMore ? t('wallet.loading') : t('wallet.loadMore')}
               </button>
             ) : (
-              <div className="py-2 text-xs text-text-secondary">لا يوجد المزيد</div>
+              <div className="py-2 text-xs text-text-secondary">{t('wallet.noMore')}</div>
             )}
           </div>
         </>

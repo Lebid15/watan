@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import api, { API_ROUTES } from '@/utils/api';
-import { API_BASE_URL } from '@/utils/api';
+import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
+import { useTranslation } from 'react-i18next';
 
 const FILES_BASE = API_BASE_URL.replace(/\/api\/?$/, ''); // تأكد حذف /api من النهاية
 
@@ -32,15 +32,16 @@ interface PaymentMethod {
   createdAt?: string;
 }
 
-const typeOptions: { value: PaymentMethodType; label: string }[] = [
-  { value: 'CASH_BOX', label: 'صندوق اعتماد' },
-  { value: 'BANK_ACCOUNT', label: 'حساب بنكي' },
-  { value: 'HAND_DELIVERY', label: 'تسليم باليد' },
-  { value: 'USDT', label: 'USDT' },
-  { value: 'MONEY_TRANSFER', label: 'حوالات مالية' },
+const typeOptions: { value: PaymentMethodType; labelKey: string }[] = [
+  { value: 'CASH_BOX', labelKey: 'payments.methods.type.CASH_BOX' },
+  { value: 'BANK_ACCOUNT', labelKey: 'payments.methods.type.BANK_ACCOUNT' },
+  { value: 'HAND_DELIVERY', labelKey: 'payments.methods.type.HAND_DELIVERY' },
+  { value: 'USDT', labelKey: 'payments.methods.type.USDT' },
+  { value: 'MONEY_TRANSFER', labelKey: 'payments.methods.type.MONEY_TRANSFER' },
 ];
 
 export default function AdminPaymentMethodsPage() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [error, setError] = useState('');
@@ -72,76 +73,76 @@ export default function AdminPaymentMethodsPage() {
     switch (type) {
       case 'CASH_BOX':
         return [
-          { key: 'boxName', label: 'اسم الصندوق' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'boxName', label: t('payments.methods.config.boxName') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       case 'BANK_ACCOUNT':
         return [
-          { key: 'bankName', label: 'اسم البنك' },
-          { key: 'accountHolder', label: 'اسم حامل البطاقة الكامل' },
-          { key: 'iban', label: 'IBAN' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'bankName', label: t('payments.methods.config.bankName') },
+          { key: 'accountHolder', label: t('payments.methods.config.accountHolder') },
+          { key: 'iban', label: t('payments.methods.config.iban') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       case 'HAND_DELIVERY':
         return [
-          { key: 'delegateName', label: 'اسم المندوب' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'delegateName', label: t('payments.methods.config.delegateName') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       case 'USDT':
         return [
-          { key: 'addressOrIban', label: 'عنوان المحفظة / IBAN' },
-          { key: 'network', label: 'الشبكة (TRC20/ ERC20)' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'addressOrIban', label: t('payments.methods.config.iban') },
+          { key: 'network', label: t('payments.methods.config.network') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       case 'MONEY_TRANSFER':
         return [
-          { key: 'recipientName', label: 'اسم المستلم' },
-          { key: 'destination', label: 'الوجهة' },
-          { key: 'officeName', label: 'اسم المكتب' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'recipientName', label: t('payments.methods.config.recipientName') },
+          { key: 'destination', label: t('payments.methods.config.destination') },
+          { key: 'officeName', label: t('payments.methods.config.officeName') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       default:
         return [];
     }
-  }, [type]);
+  }, [type, t]);
 
   // dynamic fields (edit)
   const editConfigFields = useMemo(() => {
     switch (editType) {
       case 'CASH_BOX':
         return [
-          { key: 'boxName', label: 'اسم الصندوق' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'boxName', label: t('payments.methods.config.boxName') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       case 'BANK_ACCOUNT':
         return [
-          { key: 'bankName', label: 'اسم البنك' },
-          { key: 'accountHolder', label: 'اسم حامل البطاقة الكامل' },
-          { key: 'iban', label: 'IBAN' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'bankName', label: t('payments.methods.config.bankName') },
+          { key: 'accountHolder', label: t('payments.methods.config.accountHolder') },
+          { key: 'iban', label: t('payments.methods.config.iban') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       case 'HAND_DELIVERY':
         return [
-          { key: 'delegateName', label: 'اسم المندوب' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'delegateName', label: t('payments.methods.config.delegateName') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       case 'USDT':
         return [
-          { key: 'addressOrIban', label: 'عنوان المحفظة / IBAN' },
-          { key: 'network', label: 'الشبكة (TRC20/ ERC20)' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'addressOrIban', label: t('payments.methods.config.iban') },
+          { key: 'network', label: t('payments.methods.config.network') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       case 'MONEY_TRANSFER':
         return [
-          { key: 'recipientName', label: 'اسم المستلم' },
-          { key: 'destination', label: 'الوجهة' },
-          { key: 'officeName', label: 'اسم المكتب' },
-          { key: 'note', label: 'ملاحظة' },
+          { key: 'recipientName', label: t('payments.methods.config.recipientName') },
+          { key: 'destination', label: t('payments.methods.config.destination') },
+          { key: 'officeName', label: t('payments.methods.config.officeName') },
+          { key: 'note', label: t('payments.methods.config.note') },
         ];
       default:
         return [];
     }
-  }, [editType]);
+  }, [editType, t]);
 
   const fetchData = async () => {
     try {
@@ -152,7 +153,7 @@ export default function AdminPaymentMethodsPage() {
       );
       setMethods(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      setError('فشل جلب وسائل الدفع');
+      setError(t('payments.methods.fetch.fail'));
       setMethods([]);
     } finally {
       setLoading(false);
@@ -211,10 +212,8 @@ export default function AdminPaymentMethodsPage() {
       setLogoPreview('');
       await fetchData();
     } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'خطأ غير معروف';
-      setError(
-        `فشل إنشاء وسيلة دفع جديدة: ${Array.isArray(msg) ? msg.join(', ') : msg}`
-      );
+      const msg = e?.response?.data?.message || e?.message || t('errors.unexpected');
+      setError(`${t('payments.methods.create.fail')}: ${Array.isArray(msg) ? msg.join(', ') : msg}`);
     }
   };
 
@@ -227,7 +226,7 @@ export default function AdminPaymentMethodsPage() {
       );
       await fetchData();
     } catch {
-      setError('تعذر تغيير حالة الوسيلة');
+      setError(t('payments.methods.status.fail'));
     }
   };
 
@@ -267,20 +266,20 @@ export default function AdminPaymentMethodsPage() {
       setEditItem(null);
       await fetchData();
     } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'خطأ غير معروف';
-      setError(`فشل تعديل الوسيلة: ${Array.isArray(msg) ? msg.join(', ') : msg}`);
+      const msg = e?.response?.data?.message || e?.message || t('errors.unexpected');
+      setError(`${t('payments.methods.update.fail')}: ${Array.isArray(msg) ? msg.join(', ') : msg}`);
     }
   };
 
   // DELETE
   const deleteItem = async (m: PaymentMethod) => {
-    const ok = confirm(`هل أنت متأكد من حذف "${m.name}"؟ لا يمكن التراجع.`);
+    const ok = confirm(t('product.delete.confirm'));
     if (!ok) return;
     try {
       await api.delete(API_ROUTES.admin.paymentMethods.byId(m.id));
       await fetchData();
     } catch {
-      setError('تعذر حذف الوسيلة');
+      setError(t('payments.methods.delete.fail'));
     }
   };
 
@@ -288,38 +287,38 @@ export default function AdminPaymentMethodsPage() {
     <div className="space-y-8 text-text-primary">
       {/* CREATE */}
       <section className="bg-bg-surface rounded-xl shadow p-4">
-        <h2 className="text-lg font-semibold mb-4">إضافة وسيلة دفع</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('payments.methods.pageTitle.create')}</h2>
         {error && <div className="mb-3 text-danger">{error}</div>}
 
         <form onSubmit={submitCreate} className="grid md:grid-cols-2 gap-4">
           <div>
-            <label className="block mb-1 font-medium">الاسم الظاهر</label>
+            <label className="block mb-1 font-medium">{t('payments.methods.form.name.label')}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
               className="w-full border border-border rounded px-3 py-2 bg-bg-input text-text-primary"
-              placeholder="مثال: حساب بنكي زراعات"
+              placeholder={t('payments.methods.form.name.placeholder')}
             />
           </div>
 
           <div>
-            <label className="block mb-1 font-medium">النوع</label>
+            <label className="block mb-1 font-medium">{t('payments.methods.form.type.label')}</label>
             <select
               value={type}
               onChange={(e) => setType(e.target.value as PaymentMethodType)}
               className="w-full border border-border rounded px-3 py-2 bg-bg-input text-text-primary"
             >
-              {typeOptions.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
+              {typeOptions.map((op) => (
+                <option key={op.value} value={op.value}>
+                  {t(op.labelKey)}
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block mb-1 font-medium">شعار الوسيلة (اختياري)</label>
+            <label className="block mb-1 font-medium">{t('payments.methods.form.logo.label')}</label>
             <input
               type="file"
               accept="image/*"
@@ -341,12 +340,12 @@ export default function AdminPaymentMethodsPage() {
           </div>
 
           <div>
-            <label className="block mb-1 font-medium">ملاحظة عامة (اختياري)</label>
+            <label className="block mb-1 font-medium">{t('payments.methods.form.note.label')}</label>
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
               className="w-full border border-border rounded px-3 py-2 bg-bg-input text-text-primary"
-              placeholder="سيُعرض للمستخدمين"
+              placeholder={t('payments.methods.form.note.placeholder')}
             />
           </div>
 
@@ -358,12 +357,12 @@ export default function AdminPaymentMethodsPage() {
               onChange={() => setIsActive(!isActive)}
             />
             <label htmlFor="isActive" className="font-medium">
-              مفعّل
+              {t('payments.methods.form.active')}
             </label>
           </div>
 
           <div className="md:col-span-2">
-            <h3 className="font-semibold mb-2">حقول خاصة بنوع الوسيلة</h3>
+            <h3 className="font-semibold mb-2">{t('payments.methods.form.config.title')}</h3>
             <div className="grid md:grid-cols-2 gap-3">
               {configFields.map((f) => (
                 <div key={f.key}>
@@ -385,7 +384,7 @@ export default function AdminPaymentMethodsPage() {
               type="submit"
               className="px-4 py-2 rounded bg-primary hover:bg-primary-hover text-primary-contrast"
             >
-              حفظ الوسيلة
+              {t('payments.methods.form.submit')}
             </button>
           </div>
         </form>
@@ -393,21 +392,21 @@ export default function AdminPaymentMethodsPage() {
 
       {/* TABLE */}
       <section className="rounded-xl shadow p-4 bg-bg-surface">
-        <h2 className="text-lg font-semibold mb-4">الوسائل الحالية</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('payments.methods.pageTitle.list')}</h2>
         {loading ? (
-          <div>جارِ التحميل...</div>
+          <div>{t('common.loading')}</div>
         ) : methods.length === 0 ? (
-          <div className="text-text-secondary">لا توجد وسائل بعد.</div>
+          <div className="text-text-secondary">{t('payments.methods.empty')}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm bg-bg-surface border border-border">
               <thead className="bg-[var(--tableheaders)]">
                 <tr className="text-right">
-                  <th className="border border-border px-3 py-2">اللوغو</th>
-                  <th className="border border-border px-3 py-2">الاسم</th>
-                  <th className="border border-border px-3 py-2">النوع</th>
-                  <th className="border border-border px-3 py-2">الحالة</th>
-                  <th className="border border-border px-3 py-2">إجراءات</th>
+                  <th className="border border-border px-3 py-2">{t('payments.methods.table.logo')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.methods.table.name')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.methods.table.type')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.methods.table.status')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.methods.table.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -431,7 +430,7 @@ export default function AdminPaymentMethodsPage() {
                     </td>
                     <td className="border border-border px-3 py-2">{m.name}</td>
                     <td className="border border-border px-3 py-2">
-                      {typeOptions.find((t) => t.value === m.type)?.label || m.type}
+                      {t(typeOptions.find((tt) => tt.value === m.type)?.labelKey || '') || m.type}
                     </td>
                     <td className="border border-border px-3 py-2 text-center">
                       <span
@@ -447,19 +446,19 @@ export default function AdminPaymentMethodsPage() {
                           onClick={() => toggleActive(m)}
                           className="px-3 py-1 rounded bg-warning hover:brightness-110 text-text-inverse"
                         >
-                          {m.isActive ? 'تعطيل' : 'تفعيل'}
+                          {m.isActive ? t('payments.methods.actions.disable') : t('payments.methods.actions.enable')}
                         </button>
                         <button
                           onClick={() => openEdit(m)}
                           className="px-3 py-1 rounded bg-primary hover:bg-primary-hover text-primary-contrast"
                         >
-                          تعديل
+                          {t('payments.methods.actions.edit')}
                         </button>
                         <button
                           onClick={() => deleteItem(m)}
                           className="px-3 py-1 rounded bg-danger hover:brightness-110 text-text-inverse"
                         >
-                          حذف
+                          {t('payments.methods.actions.delete')}
                         </button>
                       </div>
                     </td>
@@ -479,11 +478,11 @@ export default function AdminPaymentMethodsPage() {
             onClick={() => setEditOpen(false)}
           />
           <div className="relative bg-bg-surface rounded-xl shadow-xl w-full max-w-2xl p-5">
-            <h3 className="text-lg font-semibold mb-4">تعديل الوسيلة</h3>
+            <h3 className="text-lg font-semibold mb-4">{t('payments.methods.pageTitle.edit')}</h3>
 
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <label className="block mb-1 font-medium">الاسم الظاهر</label>
+                <label className="block mb-1 font-medium">{t('payments.methods.form.name.label')}</label>
                 <input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
@@ -492,7 +491,7 @@ export default function AdminPaymentMethodsPage() {
               </div>
 
               <div>
-                <label className="block mb-1 font-medium">النوع</label>
+                <label className="block mb-1 font-medium">{t('payments.methods.form.type.label')}</label>
                 <select
                   value={editType}
                   onChange={(e) =>
@@ -500,16 +499,16 @@ export default function AdminPaymentMethodsPage() {
                   }
                   className="w-full border border-border rounded px-3 py-2 bg-bg-input text-text-primary"
                 >
-                  {typeOptions.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
+                  {typeOptions.map((op) => (
+                    <option key={op.value} value={op.value}>
+                      {t(op.labelKey)}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block mb-1 font-medium">شعار الوسيلة</label>
+                <label className="block mb-1 font-medium">{t('payments.methods.form.logo.label')}</label>
                 <input
                   type="file"
                   accept="image/*"
@@ -540,12 +539,12 @@ export default function AdminPaymentMethodsPage() {
                   onChange={() => setEditActive(!editActive)}
                 />
                 <label htmlFor="editActive" className="font-medium">
-                  مفعّل
+                  {t('payments.methods.form.active')}
                 </label>
               </div>
 
               <div className="md:col-span-2">
-                <label className="block mb-1 font-medium">ملاحظة عامة</label>
+                <label className="block mb-1 font-medium">{t('payments.methods.form.note.label')}</label>
                 <input
                   value={editNote}
                   onChange={(e) => setEditNote(e.target.value)}
@@ -554,7 +553,7 @@ export default function AdminPaymentMethodsPage() {
               </div>
 
               <div className="md:col-span-2">
-                <h4 className="font-semibold mb-2">حقول خاصة بالنوع</h4>
+                <h4 className="font-semibold mb-2">{t('payments.methods.form.config.title')}</h4>
                 <div className="grid md:grid-cols-2 gap-3">
                   {editConfigFields.map((f) => (
                     <div key={f.key}>
@@ -580,13 +579,13 @@ export default function AdminPaymentMethodsPage() {
                 onClick={() => setEditOpen(false)}
                 className="px-4 py-2 rounded bg-secondary hover:bg-secondary-hover text-secondary-contrast"
               >
-                إلغاء
+                {t('common.cancel')}
               </button>
               <button
                 onClick={saveEdit}
                 className="px-4 py-2 rounded bg-primary hover:bg-primary-hover text-primary-contrast"
               >
-                حفظ
+                {t('common.save')}
               </button>
             </div>
           </div>

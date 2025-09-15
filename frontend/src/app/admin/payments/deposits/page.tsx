@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { fmtDateStable } from '@/lib/fmtDateStable';
 import api, { API_ROUTES } from '@/utils/api';
 import { ErrorResponse } from '@/types/common';
+import { useTranslation } from 'react-i18next';
 
 type DepositStatus = 'pending' | 'approved' | 'rejected';
 
@@ -30,11 +31,11 @@ interface DepositsResponse {
   meta?: { limit?: number; appliedFilters?: Record<string, string> };
 }
 
-const statusTabs: { key: DepositStatus | 'all'; label: string }[] = [
-  { key: 'all',      label: 'الكل' },
-  { key: 'pending',  label: 'قيد المراجعة' },
-  { key: 'approved', label: 'مقبول' },
-  { key: 'rejected', label: 'مرفوض' },
+const statusTabs: { key: DepositStatus | 'all'; labelKey: string }[] = [
+  { key: 'all',      labelKey: 'payments.deposits.tabs.all' },
+  { key: 'pending',  labelKey: 'payments.deposits.tabs.pending' },
+  { key: 'approved', labelKey: 'payments.deposits.tabs.approved' },
+  { key: 'rejected', labelKey: 'payments.deposits.tabs.rejected' },
 ];
 
 const fmt = (v: number | string | undefined | null, maxFrac = 2) => {
@@ -120,6 +121,7 @@ function normalizeRow(x: Record<string, unknown>): DepositRow {
 }
 
 export default function AdminDepositsPage() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<DepositRow[]>([]);
   const [error, setError] = useState('');
@@ -184,7 +186,7 @@ export default function AdminDepositsPage() {
       setHasMore(!!data?.pageInfo?.hasMore);
     } catch (e: unknown) {
       const error = e as ErrorResponse;
-      const msg = error?.response?.data?.message || error?.message || 'تعذّر جلب الإيداعات';
+      const msg = error?.response?.data?.message || error?.message || t('payments.deposits.action.genericFail');
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
       if (reset) setRows([]);
     } finally {
@@ -197,11 +199,10 @@ export default function AdminDepositsPage() {
 
   const setStatus = async (row: DepositRow, status: DepositStatus) => {
     const verb =
-      status === 'approved' ? 'قبول'
-      : status === 'rejected' ? 'إبطال'
-      : 'تحديث';
-
-    if (!confirm(`تأكيد ${verb} طلب الإيداع؟`)) return;
+      status === 'approved' ? t('payments.deposits.confirm.approve')
+      : status === 'rejected' ? t('payments.deposits.confirm.reject')
+      : t('generic.details');
+    if (!confirm(verb)) return;
 
     const url = buildSetStatusUrl(row.id);
     const payload = { status };
@@ -216,8 +217,7 @@ export default function AdminDepositsPage() {
       await fetchPage(true);
     } catch (e: unknown) {
       const error = e as ErrorResponse;
-      console.error('[ADMIN][DEPOSITS] setStatus error:', error);
-      const msg = error?.response?.data?.message || error?.message || `تعذّر ${verb} الإيداع`;
+      const msg = error?.response?.data?.message || error?.message || t('payments.deposits.action.genericFail');
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setActionRowId(null);
@@ -228,54 +228,44 @@ export default function AdminDepositsPage() {
     <div className="bg-bg-base text-text-primary p-6 min-h-screen">
       <section className="rounded-lg border border-border bg-bg-surface p-4">
         <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-bold">طلبات الإيداع</h2>
-
-        <div className="flex items-center gap-2">
-            {statusTabs.map(t => {
-              const isActive = activeTab === t.key;
+          <h2 className="text-lg font-bold">{t('payments.nav.deposits')}</h2>
+          <div className="flex items-center gap-2">
+            {statusTabs.map(ti => {
+              const isActive = activeTab === ti.key;
               return (
                 <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`px-3 py-1 rounded text-sm border transition
-                    ${isActive
-                      ? 'bg-primary text-primary-contrast border-border'
-                      : 'bg-bg-surface-alt text-text-primary border-border hover:opacity-90'
-                    }`}
+                  key={ti.key}
+                  onClick={() => setActiveTab(ti.key)}
+                  className={`px-3 py-1 rounded text-sm border transition ${isActive ? 'bg-primary text-primary-contrast border-border' : 'bg-bg-surface-alt text-text-primary border-border hover:opacity-90'}`}
                 >
-                  {t.label}
+                  {t(ti.labelKey)}
                 </button>
               );
             })}
           </div>
         </div>
-
         {error && (
-          <div className="mb-3 text-sm text-danger border border-danger/30 rounded p-2 bg-danger/10">
-            {error}
-          </div>
+          <div className="mb-3 text-sm text-danger border border-danger/30 rounded p-2 bg-danger/10">{error}</div>
         )}
-
         {loading ? (
-          <div className="text-text-secondary">جارِ التحميل...</div>
-  ) : sorted.length === 0 ? (
-          <div className="text-text-secondary">لا توجد سجلات.</div>
+          <div className="text-text-secondary">{t('product.status.loading')}</div>
+        ) : sorted.length === 0 ? (
+          <div className="text-text-secondary">{t('orders.empty.filtered')}</div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="min-w-full text-sm bg-bg-surface">
               <thead>
                 <tr className="bg-bg-surface-alt text-center">
-                  <th className="border border-border px-3 py-2">المستخدم</th>
-                  <th className="border border-border px-3 py-2">الوسيلة</th>
-                  <th className="border border-border px-3 py-2">المبلغ الأصلي</th>
-                  <th className="border border-border px-3 py-2">سعر الصرف</th>
-                  <th className="border border-border px-3 py-2">المبلغ بعد التحويل</th>
-                  <th className="border border-border px-3 py-2">الحالة</th>
-                  <th className="border border-border px-3 py-2">التاريخ</th>
-                  <th className="border border-border px-3 py-2">إجراءات</th>
+                  <th className="border border-border px-3 py-2">{t('users.table.user')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.deposits.table.method')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.deposits.table.originalAmount')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.deposits.table.rate')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.deposits.table.convertedAmount')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.deposits.table.status')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.deposits.table.createdAt')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.deposits.table.actions')}</th>
                 </tr>
               </thead>
-
               <tbody>
                 {sorted.map((r) => {
                   const userLabel =
@@ -300,15 +290,13 @@ export default function AdminDepositsPage() {
                       <td className="border border-border px-3 py-2">{rate}</td>
                       <td className="border border-border px-3 py-2">{converted}</td>
                       <td className="border border-border px-3 py-2">
-                        <span
-                          className={`inline-block w-4 h-4 rounded-full
-                            ${r.status === 'approved'
-                              ? 'bg-success'
-                              : r.status === 'rejected'
-                              ? 'bg-danger'
-                              : 'bg-warning'}`}
-                          title={r.status}
-                        />
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium
+                          ${r.status === 'approved'
+                            ? 'bg-success text-text-inverse'
+                            : r.status === 'rejected'
+                            ? 'bg-danger text-text-inverse'
+                            : 'bg-warning text-text-inverse'}`}
+                        >{t(`payments.deposits.status.${r.status}`)}</span>
                       </td>
                       <td className="border border-border px-3 py-2">
                         {fmtDateStable(r.createdAt)}
@@ -321,14 +309,14 @@ export default function AdminDepositsPage() {
                               disabled={busy}
                               className="px-3 py-1 rounded bg-success text-text-inverse hover:brightness-110 disabled:opacity-50"
                             >
-                              {busy ? 'جارِ التنفيذ…' : 'قبول'}
+                              {busy ? t('product.status.loading') : t('payments.deposits.action.approve.button')}
                             </button>
                             <button
                               onClick={() => setStatus(r, 'rejected')}
                               disabled={busy}
                               className="px-3 py-1 rounded bg-danger text-text-inverse hover:brightness-110 disabled:opacity-50"
                             >
-                              {busy ? 'جارِ التنفيذ…' : 'رفض'}
+                              {busy ? t('product.status.loading') : t('payments.deposits.action.reject.button')}
                             </button>
                           </div>
                         ) : r.status === 'approved' ? (
@@ -337,7 +325,7 @@ export default function AdminDepositsPage() {
                             disabled={busy}
                             className="px-3 py-1 rounded bg-danger text-text-inverse hover:brightness-110 disabled:opacity-50"
                           >
-                            {busy ? 'جارِ التنفيذ…' : 'إبطال'}
+                            {busy ? t('product.status.loading') : t('payments.deposits.action.reject.button')}
                           </button>
                         ) : (
                           <button
@@ -345,7 +333,7 @@ export default function AdminDepositsPage() {
                             disabled={busy}
                             className="px-3 py-1 rounded bg-success text-text-inverse hover:brightness-110 disabled:opacity-50"
                           >
-                            {busy ? 'جارِ التنفيذ…' : 'قبول'}
+                            {busy ? t('product.status.loading') : t('payments.deposits.action.approve.button')}
                           </button>
                         )}
                       </td>
@@ -354,7 +342,6 @@ export default function AdminDepositsPage() {
                 })}
               </tbody>
             </table>
-
             {hasMore && (
               <div className="flex justify-center p-3 border-t border-border bg-bg-surface">
                 <button
@@ -362,7 +349,7 @@ export default function AdminDepositsPage() {
                   disabled={loadingMore}
                   className="px-4 py-2 rounded bg-bg-surface-alt border border-border hover:opacity-90 disabled:opacity-50"
                 >
-                  {loadingMore ? 'جارِ التحميل…' : 'تحميل المزيد'}
+                  {loadingMore ? t('product.status.loading') : t('orders.loadMore')}
                 </button>
               </div>
             )}
