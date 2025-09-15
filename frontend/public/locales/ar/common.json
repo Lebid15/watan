@@ -18,4 +18,15 @@
   "lang.ar": "العربية",
   "lang.en": "English",
   "lang.tr": "Türkçe"
+  ,
+  "wallet.balance": "رصيد المحفظة",
+  "errors.upload.network": "تعذر الاتصال بالخادم أثناء الرفع",
+  "errors.session.expired": "جلسة منتهية، يرجى تسجيل الدخول",
+  "errors.image.tooLarge": "الصورة كبيرة جدًا",
+  "errors.cloudinary.badConfig": "إعدادات Cloudinary غير صحيحة",
+  "errors.upload.generic": "فشل رفع الملف…",
+  "errors.image.missingUrl": "لم يتم استلام رابط الصورة",
+  "errors.product.fetchFailed": "فشل في جلب بيانات المنتج",
+  "errors.unexpected": "حدث خطأ غير متوقع",
+  "auth.admin.loginRequired": "الرجاء تسجيل الدخول كمسؤول."
 }

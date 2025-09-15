@@ -18,4 +18,15 @@
   "lang.ar": "Arapça",
   "lang.en": "İngilizce",
   "lang.tr": "Türkçe"
+  ,
+  "wallet.balance": "Cüzdan Bakiyesi",
+  "errors.upload.network": "Yükleme sırasında sunucuya ulaşılamadı",
+  "errors.session.expired": "Oturum süresi doldu, lütfen giriş yapın",
+  "errors.image.tooLarge": "Görsel çok büyük",
+  "errors.cloudinary.badConfig": "Cloudinary yapılandırması geçersiz",
+  "errors.upload.generic": "Dosya yüklemesi başarısız oldu…",
+  "errors.image.missingUrl": "Görsel URL'si alınamadı",
+  "errors.product.fetchFailed": "Ürün verileri alınamadı",
+  "errors.unexpected": "Beklenmeyen bir hata oluştu",
+  "auth.admin.loginRequired": "Lütfen yönetici olarak giriş yapın."
 }

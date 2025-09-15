@@ -18,4 +18,15 @@
   "lang.ar": "Arabic",
   "lang.en": "English",
   "lang.tr": "Turkish"
+  ,
+  "wallet.balance": "Wallet Balance",
+  "errors.upload.network": "Failed to reach server during upload",
+  "errors.session.expired": "Session expired, please log in",
+  "errors.image.tooLarge": "Image is too large",
+  "errors.cloudinary.badConfig": "Cloudinary configuration is invalid",
+  "errors.upload.generic": "File upload failed…",
+  "errors.image.missingUrl": "Image URL was not received",
+  "errors.product.fetchFailed": "Failed to fetch product data",
+  "errors.unexpected": "An unexpected error occurred",
+  "auth.admin.loginRequired": "Please login as an administrator."
 }
