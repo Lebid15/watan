@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { Api } from '@/utils/api';
 import { FiList, FiUsers, FiDollarSign, FiShare2 } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 
 interface NavItem {
   name: string;
@@ -14,6 +15,7 @@ interface NavItem {
 }
 
 export default function AdminNavbar() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith('/admin') === true;
 
@@ -21,15 +23,15 @@ export default function AdminNavbar() {
   useEffect(() => setOpenDropdown(null), [pathname]);
 
   const navItems: NavItem[] = [
-    { name: 'لوحة التحكم', href: '/admin/dashboard' },
-    { name: 'المنتجات', href: '/admin/products' },
-    { name: 'الطلبات', href: '/admin/orders' },
-    { name: 'المستخدمون', href: '/admin/users' },
+    { name: t('orders.pageTitle'), href: '/admin/dashboard' },
+    { name: t('product.pageTitle'), href: '/admin/products' },
+    { name: t('orders.pageTitle'), href: '/admin/orders' },
+    { name: t('users.pageTitle'), href: '/admin/users' },
     {
-      name: 'الدفعات',
+      name: t('payments.nav.group'),
       subItems: [
-        { name: 'وسائل الدفع', href: '/admin/payments/methods' },
-        { name: 'طلبات الإيداع', href: '/admin/payments/deposits' },
+        { name: t('payments.nav.methods'), href: '/admin/payments/methods' },
+        { name: t('payments.nav.deposits'), href: '/admin/payments/deposits' },
       ],
     },
     {

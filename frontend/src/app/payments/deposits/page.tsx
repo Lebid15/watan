@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useAuthRequired } from '@/hooks/useAuthRequired';
 import { ErrorResponse } from '@/types/common';
+import { useTranslation } from 'react-i18next';
 
 type PaymentMethodType = 'CASH_BOX' | 'BANK_ACCOUNT' | 'HAND_DELIVERY' | 'USDT' | 'MONEY_TRANSFER';
 
@@ -24,6 +25,7 @@ const fileUrl = (u?: string | null) => (!u ? '' : u.startsWith('/uploads') ? `${
 
 export default function DepositMethodsPage() {
   useAuthRequired();
+  const { t } = useTranslation();
 
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -38,7 +40,8 @@ export default function DepositMethodsPage() {
       setMethods(Array.isArray(data) ? data : []);
     } catch (e: unknown) {
       const error = e as ErrorResponse;
-      const msg = error?.response?.data?.message || error?.message || 'تعذر جلب وسائل الدفع.';
+      const fallback = t('payments.methods.fetch.fail');
+      const msg = (error?.response?.data?.message || error?.message || fallback);
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
       setMethods([]);
     } finally {
@@ -50,15 +53,15 @@ export default function DepositMethodsPage() {
 
   return (
     <div className="min-h-screen p-4 max-w-5xl mx-auto bg-bg-base text-text-primary" dir="rtl">
-      <h1 className="text-xl font-bold mb-2">إضافة رصيد</h1>
-      <p className="text-text-secondary mb-6">اختر وسيلة الدفع المناسبة للمتابعة.</p>
+      <h1 className="text-xl font-bold mb-2">{t('payments.deposits.list.pageTitle')}</h1>
+      <p className="text-text-secondary mb-6">{t('payments.deposits.list.description')}</p>
 
       {error && <div className="mb-4 text-danger">{error}</div>}
 
       {loading ? (
-        <div className="text-text-secondary">جارِ التحميل...</div>
+        <div className="text-text-secondary">{t('product.status.loading')}</div>
       ) : methods.length === 0 ? (
-        <div className="text-text-secondary">لا توجد وسائل دفع مفعّلة حالياً.</div>
+        <div className="text-text-secondary">{t('payments.deposits.list.empty')}</div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-4">
           {methods.map((m) => (
@@ -70,7 +73,7 @@ export default function DepositMethodsPage() {
                 'hover:bg-bg-surface-alt transition outline-none',
                 'focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0'
               ].join(' ')}
-              aria-label={`اختيار وسيلة ${m.name}`}
+              aria-label={t('payments.deposits.list.selectAria', { name: m.name })}
             >
               <div className="w-full h-20 flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
+import { useTranslation } from 'react-i18next';
 
 type PaymentMethodType = 'CASH_BOX' | 'BANK_ACCOUNT' | 'HAND_DELIVERY' | 'USDT' | 'MONEY_TRANSFER';
 
@@ -41,6 +42,7 @@ const valueOf = (c: CurrencyRow): number => {
 export default function DepositCreatePage() {
   const { methodId } = useParams<{ methodId: string }>();
   const router = useRouter();
+  const { t } = useTranslation();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -116,7 +118,7 @@ const walletCurrency = useMemo(() => {
         '';
       setFromCurrency(defaultFrom);
     } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'تعذّر التحميل.';
+      const msg = e?.response?.data?.message || e?.message || t('product.status.loading');
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setLoading(false);
@@ -132,9 +134,9 @@ const walletCurrency = useMemo(() => {
     e.preventDefault();
     setError('');
     try {
-      if (!method) throw new Error('لم يتم العثور على وسيلة الدفع المحددة.');
+      if (!method) throw new Error(t('payments.deposits.method.notFoundDetailed'));
       const a = Number(amount);
-      if (!a || a <= 0) throw new Error('يرجى إدخال مبلغ صحيح.');
+      if (!a || a <= 0) throw new Error(t('users.topup.errors.invalidAmount'));
 
       await api.post(API_ROUTES.payments.deposits.create, {
         methodId: method.id,
@@ -144,10 +146,10 @@ const walletCurrency = useMemo(() => {
         note: note || undefined,
       });
 
-      alert('تم إرسال طلب الإيداع بنجاح! سيقوم فريقنا بمراجعته.');
+      alert(t('payments.deposits.method.success'));
       router.push('/wallet');
     } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || 'تعذّر إرسال الطلب.';
+      const msg = e?.response?.data?.message || e?.message || t('payments.deposits.action.genericFail');
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
     }
   };
@@ -159,15 +161,15 @@ const walletCurrency = useMemo(() => {
         className="btn btn-ghost mb-3"
         type="button"
       >
-        ← رجوع
+        ← {t('users.detail.back')}
       </button>
 
-      <h1 className="text-lg sm:text-xl font-bold mb-2">إنشاء طلب إيداع</h1>
+      <h1 className="text-lg sm:text-xl font-bold mb-2">{t('payments.deposits.method.pageTitle')}</h1>
 
       {loading ? (
-        <div className="text-text-secondary">جارِ التحميل...</div>
+        <div className="text-text-secondary">{t('product.status.loading')}</div>
       ) : !method ? (
-        <div className="text-danger">لم يتم العثور على وسيلة الدفع.</div>
+        <div className="text-danger">{t('payments.deposits.method.notFound')}</div>
       ) : (
         <>
           {/* بطاقة وسيلة الدفع */}
@@ -203,7 +205,7 @@ const walletCurrency = useMemo(() => {
             {/* المبلغ + العملة */}
             <div className="flex gap-3 flex-col sm:flex-row">
               <div className="flex-1">
-                <label className="block mb-1 text-sm text-text-secondary">المبلغ</label>
+                <label className="block mb-1 text-sm text-text-secondary">{t('users.topup.amount.label')}</label>
                 <input
                   type="number"
                   min="0"
@@ -212,11 +214,11 @@ const walletCurrency = useMemo(() => {
                   onChange={(e) => setAmount(e.target.value)}
                   required
                   className="input w-full bg-bg-input border-border"
-                  placeholder="مثال: 100"
+                  placeholder={t('users.topup.amount.example',{ symbol: '' })}
                 />
               </div>
               <div className="sm:w-36">
-                <label className="block mb-1 text-sm text-text-secondary">العملة</label>
+                <label className="block mb-1 text-sm text-text-secondary">{t('users.topup.currency')}</label>
                 <select
                   value={fromCurrency}
                   onChange={(e) => setFromCurrency(e.target.value)}
@@ -234,11 +236,11 @@ const walletCurrency = useMemo(() => {
             {/* عملة المحفظة + سعر الصرف */}
             <div className="flex gap-3 flex-col sm:flex-row">
               <div className="flex-1">
-                <label className="block mb-1 text-sm text-text-secondary">عملة محفظتك</label>
+                <label className="block mb-1 text-sm text-text-secondary">{t('billing.pay.methodId')}</label>
                 <input value={walletCurrency} readOnly className="input w-full bg-bg-surface-alt border-border" />
               </div>
               <div className="flex-1">
-                <label className="block mb-1 text-sm text-text-secondary">سعر الصرف</label>
+                <label className="block mb-1 text-sm text-text-secondary">{t('payments.deposits.method.pageTitle')}</label>
                 <input
                   value={rateUsed ? Number(rateUsed).toFixed(4) : ''}
                   readOnly
@@ -249,7 +251,7 @@ const walletCurrency = useMemo(() => {
 
             {/* القيمة المتوقعة بعد التحويل */}
             <div>
-              <label className="block mb-1 text-sm text-text-secondary">القيمة التي ستُضاف لمحفظتك</label>
+              <label className="block mb-1 text-sm text-text-secondary">{t('payments.deposits.method.pageTitle')}</label>
               <input
                 value={convertedAmount ? Number(convertedAmount).toFixed(2) : ''}
                 readOnly
@@ -259,12 +261,12 @@ const walletCurrency = useMemo(() => {
 
             {/* ملاحظة */}
             <div>
-              <label className="block mb-1 text-sm text-text-secondary">ملاحظة (اختياري)</label>
+              <label className="block mb-1 text-sm text-text-secondary">{t('users.topup.note.label')}</label>
               <input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 className="input w-full bg-bg-input border-border"
-                placeholder="مثال: رقم الحوالة / تفاصيل إضافية"
+                placeholder={t('users.topup.note.placeholder')}
               />
             </div>
 
@@ -274,14 +276,14 @@ const walletCurrency = useMemo(() => {
                 type="submit"
                 className="btn btn-primary hover:bg-primary-hover"
               >
-                طلب
+                {t('billing.pay.submit')}
               </button>
               <button
                 type="button"
                 onClick={() => router.push('/wallet')}
                 className="btn btn-secondary"
               >
-                إلغاء
+                {t('users.topup.cancel')}
               </button>
             </div>
           </form>

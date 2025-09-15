@@ -233,3 +233,48 @@ _Last updated: (auto)_
 | "حفظ" | `users.detail.save.button` |
 | "جاري الحفظ..." | `users.detail.save.saving` |
 | "رجوع" | `users.detail.back` |
+
+## Mapping: Payments / Billing
+| Arabic Original | Key |
+|-----------------|-----|
+| "الدفعات" | `payments.nav.group` |
+| "وسائل الدفع" | `payments.nav.methods` |
+| "طلبات الإيداع" | `payments.nav.deposits` |
+| "إضافة رصيد" | `payments.deposits.list.pageTitle` / nav.bottom.deposit |
+| "اختر وسيلة الدفع المناسبة للمتابعة." | `payments.deposits.list.description` |
+| "لا توجد وسائل دفع مفعّلة حالياً." | `payments.deposits.list.empty` |
+| "إنشاء طلب إيداع" | `payments.deposits.method.pageTitle` |
+| "تم إرسال طلب الإيداع بنجاح! سيقوم فريقنا بمراجعته." | `payments.deposits.method.success` |
+| "لم يتم العثور على وسيلة الدفع." | `payments.deposits.method.notFound` |
+| "لم يتم العثور على وسيلة الدفع المحددة." | `payments.deposits.method.notFoundDetailed` |
+| "تأكيد اعتماد طلب الإيداع؟" | `payments.deposits.confirm.approve` |
+| "تأكيد رفض طلب الإيداع؟" | `payments.deposits.confirm.reject` |
+| "تم اعتماد الإيداع" | `payments.deposits.action.approve.success` |
+| "تعذّر اعتماد الإيداع" | `payments.deposits.action.approve.fail` |
+| "تم رفض الإيداع" | `payments.deposits.action.reject.success` |
+| "تعذّر رفض الإيداع" | `payments.deposits.action.reject.fail` |
+| "تعذّر تنفيذ العملية على الإيداع" | `payments.deposits.action.genericFail` |
+| "الوسيلة" (table header) | `payments.deposits.table.method` |
+| "إضافة وسيلة دفع" | `payments.methods.pageTitle.create` |
+| "تعديل الوسيلة" | `payments.methods.pageTitle.edit` |
+| "فشل جلب وسائل الدفع" | `payments.methods.fetch.fail` |
+| "فشل إنشاء وسيلة دفع جديدة" | `payments.methods.create.fail` |
+| "فشل تعديل الوسيلة" | `payments.methods.update.fail` |
+| "تعذر حذف الوسيلة" | `payments.methods.delete.fail` |
+| "تعذر تغيير حالة الوسيلة" | `payments.methods.status.fail` |
+| "شعار الوسيلة (اختياري)" | `payments.methods.form.logoOptional` |
+| "حقول خاصة بنوع الوسيلة" | `payments.methods.form.typeFieldsTitle` |
+| "حفظ الوسيلة" | `payments.methods.form.saveButton` |
+| "دفع" (page title) | `billing.pay.pageTitle` |
+| "تنفيذ الدفع" | `billing.pay.submit` |
+| "معرّف وسيلة الدفع" | `billing.pay.methodId` |
+| "تم إنشاء إيداع رقم {id}" | `billing.pay.success` |
+| "تم إرسال طلب الدفع، سيتم المراجعة والاعتماد. بعد الاعتماد يتجدّد الاشتراك للشهر التالي." | `billing.pay.notice.sent` |
+| "خطأ غير متوقع" | `billing.pay.errors.unexpected` / `generic.error.short` |
+| "المبلغ غير صالح" | `billing.pay.errors.invalidAmount` |
+| "يجب اختيار وسيلة دفع" | `billing.pay.errors.methodRequired` |
+| "الفاتورة غير مفتوحة" | `billing.pay.errors.invoiceNotOpen` |
+| "تم تعليق المتجر بسبب تأخر الدفع" | `billing.pay.errors.tenantSuspended` / `billing.suspended.banner` |
+| "لا توجد وسائل دفع مضافة بعد. الرجاء التوجه إلى صفحة وسائل الدفع لإضافة وسيلة." | `billing.pay.noMethods` |
+| "طلب دفع" | `billing.suspended.payRequestButton` |
+| "دفع فاتورة" | `nav.bottom.payInvoice` |
