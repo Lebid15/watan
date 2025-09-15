@@ -1013,25 +1013,25 @@ export class ProductsService {
     if (!product) throw new NotFoundException('لم يتم العثور على المنتج');
 
     const isGlobal = product.tenantId === this.DEV_TENANT_ID;
+    const sameTenant = !isGlobal && tenantId && product.tenantId === tenantId;
 
-    // في حال منتج تينانت: يجب أن يطابق tenantId القادم من السياق وإلا منع
-    if (!isGlobal) {
-      if (!tenantId) {
-        throw new ForbiddenException({ code: 'PRODUCT_DELETE_NO_TENANT_CTX', message: 'لا يوجد سياق مستأجر صالح للحذف' });
-      }
-      if (product.tenantId !== tenantId) {
-        throw new ForbiddenException({ code: 'PRODUCT_DELETE_TENANT_MISMATCH', message: 'عدم تطابق سياق المنتج مع التينانت' });
-      }
-      if (!(isDev)) {
-        throw new ForbiddenException({ code: 'PRODUCT_DELETE_ROLE_FORBIDDEN', message: 'دورك لا يسمح بحذف هذا المنتج' });
-      }
-    } else {
+    // منطق جديد: السماح لأي مستخدم من نفس التينانت بحذف المنتج المحلي الخاص به.
+    // المنتجات العالمية ما زالت محصورة على المطور/مالك المنصة.
+    if (isGlobal) {
       if (!isDev) {
         throw new ForbiddenException({ code: 'PRODUCT_DELETE_GLOBAL_FORBIDDEN', message: 'غير مصرح بحذف منتج عالمي' });
       }
+    } else {
+      if (!tenantId) {
+        throw new ForbiddenException({ code: 'PRODUCT_DELETE_NO_TENANT_CTX', message: 'لا يوجد سياق مستأجر صالح للحذف' });
+      }
+      if (!sameTenant) {
+        throw new ForbiddenException({ code: 'PRODUCT_DELETE_TENANT_MISMATCH', message: 'عدم تطابق سياق المنتج مع التينانت' });
+      }
+      // لم نعد نقيّد الحذف بدور developer للمحلي
     }
 
-    console.log('[PRODUCTS][DELETE][REQ]', { id: product.id, productTenant: product.tenantId, byRole: roleLower, isGlobal, reqTenant: tenantId, allowGlobal });
+    console.log('[PRODUCTS][DELETE][REQ]', { id: product.id, productTenant: product.tenantId, byRole: roleLower, isGlobal, reqTenant: tenantId, allowGlobal, sameTenant });
     try {
       await this.productsRepo.remove(product);
       console.log('[PRODUCTS][DELETE][DONE]', { id: product.id, global: isGlobal });
