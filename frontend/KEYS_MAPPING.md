@@ -109,4 +109,69 @@ Future suggestions (not yet created in code):
 3. (Optional) Split very large `common.json` into modular namespaces once stabilization is complete.
 
 ---
+## Mapping: Orders Page (Admin)
+| Arabic Original | Key |
+|-----------------|-----|
+| "إدارة الطلبات" | `orders.pageTitle` |
+| "جاري التحميل…" | `orders.loading` |
+| "بحث عام" | `orders.filters.search.label` |
+| "اكتب رقم/مستخدم/باقة…" | `orders.filters.search.placeholder` |
+| "الحالة" | `orders.filters.status.label` |
+| "الكل" (status/method) | `orders.filters.status.all` / `orders.filters.method.all` |
+| "قيد المراجعة" | `orders.filters.status.pending` / `orders.status.pending` |
+| "مقبول" | `orders.filters.status.approved` / `orders.status.approved` |
+| "مرفوض" | `orders.filters.status.rejected` / `orders.status.rejected` |
+| "طريقة التنفيذ" | `orders.filters.method.label` |
+| "يدوي (Manual)" | `orders.filters.method.manual` |
+| "الأكواد الرقمية" | `orders.filters.method.internalCodes` |
+| "من تاريخ" | `orders.filters.from` |
+| "إلى تاريخ" | `orders.filters.to` |
+| "تحديث" | `orders.filters.refresh` |
+| "مسح الفلتر" | `orders.filters.clear` |
+| "تمت إعادة التصفية" | `orders.filters.clearedToast` |
+| "ملاحظة (اختياري)" | `orders.bulk.note.placeholder` |
+| "حدد الجهة الخارجية…" | `orders.bulk.provider.placeholder` |
+| "اختر الجهة الخارجية" | `orders.bulk.provider.selectTitle` |
+| "إرسال" | `orders.bulk.dispatch.button` |
+| "تحويل إلى يدوي" | `orders.bulk.manual.button` |
+| "موافقة" | `orders.bulk.approve.button` |
+| "رفض" | `orders.bulk.reject.button` |
+| "لم يتم تحديد أي طلبات" | `orders.bulk.needSelection` |
+| "يرجى اختيار الجهة الخارجية أولاً" | `orders.bulk.needProvider` |
+| "تمت الموافقة على {count} طلب(ات) بنجاح" | `orders.bulk.approve.success` |
+| "تعذر الموافقة" | `orders.bulk.approve.fail` |
+| "تم رفض {count} طلب(ات)" | `orders.bulk.reject.success` |
+| "تعذر الرفض" | `orders.bulk.reject.fail` |
+| "تم إرسال {count} طلب(ات) بنجاح" | `orders.bulk.dispatch.partialSuccess` |
+| "فشل توجيه بعض الطلبات" | `orders.bulk.dispatch.partialFail` |
+| "تم إرسال الطلبات إلى الجهة الخارجية" | `orders.bulk.dispatch.successFallback` |
+| "تعذر الإرسال للجهة الخارجية" | `orders.bulk.dispatch.fail` |
+| "تم تحويل {count} طلب(ات) إلى Manual" | `orders.bulk.manual.success` |
+| "تعذر تحويل الطلبات إلى Manual" | `orders.bulk.manual.fail` |
+| "لوغو" | `orders.table.logo` |
+| "رقم الطلب" | `orders.table.orderNo` |
+| "المستخدم" | `orders.table.user` |
+| "الباقة" | `orders.table.package` |
+| "رقم اللاعب" | `orders.table.playerId` |
+| "التكلفة" | `orders.table.cost` |
+| "السعر" | `orders.table.price` |
+| "الربح" | `orders.table.profit` |
+| "الحالة" | `orders.table.status` |
+| "الكمية:" | `orders.table.quantityPrefix` |
+| "(مزود محذوف)" | `orders.table.externalProviderDeleted` / `generic.deletedProvider` |
+| "كود" | `orders.table.internalCodes` |
+| "Manual" | `orders.table.manualExecution` |
+| "لا توجد طلبات مطابقة للفلاتر الحالية." | `orders.empty.filtered` |
+| "تحميل المزيد" | `orders.loadMore` |
+| "تفاصيل الطلب" | `orders.modal.title` |
+| "تفاصيل الطلب #{number}" | `orders.modal.titleWithNumber` |
+| "(الكمية: {count})" | `orders.modal.quantity` |
+| "ملاحظة المزوّد" | `orders.modal.providerNote.title` |
+| "تاريخ الوصول" | `orders.modal.arrivalAt` |
+| "تاريخ الإنشاء" | `orders.modal.createdAt` |
+| "قيمة الصرف مجمّدة" | `orders.modal.fxLocked` |
+| "قيمة الصرف مجمّدة منذ {date}." | `orders.modal.fxLockedSince` |
+
+
+---
 _Last updated: (auto)_

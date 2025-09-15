@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useToast } from '@/context/ToastContext';
 import { createPortal } from 'react-dom';
@@ -806,36 +807,36 @@ export default function AdminOrdersPage() {
   const { show: toast } = useToast();
 
   const bulkApprove = async () => {
-    if (selected.size === 0) return toast('لم يتم تحديد أي طلبات');
+  if (selected.size === 0) return toast(t('orders.bulk.needSelection'));
     try {
       await api.post(bulkApproveUrl, { ids: [...selected], note: note || undefined });
       setOrders((prev) => prev.map((o) => (selected.has(o.id) ? { ...o, status: 'approved' } : o)));
       const n = selected.size;
       setSelected(new Set());
       setNote('');
-      toast(`تمت الموافقة على ${n} طلب(ات) بنجاح`);
+  toast(t('orders.bulk.approve.success',{count:n}));
     } catch (e: any) {
-      toast(e?.response?.data?.message || 'تعذر الموافقة');
+  toast(e?.response?.data?.message || t('orders.bulk.approve.fail'));
     }
   };
 
   const bulkReject = async () => {
-    if (selected.size === 0) return toast('لم يتم تحديد أي طلبات');
+  if (selected.size === 0) return toast(t('orders.bulk.needSelection'));
     try {
       await api.post(bulkRejectUrl, { ids: [...selected], note: note || undefined });
       setOrders((prev) => prev.map((o) => (selected.has(o.id) ? { ...o, status: 'rejected' } : o)));
       const n = selected.size;
       setSelected(new Set());
       setNote('');
-      toast(`تم رفض ${n} طلب(ات)`);
+  toast(t('orders.bulk.reject.success',{count:n}));
     } catch (e: any) {
-      toast(e?.response?.data?.message || 'تعذر الرفض');
+  toast(e?.response?.data?.message || t('orders.bulk.reject.fail'));
     }
   };
 
   const bulkDispatch = async () => {
-    if (selected.size === 0) return toast('لم يتم تحديد أي طلبات');
-    if (!providerId) return toast('يرجى اختيار الجهة الخارجية أولاً');
+  if (selected.size === 0) return toast(t('orders.bulk.needSelection'));
+  if (!providerId) return toast(t('orders.bulk.needProvider'));
     try {
       const { data }: { data: { results?: { success: boolean; message?: string }[]; message?: string; } } =
         await api.post(bulkDispatchUrl, { ids: [...selected], providerId, note: note || undefined });
@@ -843,24 +844,24 @@ export default function AdminOrdersPage() {
       if (data?.results?.length) {
         const ok = data.results.filter((r: any) => r.success);
         const failed = data.results.filter((r: any) => !r.success);
-        if (ok.length) toast(`تم إرسال ${ok.length} طلب(ات) بنجاح`);
-        if (failed.length) toast(failed[0]?.message || 'فشل توجيه بعض الطلبات');
+  if (ok.length) toast(t('orders.bulk.dispatch.partialSuccess',{count:ok.length}));
+  if (failed.length) toast(failed[0]?.message || t('orders.bulk.dispatch.partialFail'));
       } else if (data?.message) {
         toast(data.message);
       } else {
-        toast('تم إرسال الطلبات إلى الجهة الخارجية');
+  toast(t('orders.bulk.dispatch.successFallback'));
       }
 
       setSelected(new Set());
       setNote('');
       setTimeout(fetchOrders, 700);
     } catch (e: any) {
-      toast(e?.response?.data?.message || 'تعذر الإرسال للجهة الخارجية');
+  toast(e?.response?.data?.message || t('orders.bulk.dispatch.fail'));
     }
   };
 
   const bulkManual = async () => {
-    if (selected.size === 0) return toast('لم يتم تحديد أي طلبات');
+  if (selected.size === 0) return toast(t('orders.bulk.needSelection'));
     try {
       await api.post(bulkManualUrl, { ids: [...selected], note: note || undefined });
       setOrders((prev) =>
@@ -879,9 +880,9 @@ export default function AdminOrdersPage() {
       const n = selected.size;
       setSelected(new Set());
       setNote('');
-      toast(`تم تحويل ${n} طلب(ات) إلى Manual`);
+  toast(t('orders.bulk.manual.success',{count:n}));
     } catch (e: any) {
-      toast(e?.response?.data?.message || 'تعذر تحويل الطلبات إلى Manual');
+  toast(e?.response?.data?.message || t('orders.bulk.manual.fail'));
     }
   };
 
@@ -913,51 +914,52 @@ export default function AdminOrdersPage() {
     }
   };
 
-  if (loading) return <div className="p-4 text-text-primary">جاري التحميل…</div>;
+  const { t } = useTranslation();
+  if (loading) return <div className="p-4 text-text-primary">{t('orders.loading')}</div>;
   if (err) return <div className="p-4 text-danger">{err}</div>;
 
   return (
     <div className="text-text-primary bg-bg-base p-4 min-h-screen">
       <style>{`.animate-spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <h1 className="font-bold mb-4">إدارة الطلبات</h1>
+  <h1 className="font-bold mb-4">{t('orders.pageTitle')}</h1>
 
       {/* فلاتر */}
       <div className="flex flex-wrap items-end gap-2 p-2 rounded-lg border border-border mb-3 bg-bg-surface">
         <div className="flex flex-col">
-          <label className="text-xs mb-1 text-text-secondary">بحث عام</label>
+          <label className="text-xs mb-1 text-text-secondary">{t('orders.filters.search.label')}</label>
           <input
             value={filters.q}
             onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
-            placeholder="اكتب رقم/مستخدم/باقة…"
+            placeholder={t('orders.filters.search.placeholder')}
             className="px-2 py-1 rounded border border-border bg-bg-input"
           />
         </div>
 
         <div className="flex flex-col">
-          <label className="text-xs mb-1 text-text-secondary">الحالة</label>
+          <label className="text-xs mb-1 text-text-secondary">{t('orders.filters.status.label')}</label>
           <select
             value={filters.status}
             onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value as any }))}
             className="px-2 py-1 rounded border border-border bg-bg-input"
           >
-            <option value="">الكل</option>
-            <option value="pending">قيد المراجعة</option>
-            <option value="approved">مقبول</option>
-            <option value="rejected">مرفوض</option>
+            <option value="">{t('orders.filters.status.all')}</option>
+            <option value="pending">{t('orders.filters.status.pending')}</option>
+            <option value="approved">{t('orders.filters.status.approved')}</option>
+            <option value="rejected">{t('orders.filters.status.rejected')}</option>
           </select>
         </div>
 
         <div className="flex flex-col">
-          <label className="text-xs mb-1 text-text-secondary">طريقة التنفيذ</label>
+          <label className="text-xs mb-1 text-text-secondary">{t('orders.filters.method.label')}</label>
             <select
               value={filters.method}
               onChange={(e) => setFilters((f) => ({ ...f, method: e.target.value as any }))}
               className="px-2 py-1 rounded border border-border bg-bg-input"
             >
-              <option value="">الكل</option>
-              <option value="manual">يدوي (Manual)</option>
-              <option value="internal_codes">الأكواد الرقمية</option>
+              <option value="">{t('orders.filters.method.all')}</option>
+              <option value="manual">{t('orders.filters.method.manual')}</option>
+              <option value="internal_codes">{t('orders.filters.method.internalCodes')}</option>
               {(Array.isArray(providers) ? providers : []).map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -966,7 +968,7 @@ export default function AdminOrdersPage() {
         </div>
 
         <div className="flex flex-col">
-          <label className="text-xs mb-1 text-text-secondary">من تاريخ</label>
+          <label className="text-xs mb-1 text-text-secondary">{t('orders.filters.from')}</label>
           <input
             type="date"
             value={filters.from}
@@ -976,7 +978,7 @@ export default function AdminOrdersPage() {
         </div>
 
         <div className="flex flex-col">
-          <label className="text-xs mb-1 text-text-secondary">إلى تاريخ</label>
+          <label className="text-xs mb-1 text-text-secondary">{t('orders.filters.to')}</label>
           <input
             type="date"
             value={filters.to}
@@ -986,18 +988,18 @@ export default function AdminOrdersPage() {
         </div>
 
         <button onClick={fetchOrders} className="px-3 py-2 text-sm rounded bg-primary text-primary-contrast hover:bg-primary-hover">
-          تحديث
+          {t('orders.filters.refresh')}
         </button>
 
         <button
           onClick={() => {
             setFilters({ q: '', status: '', method: '', from: '', to: '' });
             (typeof window !== 'undefined') && (document.activeElement as HTMLElement)?.blur?.();
-            show('تمت إعادة التصفية');
+            show(t('orders.filters.clearedToast'));
           }}
           className="px-3 py-2 text-sm rounded bg-danger text-text-inverse hover:brightness-110"
         >
-          مسح الفلتر
+          {t('orders.filters.clear')}
         </button>
       </div>
 
@@ -1007,7 +1009,7 @@ export default function AdminOrdersPage() {
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="ملاحظة (اختياري)"
+            placeholder={t('orders.bulk.note.placeholder')}
             className="px-2 py-1 rounded border border-border bg-bg-input w-64"
           />
 
@@ -1016,9 +1018,9 @@ export default function AdminOrdersPage() {
               value={providerId}
               onChange={(e) => setProviderId(e.target.value)}
               className="px-2 py-1 rounded border border-border bg-bg-input"
-              title="اختر الجهة الخارجية"
+              title={t('orders.bulk.provider.selectTitle')}
             >
-              <option value="">حدد الجهة الخارجية…</option>
+              <option value="">{t('orders.bulk.provider.placeholder')}</option>
               {(Array.isArray(providers) ? providers : []).map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -1028,37 +1030,37 @@ export default function AdminOrdersPage() {
               onClick={bulkDispatch}
               disabled={!providerId}
               className="px-3 py-2 text-sm rounded bg-warning text-text-inverse hover:brightness-110 disabled:opacity-50"
-              title="إرسال الطلبات المحددة للجهة الخارجية"
+              title={t('orders.bulk.dispatch.button')}
             >
-              إرسال
+              {t('orders.bulk.dispatch.button')}
             </button>
           </div>
 
           <button
             onClick={bulkManual}
             className="px-3 py-2 text-sm rounded bg-bg-surface-alt border border-border hover:opacity-90"
-            title="فصل الطلبات المحددة عن الجهة الخارجية (Manual)"
+            title={t('orders.bulk.manual.button')}
           >
-            تحويل إلى يدوي
+            {t('orders.bulk.manual.button')}
           </button>
 
           <button
             onClick={bulkApprove}
             className="px-3 py-2 text-sm rounded bg-success text-text-inverse hover:brightness-110"
-            title="الموافقة على الطلبات المحددة"
+            title={t('orders.bulk.approve.button')}
           >
-            موافقة
+            {t('orders.bulk.approve.button')}
           </button>
 
           <button
             onClick={bulkReject}
             className="px-3 py-2 text-sm rounded bg-danger text-text-inverse hover:brightness-110"
-            title="رفض الطلبات المحددة"
+            title={t('orders.bulk.reject.button')}
           >
-            رفض
+            {t('orders.bulk.reject.button')}
           </button>
 
-          <span className="text-xs opacity-80">({selected.size} محدد)</span>
+          <span className="text-xs opacity-80">{t('orders.bulk.selectedCount',{count:selected.size})}</span>
         </div>
       )}
 
@@ -1071,26 +1073,24 @@ export default function AdminOrdersPage() {
                 <input type="checkbox" checked={allShownSelected} onChange={(e) => toggleSelectAll(e.target.checked)} />
               </th>
 
-              <th className="px-0 py-1 text-sm text-center border-b border border-border w-12">لوغو</th>
-
-              <th className="p-2 text-center border-b border border-border">رقم الطلب</th>
-              <th className="p-2 text-center border-b border border-border">المستخدم</th>
-              <th className="p-2 text-center border-b border border-border">الباقة</th>
-              <th className="p-2 text-center border-b border border-border">رقم اللاعب</th>
-              <th className="p-2 text-center border-b border border-border">التكلفة</th>
-              <th className="p-2 text-center border-b border border-border">السعر</th>
-              <th className="p-2 text-center border-b border border-border">الربح</th>
-              {/* تقليل الحشو لعمود الحالة */}
-              <th className="px-1.5 py-1 text-center border-b border border-border">الحالة</th>
-              <th className="p-2 text-center border-b border border-border">API</th>
+              <th className="px-0 py-1 text-sm text-center border-b border border-border w-12">{t('orders.table.logo')}</th>
+              <th className="p-2 text-center border-b border border-border">{t('orders.table.orderNo')}</th>
+              <th className="p-2 text-center border-b border border-border">{t('orders.table.user')}</th>
+              <th className="p-2 text-center border-b border border-border">{t('orders.table.package')}</th>
+              <th className="p-2 text-center border-b border border-border">{t('orders.table.playerId')}</th>
+              <th className="p-2 text-center border-b border border-border">{t('orders.table.cost')}</th>
+              <th className="p-2 text-center border-b border border-border">{t('orders.table.price')}</th>
+              <th className="p-2 text-center border-b border border-border">{t('orders.table.profit')}</th>
+              <th className="px-1.5 py-1 text-center border-b border border-border">{t('orders.table.status')}</th>
+              <th className="p-2 text-center border-b border border-border">{t('orders.table.api')}</th>
             </tr>
           </thead>
           <tbody className="bg-bg-surface">
             {filtered.map((o) => {
               const isExternal = !!(o.providerId && o.externalOrderId);
               const providerLabel = isExternal
-                ? (providerNameOf(o.providerId, o.providerName) ?? '(مزود محذوف)')
-                : 'Manual';
+                ? (providerNameOf(o.providerId, o.providerName) ?? t('orders.table.externalProviderDeleted'))
+                : t('orders.table.manualExecution');
 
               // 👈 احسب رابط الصورة: جرّب الحقول المباشرة ثم fallback من logos (تم جلبه عبر استدعاء منفصل)
               const rawLogo = (pickImageField(o.package) ?? pickImageField(o.product)) || logoUrlOf(o);
@@ -1142,7 +1142,7 @@ export default function AdminOrdersPage() {
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e">
                     {o.package?.name ?? '-'}
                     {(o as any).quantity && (o as any).quantity > 1 ? (
-                      <span className="block text-[10px] text-text-secondary mt-0.5">الكمية: {(o as any).quantity}</span>
+                      <span className="block text-[10px] text-text-secondary mt-0.5">{t('orders.table.quantityPrefix')} {(o as any).quantity}</span>
                     ) : null}
                   </td>
 
@@ -1199,9 +1199,9 @@ export default function AdminOrdersPage() {
                       {o.providerType === 'external' ? (
                         <span>{providerNameOf(o.providerId, o.providerName) ?? '(مزود محذوف)'}</span>
                       ) : o.providerType === 'internal_codes' ? (
-                        <span className="text-success">كود</span>
+                        <span className="text-success">{t('orders.table.internalCodes')}</span>
                       ) : (
-                        <span className="text-danger">Manual</span>
+                        <span className="text-danger">{t('orders.table.manualExecution')}</span>
                       )}
                     </td>
 
@@ -1215,7 +1215,7 @@ export default function AdminOrdersPage() {
                   className="bg-bg-surface p-6 text-center text-text-secondary border border-border rounded-md"
                   colSpan={11}
                 >
-                  لا توجد طلبات مطابقة للفلاتر الحالية.
+                  {t('orders.empty.filtered')}
                 </td>
               </tr>
             )}
@@ -1232,7 +1232,7 @@ export default function AdminOrdersPage() {
             disabled={loadingMore}
             className="px-4 py-2 rounded bg-bg-surface-alt border border-border hover:opacity-90 disabled:opacity-50"
           >
-            {loadingMore ? 'جاري التحميل…' : 'تحميل المزيد'}
+            {loadingMore ? t('orders.loading') : t('orders.loadMore')}
           </button>
         </div>
       )}
@@ -1241,7 +1241,7 @@ export default function AdminOrdersPage() {
       <Modal
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
-        title={detailOrder ? `تفاصيل الطلب #${displayOrderNumber(detailOrder)}` : 'تفاصيل الطلب'}
+  title={detailOrder ? t('orders.modal.titleWithNumber',{number:displayOrderNumber(detailOrder)}) : t('orders.modal.title')}
         className="flex items-center justify-center p-4"                // وسط الشاشة
         contentClassName="w-full max-w-2xl max-h-[85vh] rounded-lg"
         lockScroll={false}
@@ -1263,27 +1263,27 @@ export default function AdminOrdersPage() {
                 <div>{detailOrder.username || detailOrder.userEmail || '-'}</div>
               </div> */}
               <div>
-                <div className="text-text-secondary">الباقة</div>
+                <div className="text-text-secondary">{t('orders.modal.package')}</div>
                 <div>
                   {detailOrder.package?.name ?? '-'}{' '}
                   {(detailOrder as any).quantity && (detailOrder as any).quantity > 1 ? (
-                    <span className="text-text-secondary text-[11px]">(الكمية: {(detailOrder as any).quantity})</span>
+                    <span className="text-text-secondary text-[11px]">{t('orders.modal.quantity',{count:(detailOrder as any).quantity})}</span>
                   ) : null}
                 </div>
               </div>
 
               <div>
-                <div className="text-text-secondary">رقم اللاعب</div>
+                <div className="text-text-secondary">{t('orders.modal.playerId')}</div>
                 <div>{detailOrder.userIdentifier ?? '-'}</div>
               </div>
               <div>
-                <div className="text-text-secondary">الحالة</div>
+                <div className="text-text-secondary">{t('orders.modal.status')}</div>
                 <div className="capitalize">
                   {detailOrder.status === 'approved'
-                    ? 'مقبول'
+                    ? t('orders.status.approved')
                     : detailOrder.status === 'rejected'
-                    ? 'مرفوض'
-                    : 'قيد المراجعة'}
+                    ? t('orders.status.rejected')
+                    : t('orders.status.pending')}
                 </div>
               </div>
 
@@ -1345,7 +1345,7 @@ export default function AdminOrdersPage() {
               {detailOrder.providerMessage && (
                 <div className="sm:col-span-2">
                   <div className="p-3 rounded-md border bg-yellow-50 border-yellow-300 text-yellow-900 whitespace-pre-line break-words">
-                    <div className="font-medium mb-1">ملاحظة المزوّد</div>
+                    <div className="font-medium mb-1">{t('orders.modal.providerNote.title')}</div>
                     <div>{detailOrder.providerMessage}</div>
                   </div>
                 </div>
@@ -1356,7 +1356,7 @@ export default function AdminOrdersPage() {
                 <div>{detailOrder.sentAt ? new Date(detailOrder.sentAt).toLocaleString('en-GB') : '-'}</div>
               </div> */}
               <div>
-                <div className="text-text-secondary">تاريخ الوصول</div>
+                <div className="text-text-secondary">{t('orders.modal.arrivalAt')}</div>
                 <div>{detailOrder.completedAt ? fmtDateStable(detailOrder.completedAt) : '-'}</div>
               </div>
 {/* 
@@ -1366,15 +1366,14 @@ export default function AdminOrdersPage() {
               </div> */}
 
               <div>
-                <div className="text-text-secondary">تاريخ الإنشاء</div>
+                <div className="text-text-secondary">{t('orders.modal.createdAt')}</div>
                 <div>{fmtDateStable(detailOrder.createdAt)}</div>
               </div>
             </div>
 
             {detailOrder.status === 'approved' && detailOrder.fxLocked && (
               <div className="text-xs text-success">
-                قيمة الصرف مجمّدة
-                {detailOrder.approvedLocalDate ? ` منذ ${detailOrder.approvedLocalDate}` : ''}.
+                {detailOrder.approvedLocalDate ? t('orders.modal.fxLockedSince',{date:detailOrder.approvedLocalDate}) : t('orders.modal.fxLocked')}
               </div>
             )}
           </div>
