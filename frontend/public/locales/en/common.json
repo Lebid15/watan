@@ -55,4 +55,8 @@
   "unit.save.fail": "Save failed",
   "generic.error": "An unexpected error occurred",
   "generic.error.short": "Error"
+  ,
+  "product.save.button": "Save Changes",
+  "product.delete.button": "Delete Product",
+  "product.active.label": "Active?"
 }

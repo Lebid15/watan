@@ -55,4 +55,8 @@
   "unit.save.fail": "Kaydetme başarısız",
   "generic.error": "Beklenmeyen bir hata oluştu",
   "generic.error.short": "Hata"
+  ,
+  "product.save.button": "Değişiklikleri Kaydet",
+  "product.delete.button": "Ürünü Sil",
+  "product.active.label": "Aktif mi?"
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
 import { API_ROUTES } from '@/utils/api';
 import { ErrorResponse } from '@/types/common';
@@ -39,28 +40,28 @@ interface Product {
 }
 
 // ===== Helpers =====
-async function uploadToCloudinary(file: File, token: string, apiBase: string): Promise<string> {
+async function uploadToCloudinary(file: File, token: string, apiBase: string, t: any): Promise<string> {
   const fd = new FormData();
   fd.append('file', file);
   let res: Response;
   try {
     res = await fetch(`${apiBase}/admin/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
   } catch {
-    throw new Error('تعذر الاتصال بالخادم أثناء الرفع');
+    throw new Error(t('errors.upload.network'));
   }
   if (res.status !== 200 && res.status !== 201) {
-    if (res.status === 401 || res.status === 403) throw new Error('جلسة منتهية، يرجى تسجيل الدخول');
-    if (res.status === 413) throw new Error('الصورة كبيرة جدًا');
+  if (res.status === 401 || res.status === 403) throw new Error(t('errors.session.expired'));
+  if (res.status === 413) throw new Error(t('errors.image.tooLarge'));
     let payload: any = null; try { payload = await res.json(); } catch {}
     const msg = String(payload?.message || payload?.error || '');
-    if (/cloudinary/i.test(msg) && /غير صحيحة|bad credential|cloudinary/i.test(msg)) throw new Error('إعدادات Cloudinary غير صحيحة');
-    if (payload?.code === 'file_too_large') throw new Error('الصورة كبيرة جدًا');
-    if (payload?.code === 'cloudinary_bad_credentials') throw new Error('إعدادات Cloudinary غير صحيحة');
-    throw new Error(msg || 'فشل رفع الملف…');
+  if (/cloudinary/i.test(msg) && /غير صحيحة|bad credential|cloudinary/i.test(msg)) throw new Error(t('errors.cloudinary.badConfig'));
+  if (payload?.code === 'file_too_large') throw new Error(t('errors.image.tooLarge'));
+  if (payload?.code === 'cloudinary_bad_credentials') throw new Error(t('errors.cloudinary.badConfig'));
+  throw new Error(msg || t('errors.upload.generic'));
   }
   const data = await res.json().catch(() => ({} as any));
   const url: string | undefined = data?.url || data?.secure_url || data?.imageUrl || data?.data?.url || data?.data?.secure_url || data?.data?.imageUrl;
-  if (!url) throw new Error('لم يتم استلام رابط الصورة');
+  if (!url) throw new Error(t('errors.image.missingUrl'));
   return url;
 }
 
@@ -68,6 +69,7 @@ async function uploadToCloudinary(file: File, token: string, apiBase: string): P
 export default function AdminProductDetailsPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { t } = useTranslation();
 
   // Core product state
   const [product, setProduct] = useState<Product | null>(null);
@@ -117,7 +119,7 @@ export default function AdminProductDetailsPage() {
     try {
       const token = localStorage.getItem('token') || '';
       const res = await fetch(`${API_ROUTES.products.base}/${id}?all=1`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error('فشل في جلب بيانات المنتج');
+  if (!res.ok) throw new Error(t('errors.product.fetchFailed'));
       const data: Product = await res.json();
       setProduct(data);
       setEditName(data.name);
@@ -128,7 +130,7 @@ export default function AdminProductDetailsPage() {
       setEditCustomAlt(data.customAltText || '');
   setEditSupportsCounter(Boolean(data.supportsCounter));
     } catch (e: any) {
-      setError(e.message || 'حدث خطأ غير متوقع');
+      setError(e.message || t('errors.unexpected'));
     } finally {
       setLoading(false);
     }
@@ -165,12 +167,12 @@ export default function AdminProductDetailsPage() {
   const handleUpdateProduct = async () => {
     try {
       const token = localStorage.getItem('token') || '';
-      if (!token) throw new Error('الرجاء تسجيل الدخول كمسؤول.');
+  if (!token) throw new Error(t('auth.admin.loginRequired'));
       let imageUrl = product?.imageUrl;
       let customImageUrl = product?.customImageUrl ?? null;
       let useCatalogImage = editUseCatalog;
       if (editImage) {
-        const uploaded = await uploadToCloudinary(editImage, token, apiBase);
+  const uploaded = await uploadToCloudinary(editImage, token, apiBase, t);
         customImageUrl = uploaded;
         imageUrl = uploaded;
         useCatalogImage = false;
@@ -190,31 +192,31 @@ export default function AdminProductDetailsPage() {
 
         })
       });
-      if (!updateRes.ok) throw new Error('فشل في تعديل المنتج');
+  if (!updateRes.ok) throw new Error(t('product.save.fail'));
       setEditImage(null);
       await fetchProduct();
-      alert('تم حفظ التغييرات بنجاح');
-    } catch (e: any) { alert(e.message || 'حدث خطأ غير متوقع'); }
+      alert(t('product.save.success'));
+    } catch (e: any) { alert(e.message || t('errors.unexpected')); }
   };
 
   const handleDeleteProduct = async () => {
-    if (!confirm('هل أنت متأكد من حذف هذا المنتج؟')) return;
+  if (!confirm(t('product.delete.confirm'))) return;
     try {
       const token = localStorage.getItem('token') || '';
       const res = await fetch(`${API_ROUTES.products.base}/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error('فشل في حذف المنتج');
+  if (!res.ok) throw new Error(t('product.delete.fail'));
       router.push('/admin/products');
-    } catch (e: any) { alert(e.message || 'حدث خطأ غير متوقع'); }
+  } catch (e: any) { alert(e.message || t('errors.unexpected')); }
   };
 
   const handleAddPackage = async () => {
-    if (!pkgName) return alert('يرجى إدخال اسم الباقة');
-    if (!pkgBridge) return alert('يرجى اختيار الجسر');
+    if (!pkgName) return alert(t('package.add.nameRequired'));
+    if (!pkgBridge) return alert(t('package.add.bridgeRequired'));
     if (pkgType === 'unit' && !editSupportsCounter) {
-      return alert('فعّل نمط العداد أولاً ثم أضف باقة من نوع unit');
+      return alert(t('package.add.counterFirst'));
     }
     if (pkgType === 'unit') {
-      if (!pkgUnitName.trim()) return alert('أدخل اسم الوحدة');
+  if (!pkgUnitName.trim()) return alert(t('unit.name.required'));
     }
     try {
       const token = localStorage.getItem('token') || '';
@@ -228,24 +230,24 @@ export default function AdminProductDetailsPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ ...payload, publicCode: pkgBridge })
       });
-      if (!res.ok) throw new Error('فشل في إضافة الباقة');
+  if (!res.ok) throw new Error(t('package.add.fail'));
   setPkgName(''); setPkgDesc(''); setPkgPrice(0); setPkgBridge(''); setShowPackageForm(false); setPkgType('fixed'); setPkgUnitName('');
       fetchProduct(); fetchBridges();
-    } catch (e: any) { alert(e.message || 'حدث خطأ غير متوقع'); }
+  } catch (e: any) { alert(e.message || t('errors.unexpected')); }
   };
 
   const handleDeletePackage = async (pkgId: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذه الباقة؟')) return;
+  if (!confirm(t('product.package.delete.confirm'))) return;
     try {
       const token = localStorage.getItem('token') || '';
       await fetch(`${API_ROUTES.products.base}/packages/${pkgId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
       fetchProduct();
-    } catch (e: any) { alert(e.message || 'حدث خطأ غير متوقع'); }
+  } catch (e: any) { alert(e.message || t('errors.unexpected')); }
   };
 
-  if (loading) return <p className="p-4 text-text-primary">جاري التحميل...</p>;
+  if (loading) return <p className="p-4 text-text-primary">{t('product.status.loading')}</p>;
   if (error) return <p className="p-4 text-danger">{error}</p>;
-  if (!product) return <p className="p-4 text-text-secondary">المنتج غير موجود</p>;
+  if (!product) return <p className="p-4 text-text-secondary">{t('product.notFound')}</p>;
 
   const unitPackages = (product.packages || []).filter(p => p.type === 'unit');
   const unitExists = unitPackages.length > 0;
@@ -264,12 +266,12 @@ export default function AdminProductDetailsPage() {
 
   async function saveUnitModal() {
     if (!unitModalPkg) return;
-    if (!unitForm.unitName.trim()) { alert('اسم الوحدة مطلوب'); return; }
+  if (!unitForm.unitName.trim()) { alert(t('unit.name.required')); return; }
     const min = unitForm.minUnits.trim() ? Number(unitForm.minUnits) : null;
     const max = unitForm.maxUnits.trim() ? Number(unitForm.maxUnits) : null;
-    if (min != null && max != null && max < min) { alert('الحد الأقصى يجب أن يكون أكبر أو يساوي الحد الأدنى'); return; }
+  if (min != null && max != null && max < min) { alert(t('unit.limit.rangeInvalid')); return; }
     const stepNum = unitForm.step.trim() ? Number(unitForm.step) : null;
-    if (stepNum != null && stepNum <= 0) { alert('Step يجب أن يكون > 0'); return; }
+  if (stepNum != null && stepNum <= 0) { alert(t('unit.step.invalid')); return; }
     setUnitSaving(true);
     try {
       const token = localStorage.getItem('token') || '';
@@ -281,11 +283,11 @@ export default function AdminProductDetailsPage() {
         step: unitForm.step.trim() || null,
       };
   const res = await fetch(`/api/admin/products/packages/${unitModalPkg.id}/unit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-      if (!res.ok) { let payload: any = null; try { payload = await res.json(); } catch {} throw new Error(payload?.message || 'فشل الحفظ'); }
+  if (!res.ok) { let payload: any = null; try { payload = await res.json(); } catch {} throw new Error(payload?.message || t('unit.save.fail')); }
       // Optimistic local update
   setProduct(prev => prev ? ({ ...prev, packages: (prev.packages||[]).map(p => p.id === unitModalPkg.id ? { ...p, unitName: body.unitName, unitCode: body.unitCode, minUnits: min, maxUnits: max, step: stepNum } : p) }) : prev);
       setShowUnitModal(false);
-    } catch (e: any) { alert(e.message || 'خطأ'); }
+  } catch (e: any) { alert(e.message || t('generic.error.short')); }
     finally { setUnitSaving(false); }
   }
 
@@ -311,15 +313,15 @@ export default function AdminProductDetailsPage() {
       {
         <>
           <div className="flex justify-between items-center mb-4">
-            <h1 className="text-2xl font-bold">المنتج: {product.name}</h1>
+            <h1 className="text-2xl font-bold">{t('product.pageTitle')}: {product.name}</h1>
             <div className="flex gap-2">
-              <button onClick={handleUpdateProduct} className="px-4 py-2 bg-primary text-primary-contrast rounded hover:bg-primary-hover">حفظ التغييرات</button>
-              <button onClick={handleDeleteProduct} className="px-4 py-2 bg-danger text-text-inverse rounded hover:brightness-110">حذف المنتج</button>
+              <button onClick={handleUpdateProduct} className="px-4 py-2 bg-primary text-primary-contrast rounded hover:bg-primary-hover">{t('product.save.button')}</button>
+              <button onClick={handleDeleteProduct} className="px-4 py-2 bg-danger text-text-inverse rounded hover:brightness-110">{t('product.delete.button')}</button>
             </div>
           </div>
 
-          <input className="w-full border border-border p-2 rounded mb-2 bg-bg-surface-alt text-text-primary" value={editName} onChange={e => setEditName(e.target.value)} placeholder="اسم المنتج" />
-          <textarea className="w-full border border-border p-2 rounded mb-2 bg-bg-surface-alt text-text-primary" value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="الوصف" />
+          <input className="w-full border border-border p-2 rounded mb-2 bg-bg-surface-alt text-text-primary" value={editName} onChange={e => setEditName(e.target.value)} placeholder={t('product.field.name.placeholder') || ''} />
+          <textarea className="w-full border border-border p-2 rounded mb-2 bg-bg-surface-alt text-text-primary" value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder={t('product.field.description.placeholder') || ''} />
 
           {/* ===================== معطّل مؤقتاً حسب الطلب =====================
               القسم التالي (نصوص بديلة + رفع صورة مخصصة) تم التعليق عليه لأنه غير مطلوب حالياً.
@@ -354,7 +356,7 @@ export default function AdminProductDetailsPage() {
 
             <label className="flex items-center gap-2 mb-4 text-text-secondary">
               <input type="checkbox" checked={editActive} onChange={e => setEditActive(e.target.checked)} />
-              فعال؟
+              {t('product.active.label')}
             </label>
 
             <label className="flex items-center gap-2 mb-4 text-text-secondary">
@@ -367,24 +369,18 @@ export default function AdminProductDetailsPage() {
                   try {
                     const token = localStorage.getItem('token') || '';
                     const res = await fetch(`/api/admin/products/${id}/supports-counter`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ supportsCounter: next }) });
-                    if (!res.ok) throw new Error('فشل تحديث نمط العداد');
+                    if (!res.ok) throw new Error(t('product.update.counterMode.fail'));
                   } catch (err:any) {
-                    alert(err.message || 'تعذر تحديث نمط العداد');
+                    alert(err.message || t('product.update.counterMode.unable'));
                     setEditSupportsCounter(!next);
                   }
                 }}
               />
-              تفعيل نمط العداد (الوحدة)
+              {t('product.counter.enable.label')}
             </label>
               {editSupportsCounter && unitPackages.length === 0 && (
-                <div className="text-[11px] text-amber-500 mb-4 leading-relaxed">
-                  لتفعيل تبويب <span className="font-semibold">إعدادات العداد</span>:
-                  <br />
-                  1- أضف باقة جديدة أو عدّل باقة موجودة واجعل نوعها <span className="font-mono bg-bg-surface-alt px-1 rounded border border-border">unit</span>.
-                  <br />
-                  2- أدخل اسم الوحدة (مثال: رسالة، نقطة، دقيقة).
-                  <br />
-                  بعد حفظ الباقة ستظهر لك تبويب إعدادات العداد لإدارة الحد الأدنى والأقصى و قيمة الخطوة (Step) وأسعار المجموعات.
+                <div className="text-[11px] text-amber-500 mb-4 leading-relaxed whitespace-pre-line">
+                  {t('counter.instructions.noUnitPackage')}
                 </div>
               )}
 
@@ -395,7 +391,7 @@ export default function AdminProductDetailsPage() {
                   <span className={`absolute -top-2 -right-2 ${badgeColor} text-white text-[10px] px-1.5 py-0.5 rounded-full shadow`}>{sourceLabelMap[imageSource]}</span>
                 </div>
               ) : (
-                <div className="w-20 h-20 rounded border border-dashed border-border flex items-center justify-center text-text-secondary text-xs">لا توجد صورة</div>
+                <div className="w-20 h-20 rounded border border-dashed border-border flex items-center justify-center text-text-secondary text-xs">{t('product.image.none')}</div>
               )}
             </div>
 

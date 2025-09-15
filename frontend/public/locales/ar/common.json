@@ -55,4 +55,8 @@
   "unit.save.fail": "فشل الحفظ",
   "generic.error": "حدث خطأ غير متوقع",
   "generic.error.short": "خطأ"
+  ,
+  "product.save.button": "حفظ التغييرات",
+  "product.delete.button": "حذف المنتج",
+  "product.active.label": "فعال؟"
 }
