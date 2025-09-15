@@ -175,3 +175,61 @@ Future suggestions (not yet created in code):
 
 ---
 _Last updated: (auto)_
+
+## Mapping: Users Pages (Admin)
+| Arabic Original | Key |
+|-----------------|-----|
+| "المستخدمون" | `users.pageTitle` |
+| "جارٍ التحميل..." | `users.loading` |
+| "فشل تحميل بيانات المستخدمين" | `users.error.load` |
+| "ابحث بالبريد / الاسم / الجوال..." | `users.search.placeholder` |
+| "مسح" | `users.search.clear` |
+| "اسم المستخدم" | `users.table.username` / `users.detail.username` |
+| "الرصيد" | `users.table.balance` |
+| "الحالة" | `users.table.status` |
+| "إجراءات" | `users.table.actions` |
+| "تعديل" | `users.actions.edit` / `users.detail.pageTitle` contextually |
+| "حذف" | `users.actions.delete` |
+| "نشط" | `users.status.active` |
+| "غير نشط" | `users.status.inactive` |
+| "هل تريد حذف هذا المستخدم؟" | `users.confirm.delete` |
+| "فشل حذف المستخدم" | `users.delete.fail` |
+| "تعذّر تغيير الحالة" | `users.status.toggle.fail` |
+| "لا توجد نتائج مطابقة" | `users.empty.filtered` |
+| "إضافة رصيد للمستخدم" | `users.topup.title` |
+| "المستخدم" (label in top-up) | `users.topup.user` |
+| "عملة المستخدم" | `users.topup.currency` |
+| "الرصيد السابق هو" | `users.topup.previousBalance` |
+| "المبلغ" | `users.topup.amount.label` |
+| "مثال: 100 {symbol}" | `users.topup.amount.example` |
+| "وسيلة الدفع" | `users.topup.method.label` |
+| "اختر وسيلة" | `users.topup.method.placeholder` |
+| "ملاحظة (اختياري)" | `users.topup.note.label` / `users.topup.note.placeholder` |
+| "مثال: شحن يدوي لأسباب دعم" | `users.topup.note.placeholder` |
+| "إضافة" (button) | `users.topup.submit` |
+| "إلغاء" | `users.topup.cancel` |
+| "أدخل مبلغًا صحيحًا" | `users.topup.errors.invalidAmount` |
+| "اختر وسيلة الدفع" | `users.topup.errors.methodRequired` |
+| "فشل إضافة الرصيد" | `users.topup.errors.fail` |
+| "إعادة تعيين 2FA" | `users.2fa.reset.button` |
+| 2FA confirm Arabic sentence | `users.2fa.reset.confirm` |
+| "تم إعادة تعيين المصادقة الثنائية بنجاح" | `users.2fa.reset.success` |
+| "فشل في إعادة تعيين المصادقة الثنائية" | `users.2fa.reset.fail` |
+| "تعديل بيانات المستخدم" | `users.detail.pageTitle` |
+| "المستخدم غير موجود" | `users.detail.notFound` |
+| "البريد الإلكتروني" | `users.detail.email` |
+| "الاسم الكامل" | `users.detail.fullName` |
+| "رقم الجوال" | `users.detail.phone` |
+| "رمز الدولة" | `users.detail.phone.countryCodePlaceholder` |
+| "الدور" | `users.detail.role` |
+| "الحساب فعّال" | `users.detail.activeCheckbox` |
+| "تغيير كلمة السر" | `users.detail.password.label` |
+| "اتركها فارغة إن لم ترغب بالتغيير" | `users.detail.password.placeholder` |
+| "حد السالب (overdraft)" | `users.detail.overdraft.label` |
+| "مثال: -30000" | `users.detail.overdraft.placeholder` |
+| "يتيح للمستخدم إنشاء طلبات حتى لو كان رصيده 0 حتى يصل لهذا الحد السالب." | `users.detail.overdraft.help` |
+| "تم حفظ التعديلات بنجاح" | `users.detail.save.success` |
+| "فشل حفظ التعديلات" | `users.detail.save.fail` |
+| "حفظ" | `users.detail.save.button` |
+| "جاري الحفظ..." | `users.detail.save.saving` |
+| "رجوع" | `users.detail.back` |

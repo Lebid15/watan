@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import api, { API_ROUTES } from '@/utils/api';
 import { currencySymbol, formatMoney } from '@/utils/format';
@@ -19,6 +20,7 @@ interface UserRow {
 }
 
 export default function AdminUsersPage() {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -40,7 +42,7 @@ export default function AdminUsersPage() {
       setUsers(res.data);
       setError('');
     } catch {
-      setError('فشل تحميل بيانات المستخدمين');
+  setError(t('users.error.load'));
     } finally {
       setLoading(false);
     }
@@ -61,12 +63,12 @@ export default function AdminUsersPage() {
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('هل تريد حذف هذا المستخدم؟')) return;
+    if (!confirm(t('users.confirm.delete'))) return;
     try {
       await api.delete(API_ROUTES.users.byId(id));
       setUsers((prev) => prev.filter((u) => u.id !== id));
     } catch {
-      alert('فشل حذف المستخدم');
+      alert(t('users.delete.fail'));
     }
   };
 
@@ -78,7 +80,7 @@ export default function AdminUsersPage() {
         prev.map((x) => (x.id === u.id ? { ...x, isActive: next } : x))
       );
     } catch {
-      alert('تعذّر تغيير الحالة');
+      alert(t('users.status.toggle.fail'));
     }
   };
 
@@ -112,11 +114,11 @@ export default function AdminUsersPage() {
     if (!topupUser) return;
     const amount = Number(topupAmount);
     if (!amount || isNaN(amount)) {
-      alert('أدخل مبلغًا صحيحًا');
+      alert(t('users.topup.errors.invalidAmount'));
       return;
     }
     if (!selectedMethodId) {
-      alert('اختر وسيلة الدفع');
+      alert(t('users.topup.errors.methodRequired'));
       return;
     }
     try {
@@ -133,20 +135,20 @@ export default function AdminUsersPage() {
       setTopupNote('');
       await loadUsers();
     } catch {
-      alert('فشل إضافة الرصيد');
+      alert(t('users.topup.errors.fail'));
     }
   };
 
   const handleReset2FA = async (userId: string) => {
-    if (!confirm('هل أنت متأكد من إعادة تعيين المصادقة الثنائية لهذا المستخدم؟ سيتم إجباره على إعداد المصادقة من جديد.')) {
+    if (!confirm(t('users.2fa.reset.confirm'))) {
       return;
     }
 
     try {
       await api.post(`/auth/totp/reset/${userId}`);
-      alert('تم إعادة تعيين المصادقة الثنائية بنجاح');
+      alert(t('users.2fa.reset.success'));
     } catch (error: any) {
-      alert(error?.response?.data?.message || 'فشل في إعادة تعيين المصادقة الثنائية');
+      alert(error?.response?.data?.message || t('users.2fa.reset.fail'));
     }
   };
 
@@ -171,11 +173,11 @@ export default function AdminUsersPage() {
 
   return (
     <div className="bg-bg-base text-text-primary p-6 min-h-screen">
-      <h1 className="font-bold mb-4">المستخدمون</h1>
+      <h1 className="font-bold mb-4">{t('users.pageTitle')}</h1>
       <div className="mb-4 flex items-center gap-2">
         <input
           type="text"
-          placeholder="ابحث بالبريد / الاسم / الجوال..."
+          placeholder={t('users.search.placeholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="border border-border rounded px-3 py-2 w-80 bg-bg-input"
@@ -185,27 +187,27 @@ export default function AdminUsersPage() {
             onClick={() => setSearch('')}
             className="bg-bg-surface-alt border border-border text-text-primary px-3 py-2 rounded hover:opacity-90"
           >
-            مسح
+            {t('users.search.clear')}
           </button>
         )}
       </div>
 
       {error && <div className="text-danger mb-3">{error}</div>}
       {loading ? (
-        <div>جارٍ التحميل...</div>
+        <div>{t('users.loading')}</div>
       ) : (
         <>
           <div className="overflow-x-auto rounded-lg border border-border bg-bg-surface">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-bg-surface-alt text-center">
-                  <th className="border border-border p-2">اسم المستخدم</th>
+                  <th className="border border-border p-2">{t('users.table.username')}</th>
                   {/** مخفي بناءً على طلب: عمود البريد الإلكتروني */}
                   {/** <th className="border border-border p-2">البريد الإلكتروني</th> */}
-                  <th className="border border-border p-2">الرصيد</th>
-                  <th className="border border-border p-2">الحالة</th>
+                  <th className="border border-border p-2">{t('users.table.balance')}</th>
+                  <th className="border border-border p-2">{t('users.table.status')}</th>
                   {/* تقليل الحشو في ترويسة الإجراءات */}
-                  <th className="border border-border px-2 py-1">إجراءات</th>
+                  <th className="border border-border px-2 py-1">{t('users.table.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -235,7 +237,7 @@ export default function AdminUsersPage() {
                               ? 'bg-success hover:opacity-90'
                               : 'bg-danger hover:opacity-90'
                           }`}
-                          title={isActive ? 'نشط' : 'غير نشط'}
+                          title={isActive ? t('users.status.active') : t('users.status.inactive')}
                         />
                       </td>
                       <td className="border border-border px-1.5 py-1">
@@ -243,28 +245,28 @@ export default function AdminUsersPage() {
                           <button
                             onClick={() => openTopup(u)}
                             className="bg-success text-text-inverse px-2.5 py-0.5 rounded hover:brightness-110 text-sm"
-                            title="إضافة إلى الرصيد"
+                            title={t('users.topup.submit')}
                           >
                             +
                           </button>
                           <button
                             onClick={() => handleReset2FA(u.id)}
                             className="bg-red-600 text-white px-2.5 py-0.5 rounded hover:bg-red-700 text-[11px]"
-                            title="إعادة تعيين المصادقة الثنائية"
+                            title={t('users.2fa.reset.button')}
                           >
-                            Reset 2FA
+                            {t('users.2fa.reset.button')}
                           </button>
                           <Link
                             href={`/admin/users/${u.id}`}
                             className="bg-primary text-primary-contrast px-2.5 py-0.5 rounded hover:bg-primary-hover text-sm"
                           >
-                            تعديل
+                            {t('users.actions.edit')}
                           </Link>
                           <button
                             onClick={() => handleDelete(u.id)}
                             className="bg-danger text-text-inverse px-2.5 py-0.5 rounded hover:brightness-110 text-sm"
                           >
-                            حذف
+                            {t('users.actions.delete')}
                           </button>
                         </div>
                       </td>
@@ -276,7 +278,7 @@ export default function AdminUsersPage() {
           </div>
 
           {filtered.length === 0 && (
-            <div className="text-text-secondary mt-4">لا توجد نتائج مطابقة</div>
+            <div className="text-text-secondary mt-4">{t('users.empty.filtered')}</div>
           )}
         </>
       )}
@@ -285,11 +287,11 @@ export default function AdminUsersPage() {
       {topupOpen && topupUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-bg-surface text-text-primary border border-border rounded-lg p-5 w-full max-w-md">
-            <h2 className="text-lg font-bold mb-3">إضافة رصيد للمستخدم</h2>
+            <h2 className="text-lg font-bold mb-3">{t('users.topup.title')}</h2>
 
             {/* اسم المستخدم أو الإيميل */}
             <div className="mb-2 text-sm">
-              المستخدم:{' '}
+              {t('users.topup.user')}: 
               <span className="font-semibold">
                 {topupUser.username?.trim() ? topupUser.username : topupUser.email}
               </span>
@@ -297,7 +299,7 @@ export default function AdminUsersPage() {
 
             {/* عملة المستخدم بالرمز والكود */}
             <div className="mb-2 text-sm">
-              عملة المستخدم:{' '}
+              {t('users.topup.currency')}: 
               <span className="font-semibold">
                 {currencySymbol(topupUser.currency?.code || undefined)}{' '}
                 ({topupUser.currency?.code ?? '-'})
@@ -306,7 +308,7 @@ export default function AdminUsersPage() {
 
             {/* الرصيد السابق */}
             <div className="mb-4 text-sm">
-              الرصيد السابق هو:{' '}
+              {t('users.topup.previousBalance')}: 
               <span className="font-semibold">
                 {topupUser.balance !== null
                   ? formatMoney(Number(topupUser.balance), topupUser.currency?.code, {
@@ -319,26 +321,26 @@ export default function AdminUsersPage() {
             </div>
 
             <div className="mb-4">
-              <label className="block mb-1">المبلغ</label>
+              <label className="block mb-1">{t('users.topup.amount.label')}</label>
               <input
                 type="number"
                 step="0.0001"
                 value={topupAmount}
                 onChange={(e) => setTopupAmount(e.target.value)}
                 className="w-full bg-bg-input border border-border px-3 py-2 rounded"
-                placeholder={`مثال: 100 ${currencySymbol(topupUser.currency?.code || undefined)}`}
+                placeholder={t('users.topup.amount.example', { symbol: currencySymbol(topupUser.currency?.code || undefined) })}
                 inputMode="decimal"
               />
             </div>
 
             <div className="mb-4">
-              <label className="block mb-1">وسيلة الدفع<span className="text-danger"> *</span></label>
+              <label className="block mb-1">{t('users.topup.method.label')}<span className="text-danger"> *</span></label>
               <select
                 value={selectedMethodId}
                 onChange={(e) => setSelectedMethodId(e.target.value)}
                 className="w-full bg-bg-input border border-border px-3 py-2 rounded"
               >
-                <option value="">اختر وسيلة</option>
+                <option value="">{t('users.topup.method.placeholder')}</option>
                 {methods.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
@@ -346,13 +348,13 @@ export default function AdminUsersPage() {
             </div>
 
             <div className="mb-4">
-              <label className="block mb-1">ملاحظة (اختياري)</label>
+              <label className="block mb-1">{t('users.topup.note.label')}</label>
               <textarea
                 value={topupNote}
                 onChange={(e) => setTopupNote(e.target.value)}
                 rows={2}
                 className="w-full bg-bg-input border border-border px-3 py-2 rounded resize-none"
-                placeholder="مثال: شحن يدوي لأسباب دعم"
+                placeholder={t('users.topup.note.placeholder')}
               />
             </div>
 
@@ -361,7 +363,7 @@ export default function AdminUsersPage() {
                 onClick={confirmTopup}
                 className="px-4 py-2 rounded bg-success text-text-inverse hover:brightness-110"
               >
-                إضافة
+                {t('users.topup.submit')}
               </button>
               <button
                 onClick={() => {
@@ -371,7 +373,7 @@ export default function AdminUsersPage() {
                 }}
                 className="px-4 py-2 rounded bg-bg-surface-alt border border-border hover:opacity-90"
               >
-                إلغاء
+                {t('users.topup.cancel')}
               </button>
             </div>
           </div>

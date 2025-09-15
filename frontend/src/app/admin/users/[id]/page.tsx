@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter, useParams } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
 
@@ -31,6 +32,7 @@ const COUNTRY_CODES = [
 ];
 
 export default function EditUserPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const { id } = params as { id: string };
@@ -52,7 +54,7 @@ export default function EditUserPage() {
           res.data?.overdraftLimit != null ? String(res.data.overdraftLimit) : ''
         );
       } catch {
-        setError('فشل تحميل البيانات');
+        setError(t('users.error.load'));
       } finally {
         setLoading(false);
       }
@@ -88,26 +90,25 @@ export default function EditUserPage() {
         }
       }
 
-      alert('تم حفظ التعديلات بنجاح');
+      alert(t('users.detail.save.success'));
       router.push('/admin/users');
     } catch {
-      alert('فشل حفظ التعديلات');
+      alert(t('users.detail.save.fail'));
     } finally {
       setSaving(false);
     }
   };
-
-  if (loading) return <div className="p-4">جاري التحميل...</div>;
+  if (loading) return <div className="p-4">{t('users.loading')}</div>;
   if (error) return <div className="p-4 text-danger">{error}</div>;
-  if (!user) return <div className="p-4 text-danger">المستخدم غير موجود</div>;
+  if (!user) return <div className="p-4 text-danger">{t('users.detail.notFound')}</div>;
 
   return (
     <div className="p-6 max-w-xl mx-auto bg-bg-base text-text-primary min-h-screen rounded-lg">
-      <h1 className="text-2xl font-bold mb-4">تعديل بيانات المستخدم</h1>
+  <h1 className="text-2xl font-bold mb-4">{t('users.detail.pageTitle')}</h1>
 
       {/* البريد */}
       <div className="mb-4">
-        <label className="block font-semibold mb-1">البريد الإلكتروني</label>
+  <label className="block font-semibold mb-1">{t('users.detail.email')}</label>
         <input
           type="email"
           value={user.email}
@@ -118,7 +119,7 @@ export default function EditUserPage() {
 
       {/* اسم المستخدم */}
       <div className="mb-4">
-        <label className="block font-semibold mb-1">اسم المستخدم</label>
+  <label className="block font-semibold mb-1">{t('users.detail.username')}</label>
         <input
           type="text"
           value={user.username ?? ''}
@@ -129,7 +130,7 @@ export default function EditUserPage() {
 
       {/* الاسم الكامل */}
       <div className="mb-4">
-        <label className="block font-semibold mb-1">الاسم الكامل</label>
+  <label className="block font-semibold mb-1">{t('users.detail.fullName')}</label>
         <input
           type="text"
           value={user.fullName ?? ''}
@@ -140,7 +141,7 @@ export default function EditUserPage() {
 
       {/* الهاتف */}
       <div className="mb-4">
-        <label className="block font-semibold mb-1">رقم الجوال</label>
+  <label className="block font-semibold mb-1">{t('users.detail.phone')}</label>
         <div className="flex gap-2">
           <select
             value={user.countryCode ?? ''}
@@ -148,7 +149,7 @@ export default function EditUserPage() {
             className="border border-border rounded p-2 bg-bg-input"
             style={{ minWidth: 120 }}
           >
-            <option value="">رمز الدولة</option>
+            <option value="">{t('users.detail.phone.countryCodePlaceholder')}</option>
             {COUNTRY_CODES.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.label}
@@ -166,7 +167,7 @@ export default function EditUserPage() {
 
       {/* الدور */}
       <div className="mb-4">
-        <label className="block font-semibold mb-1">الدور</label>
+  <label className="block font-semibold mb-1">{t('users.detail.role')}</label>
         <select
           value={user.role}
           onChange={(e) => setUser({ ...user, role: e.target.value })}
@@ -185,36 +186,34 @@ export default function EditUserPage() {
             checked={user.isActive ?? true}
             onChange={(e) => setUser({ ...user, isActive: e.target.checked })}
           />
-          <span>الحساب فعّال</span>
+          <span>{t('users.detail.activeCheckbox')}</span>
         </label>
       </div>
 
       {/* كلمة السر */}
       <div className="mb-4">
-        <label className="block font-semibold mb-1">تغيير كلمة السر</label>
+  <label className="block font-semibold mb-1">{t('users.detail.password.label')}</label>
         <input
           type="password"
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
           className="w-full border border-border p-2 rounded bg-bg-input"
-          placeholder="اتركها فارغة إن لم ترغب بالتغيير"
+          placeholder={t('users.detail.password.placeholder')}
         />
       </div>
 
       {/* حد السالب */}
       <div className="mb-6">
-        <label className="block font-semibold mb-1">حد السالب (overdraft)</label>
+  <label className="block font-semibold mb-1">{t('users.detail.overdraft.label')}</label>
         <input
           type="number"
           step="0.01"
           value={overdraft}
           onChange={(e) => setOverdraft(e.target.value)}
           className="w-full border border-border p-2 rounded bg-bg-input"
-          placeholder="مثال: -30000"
+          placeholder={t('users.detail.overdraft.placeholder')}
         />
-        <p className="text-xs text-text-secondary mt-1">
-          يتيح للمستخدم إنشاء طلبات حتى لو كان رصيده 0 حتى يصل لهذا الحد السالب.
-        </p>
+        <p className="text-xs text-text-secondary mt-1">{t('users.detail.overdraft.help')}</p>
       </div>
 
       {/* الأزرار */}
@@ -224,13 +223,13 @@ export default function EditUserPage() {
           disabled={saving || loading}
           className="bg-primary text-primary-contrast px-4 py-2 rounded hover:bg-primary-hover disabled:opacity-50"
         >
-          {saving ? 'جاري الحفظ...' : 'حفظ'}
+          {saving ? t('users.detail.save.saving') : t('users.detail.save.button')}
         </button>
         <button
           onClick={() => router.back()}
           className="bg-bg-surface-alt text-text-primary px-4 py-2 rounded border border-border hover:opacity-90"
         >
-          رجوع
+          {t('users.detail.back')}
         </button>
       </div>
     </div>
