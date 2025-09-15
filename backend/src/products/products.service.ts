@@ -2507,9 +2507,20 @@ export class ProductsService {
   thumbLargeUrl: (product as any).thumbLargeUrl ?? null,
     };
 
+    // ترتيب: باقات العدّاد (unit) أولاً ثم حسب publicCode ثم الاسم لضمان ثبات العرض للمستخدم النهائي
+    const sortedPackages = [...(product.packages || [])].sort((a: any, b: any) => {
+      const aUnit = (a?.type === 'unit') ? 0 : 1;
+      const bUnit = (b?.type === 'unit') ? 0 : 1;
+      if (aUnit !== bUnit) return aUnit - bUnit;
+      const aCode = (a?.publicCode ?? 9999999);
+      const bCode = (b?.publicCode ?? 9999999);
+      if (aCode !== bCode) return aCode - bCode;
+      return String(a?.name || '').localeCompare(String(b?.name || ''));
+    });
+
     return {
       ...base,
-      packages: product.packages.map((pkg) => {
+      packages: sortedPackages.map((pkg) => {
         const groupMatch = (pkg.prices ?? []).find(
           (p) =>
             p.priceGroup?.id &&
