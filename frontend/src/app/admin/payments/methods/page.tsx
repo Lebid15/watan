@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { useTranslation } from 'react-i18next';
+import i18n, { loadNamespace } from '@/i18n/client';
 
 const FILES_BASE = API_BASE_URL.replace(/\/api\/?$/, ''); // تأكد حذف /api من النهاية
 
@@ -42,6 +43,17 @@ const typeOptions: { value: PaymentMethodType; labelKey: string }[] = [
 
 export default function AdminPaymentMethodsPage() {
   const { t } = useTranslation();
+  // NEW readiness flag
+  const [i18nReady, setI18nReady] = useState(false);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try { await loadNamespace(i18n.language || 'ar','common'); } catch { /* ignore */ }
+      if (active) setI18nReady(true);
+    })();
+    return () => { active = false; };
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [error, setError] = useState('');
@@ -282,6 +294,10 @@ export default function AdminPaymentMethodsPage() {
       setError(t('payments.methods.delete.fail'));
     }
   };
+
+  if (!i18nReady) {
+    return <div className="min-h-screen flex items-center justify-center text-text-secondary text-sm">…</div>;
+  }
 
   return (
     <div className="space-y-8 text-text-primary">
