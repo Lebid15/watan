@@ -15,6 +15,29 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [totpPhase, setTotpPhase] = useState<'none' | 'verify'>('none');
   const [pendingToken, setPendingToken] = useState<string | null>(null);
+  // NEW: i18n readiness flag to avoid raw keys flash
+  const [i18nReady, setI18nReady] = useState(false);
+
+  // ensure common namespace loaded (previous inline effect replaced/enhanced)
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        await loadNamespace(i18n.language || 'ar', 'common');
+      } catch {
+        // ignore load errors; keys fallback will show
+      } finally {
+        if (active) setI18nReady(true);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const lang = i18n.language || 'ar';
+  const t = useCallback(
+    (k: string) => (i18n.getResource(lang, 'common', k) as string) || k,
+    [lang]
+  );
 
   const finalizeNavigation = useCallback((token: string) => {
     let nextDest: string | null = null;
@@ -84,10 +107,6 @@ export default function LoginPage() {
     } catch {}
     try { router.push(nextDest || '/'); } catch { window.location.href = nextDest || '/'; }
   }, [router, setError]);
-
-  // ensure common namespace loaded
-  useEffect(() => { (async () => { await loadNamespace(i18n.language || 'ar', 'common'); })(); }, []);
-  const t = (k: string) => (i18n.getResource(i18n.language || 'ar', 'common', k) as string) || k;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,6 +179,13 @@ export default function LoginPage() {
     }
   };
 
+  if (!i18nReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-500 text-sm">
+        <span className="animate-pulse">…</span>
+      </div>
+    );
+  }
 
   return (
   <div className="min-h-screen w-full bg-[var(--bg-main)] flex justify-center relative">
