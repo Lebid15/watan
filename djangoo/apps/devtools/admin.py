@@ -8,7 +8,7 @@ from django.urls import path
 from django import forms
 from django.db import connection
 
-from .models import DevPanel
+from .models import AlertsPanel, SecurityPanel, MaintenancePanel
 
 
 def _resolve_tenant_id(request) -> str | None:
@@ -115,10 +115,9 @@ class MaintenanceForm(forms.Form):
 class Force2FAForm(forms.Form):
     force_all = forms.BooleanField(required=False, label="فرض تفعيل المصادقة الثنائية على الجميع (ما عدا المطوّر)")
 
-
-@admin.register(DevPanel)
-class DevPanelAdmin(admin.ModelAdmin):
-    change_list_template = "admin/devtools_panel.html"
+@admin.register(AlertsPanel)
+class AlertsAdmin(admin.ModelAdmin):
+    change_list_template = "admin/devtools_alerts.html"
 
     def has_add_permission(self, request):
         return False
@@ -139,12 +138,9 @@ class DevPanelAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom = [
-            path("apply/", self.admin_site.admin_view(self.apply_changes), name="devtools-apply"),
-            path("maintenance/", self.admin_site.admin_view(self.apply_maintenance), name="devtools-maintenance"),
-            path("force2fa/", self.admin_site.admin_view(self.apply_force2fa), name="devtools-force2fa"),
+            path("apply/", self.admin_site.admin_view(self.apply_changes), name="devtools-alerts-apply"),
         ]
         return custom + urls
-        ctx = {**base_ctx, "form": form, "title": "التنبيهات", "opts": opts, "app_label": opts.app_label, "last_updated_at": last_updated_at}
     def changelist_view(self, request, extra_context=None):
         tid = _resolve_tenant_id(request)
         form_initial = {"tenantId": tid or ""}
@@ -160,19 +156,9 @@ class DevPanelAdmin(admin.ModelAdmin):
         base_ctx = self.admin_site.each_context(request)
         opts = self.model._meta
         g_text, g_enabled, g_updated = self._get_global_banner()
-        # Maintenance state (global – take latest any-tenant keys)
-        maint_msg, maint_on = self._get_global_state('maintenance_message'), self._get_global_state('maintenance_on')
-        # Force 2FA flag (global – take latest any-tenant)
-        force2fa = self._get_global_state('force_2fa') == '1'
-        maint_form = MaintenanceForm(initial={
-            'message': maint_msg or 'يرجى الانتظار لدينا صيانة على الموقع وسنعود فور الانتهاء.',
-            'enabled': (maint_on == '1')
-        })
-        f2_form = Force2FAForm(initial={ 'force_all': force2fa })
-        ctx = {**base_ctx, "form": form, "maint_form": maint_form, "force2fa_form": f2_form,
+        ctx = {**base_ctx, "form": form,
                "title": "التنبيهات", "opts": opts, "app_label": opts.app_label,
-               "last_updated_at": last_updated_at, "global_banner_text": g_text, "global_banner_enabled": g_enabled, "global_banner_updated_at": g_updated,
-               "maint_enabled": (maint_on == '1'), "maint_message": maint_msg or ''}
+               "last_updated_at": last_updated_at, "global_banner_text": g_text, "global_banner_enabled": g_enabled, "global_banner_updated_at": g_updated}
         return TemplateResponse(request, self.change_list_template, ctx)
     def _get_global_banner(self) -> tuple[str, bool, str | None]:
         """Fetch the latest saved banner (any tenant) to display in the admin panel."""
@@ -225,6 +211,43 @@ class DevPanelAdmin(admin.ModelAdmin):
             messages.warning(request, "لم يتم العثور على مستأجرين لتطبيق التغييرات")
         return redirect("..")
 
+@admin.register(MaintenancePanel)
+class MaintenanceAdmin(admin.ModelAdmin):
+    change_list_template = "admin/devtools_maintenance.html"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return True
+
+    def has_module_permission(self, request):
+        if getattr(settings, 'DEBUG', False) and request.user and request.user.is_staff:
+            return True
+        return super().has_module_permission(request)
+
+    def has_view_permission(self, request, obj=None):
+        if getattr(settings, 'DEBUG', False) and request.user and request.user.is_staff:
+            return True
+        return super().has_view_permission(request, obj)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("apply/", self.admin_site.admin_view(self.apply_maintenance), name="devtools-maintenance-apply"),
+        ]
+        return custom + urls
+
+    def changelist_view(self, request, extra_context=None):
+        base_ctx = self.admin_site.each_context(request)
+        opts = self.model._meta
+        maint_msg = self._get_global_state('maintenance_message') or 'يرجى الانتظار لدينا صيانة على الموقع وسنعود فور الانتهاء.'
+        maint_on = self._get_global_state('maintenance_on')
+        maint_form = MaintenanceForm(initial={'message': maint_msg, 'enabled': (maint_on == '1')})
+        ctx = {**base_ctx, "title": "وضع الصيانة", "opts": opts, "app_label": opts.app_label,
+               "maint_form": maint_form, "maint_enabled": (maint_on == '1'), "maint_message": maint_msg}
+        return TemplateResponse(request, self.change_list_template, ctx)
+
     def apply_maintenance(self, request):
         if request.method != 'POST':
             return redirect('..')
@@ -245,6 +268,42 @@ class DevPanelAdmin(admin.ModelAdmin):
                 _set_page(str(tid_all), 'maintenance_message', message)
         messages.success(request, 'تم تحديث وضع الصيانة لجميع المستأجرين')
         return redirect('..')
+
+@admin.register(SecurityPanel)
+class SecurityAdmin(admin.ModelAdmin):
+    change_list_template = "admin/devtools_security.html"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return True
+
+    def has_module_permission(self, request):
+        if getattr(settings, 'DEBUG', False) and request.user and request.user.is_staff:
+            return True
+        return super().has_module_permission(request)
+
+    def has_view_permission(self, request, obj=None):
+        if getattr(settings, 'DEBUG', False) and request.user and request.user.is_staff:
+            return True
+        return super().has_view_permission(request, obj)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("apply/", self.admin_site.admin_view(self.apply_force2fa), name="devtools-security-apply"),
+        ]
+        return custom + urls
+
+    def changelist_view(self, request, extra_context=None):
+        base_ctx = self.admin_site.each_context(request)
+        opts = self.model._meta
+        force2fa = self._get_global_state('force_2fa') == '1'
+        f2_form = Force2FAForm(initial={ 'force_all': force2fa })
+        ctx = {**base_ctx, "title": "الأمان", "opts": opts, "app_label": opts.app_label,
+               "force2fa_form": f2_form}
+        return TemplateResponse(request, self.change_list_template, ctx)
 
     def apply_force2fa(self, request):
         if request.method != 'POST':

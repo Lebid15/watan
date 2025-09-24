@@ -1,0 +1,43 @@
+{% extends "admin/change_list.html" %}
+{% block content %}
+  <div class="card">
+    <div class="card-header"><h2>التنبيهات</h2></div>
+    <div class="card-body">
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+      <form method="post" action="{% url 'admin:devtools-alerts-apply' %}">
+        {% csrf_token %}
+        <div class="form-group">
+          <label for="id_tenantId">Tenant ID (اختياري):</label>
+          {{ form.tenantId }}
+        </div>
+        <div class="form-group">
+          <label for="id_text">نص التنبيه (أعلى الهيدر):</label>
+          {{ form.text }}
+        </div>
+        <div class="form-group">
+          <label for="id_enabled">تفعيل التنبيه:</label>
+          {{ form.enabled }}
+        </div>
+        <div class="mt-3">
+          <button type="submit" class="btn btn-primary">حفظ التنبيه</button>
+        </div>
+      </form>
+
+      {% if global_banner_text or global_banner_enabled %}
+      <hr class="my-4">
+      <div class="alert alert-info">
+        <div class="mb-2"><strong>آخر رسالة محفوظة:</strong></div>
+        <div class="border rounded p-2 bg-light" style="white-space:pre-wrap;">{{ global_banner_text|default:"—" }}</div>
+        <div class="text-muted mt-2">الحالة: {{ global_banner_enabled|yesno:"مفعّل,متوقف" }}</div>
+        {% if global_banner_updated_at %}
+        <div class="text-muted mt-1">آخر تحديث: {{ global_banner_updated_at }}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
