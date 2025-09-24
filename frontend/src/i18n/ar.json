@@ -39,6 +39,7 @@
   "pagination.next": "التالي",
   "pagination.prev": "السابق"
   ,
+  "nav.dashboard": "لوحة التحكم",
   "tenant.products": "المنتجات",
   "tenant.users": "المستخدمون",
   "tenant.priceGroups": "مجموعات الأسعار",

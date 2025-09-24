@@ -62,10 +62,26 @@ export default function LoginPage() {
           const envList = (process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || process.env.DEVELOPER_EMAILS || '')
             .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
           const whitelist = envList.length ? envList : ['alayatl.tr@gmail.com'];
-          const host = window.location.host;
-          const hostParts = host.split('.');
+          // Determine subdomain vs apex correctly (handle *.localhost and ports)
+          const host = window.location.hostname; // no port
           let isSub = false; let apexHost = host;
-          if (hostParts.length >= 3) { const sub = hostParts[0]; if (sub && !['www','app'].includes(sub)) { isSub = true; apexHost = hostParts.slice(-2).join('.'); } }
+          if (/\.localhost$/i.test(host)) {
+            const parts = host.split('.');
+            const sub = parts[0]?.toLowerCase();
+            if (sub && !['www','app','localhost'].includes(sub)) {
+              isSub = true;
+              apexHost = 'localhost';
+            }
+          } else {
+            const parts = host.split('.');
+            if (parts.length > 2) {
+              const sub = parts[0]?.toLowerCase();
+              if (!['www','app','api'].includes(sub)) {
+                isSub = true;
+                apexHost = parts.slice(-2).join('.');
+              }
+            }
+          }
           const configuredApex = (process.env.NEXT_PUBLIC_APEX_DOMAIN || '').toLowerCase().replace(/\/$/, '');
           const isApex = !isSub;
           if (norm === 'developer') {
@@ -77,11 +93,16 @@ export default function LoginPage() {
               return;
             }
           } else if (isApex) {
+            // In dev localhost, treat as tenant portal rather than blocking
+            if (apexHost === 'localhost') {
+              // continue
+            } else {
             document.cookie = 'access_token=; Max-Age=0; path=/';
             document.cookie = 'role=; Max-Age=0; path=/';
             localStorage.removeItem('token');
             setError('الدخول عبر النطاق الرئيسي مقصور على المطوّر. استخدم نطاق المتجر (subdomain).');
             return;
+            }
           }
           const defaultDest = (() => {
             if (isSub) {

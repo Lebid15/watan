@@ -9,6 +9,7 @@ import { useUser } from '@/context/UserContext';
 import { formatGroupsDots } from '@/utils/format';
 import { HiOutlineUserCircle } from 'react-icons/hi';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import api, { API_ROUTES } from '@/utils/api';
 
 function currencySymbol(code?: string) {
   switch ((code || '').toUpperCase()) {
@@ -27,6 +28,8 @@ export default function MainHeader() {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const [banner, setBanner] = useState<{ text: string; enabled: boolean } | null>(null);
+  const [hideBanner, setHideBanner] = useState<boolean>(false);
 
   // ⬅️ خذ القيم الموجودة فعلًا في الـ Context
   const { user, refreshProfile: refreshUser, logout } = useUser();
@@ -35,6 +38,49 @@ export default function MainHeader() {
   useEffect(() => {
   refreshUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // اجلب نص شريط الإعلان العام من Django
+  useEffect(() => {
+    let mounted = true;
+    // احترام الإخفاء المؤقت حتى إعادة تحميل الصفحة
+    const hidden = typeof window !== 'undefined' && sessionStorage.getItem('banner:hidden') === '1';
+    if (hidden) setHideBanner(true);
+    (async () => {
+      try {
+        const url = '/api-dj/pages/banner';
+        // Forward tenant host so Django can resolve the tenant when running behind Next.js proxy
+        let tenantHost: string | undefined;
+        try {
+          // 1) cookie set by middleware on subdomains
+          const m = typeof document !== 'undefined' && document.cookie.match(/(?:^|; )tenant_host=([^;]+)/);
+          if (m && m[1]) tenantHost = decodeURIComponent(m[1]);
+          // 2) fallback to current host
+          if (!tenantHost && typeof window !== 'undefined') tenantHost = window.location.host;
+          // 3) env override for local dev if provided
+          if (!tenantHost && process.env.NEXT_PUBLIC_TENANT_HOST) tenantHost = process.env.NEXT_PUBLIC_TENANT_HOST;
+        } catch {}
+        const res = await fetch(url, { method: 'GET', headers: tenantHost ? { 'X-Tenant-Host': tenantHost } as any : undefined });
+        const ok = res.ok;
+        const data = ok ? await res.json().catch(() => ({})) : {};
+        if (process.env.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.debug('[Banner] GET', url, res.status, data);
+        }
+        if (mounted) {
+          const text = String((data as any).text || '').trim();
+          const enabled = Boolean((data as any).enabled);
+          setBanner({ text, enabled });
+        }
+      } catch (e: any) {
+        if (process.env.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.warn('[Banner] fetch failed', e?.message || e);
+        }
+        if (mounted) setBanner({ text: '', enabled: false });
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   // إغلاق القائمة عند النقر خارجها أو الضغط على Escape
@@ -63,8 +109,23 @@ export default function MainHeader() {
   const sym = currencySymbol(curr);
 
   const isEndUser = user && !['tenant_owner','distributor','developer'].includes((user.role||'').toLowerCase());
+  const showBanner = !!(banner && banner.enabled && banner.text && !hideBanner);
+  const headerTopOffset = showBanner ? 'top-[36px]' : 'top-0';
   return (
-    <header className="fixed top-0 left-0 w-full z-50 bg-bg-surface text-text-primary px-6 py-3 shadow">
+    <>
+      {showBanner && (
+        <div className="fixed top-0 left-0 w-full z-[60] bg-amber-50 text-amber-900 border-b border-amber-200">
+          <div className="px-6 py-2 text-sm flex items-start gap-3">
+            <div className="flex-1 whitespace-pre-wrap leading-5">{banner?.text}</div>
+            <button
+              aria-label="إغلاق الشريط"
+              className="text-xs px-2 py-1 rounded border border-amber-300 hover:bg-amber-100"
+              onClick={() => { setHideBanner(true); try { sessionStorage.setItem('banner:hidden', '1'); } catch {} }}
+            >إخفاء</button>
+          </div>
+        </div>
+      )}
+      <header className={`fixed ${headerTopOffset} left-0 w-full z-50 bg-bg-surface text-text-primary px-6 py-3 shadow`}>
       <div className="flex justify-between items-center">
         {/* اليسار: رصيد المحفظة + مبدل اللغة + زر الحساب */}
         <div className="flex items-center gap-2" dir="rtl">
@@ -169,6 +230,7 @@ export default function MainHeader() {
           {/* تمت إزالة instance_owner (مُطبَّع إلى tenant_owner) */}
         </div>
       </div>
-    </header>
+      </header>
+    </>
   );
 }

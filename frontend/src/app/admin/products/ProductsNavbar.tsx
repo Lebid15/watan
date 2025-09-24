@@ -19,12 +19,15 @@ export default function ProductsNavbar() {
   ];
 
   const isActive = (href: string) => {
-    if (pathname === href) return true;
-    if (
-      pathname.startsWith(href + '/') &&
-      !navItems.some(item => item.href !== href && pathname === item.href)
-    ) {
-      return true;
+    // Normalize pathnames to avoid trailing-slash confusion
+    const norm = (s: string) => (s.endsWith('/') && s.length > 1) ? s.slice(0, -1) : s;
+    const p = norm(pathname);
+    const h = norm(href);
+    if (p === h) return true;
+    // Only treat as active if it's a subroute of href AND not exactly another tab href
+    if (p.startsWith(h + '/')) {
+      const clashes = navItems.some(item => norm(item.href) !== h && p === norm(item.href));
+      if (!clashes) return true;
     }
     return false;
   };

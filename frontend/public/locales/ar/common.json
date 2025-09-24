@@ -19,6 +19,8 @@
   "lang.en": "English",
   "lang.tr": "Türkçe"
   ,
+  "nav.dashboard": "لوحة التحكم",
+  "tenant.products": "المنتجات",
   "wallet.balance": "رصيد المحفظة",
   "errors.upload.network": "تعذر الاتصال بالخادم أثناء الرفع",
   "errors.session.expired": "جلسة منتهية، يرجى تسجيل الدخول",
@@ -64,7 +66,7 @@
   "generic.details": "التفاصيل",
   "generic.deletedProvider": "(مزود محذوف)"
   ,
-  "orders.pageTitle": "إدارة الطلبات",
+  "orders.pageTitle": "الطلبات",
   "orders.loading": "جاري التحميل…",
   "orders.filters.search.label": "بحث عام",
   "orders.filters.search.placeholder": "اكتب رقم/مستخدم/باقة…",

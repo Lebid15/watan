@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { API_ROUTES } from '@/utils/api';
+import { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import api from '@/utils/api';
 import { buildImageVariants } from '@/utils/imageVariants';
 
@@ -20,16 +20,17 @@ export default function ProductsPageClient(){
   const [snapshotSearch,setSnapshotSearch]=useState('');
   const [batchBusy,setBatchBusy]=useState(false);
 
-  const apiHost = useMemo(()=> API_ROUTES.products.base.replace(/\/api\/products\/?$/,''),[]);
-  const apiBase = useMemo(()=> `${apiHost}/api`,[apiHost]);
-  const productsUrl = `${apiBase}/products?all=1`;
+  // Use configured API base directly to avoid duplicating segments like "/products/api/products"
+  const apiBase = useMemo(() => API_BASE_URL, []);
+  // Important: include trailing slash to avoid Django's APPEND_SLASH redirect (which can loop via Next rewrites)
+  const productsUrl = `${API_ROUTES.products.base}/?all=1`;
 
   async function fetchProducts(){
     try {
-      const res=await fetch(productsUrl,{cache:'no-store'});
-      if(!res.ok) throw new Error('fetch products failed');
-      const data=await res.json();
-      setProducts(Array.isArray(data)?data:[]);
+      const res = await api.get(API_ROUTES.products.base, { params: { all: 1 }, validateStatus: () => true });
+      if (res.status >= 400) throw new Error('fetch products failed');
+      const data = res.data;
+      setProducts(Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []);
     } catch {
       setProducts([]);
     }
@@ -51,7 +52,21 @@ export default function ProductsPageClient(){
   useEffect(()=>{ fetchProducts(); },[]);
 
   function pickImageField(p:Product){ return p.imageUrl||null; }
-  function buildImageSrc(raw?:string|null){ if(!raw) return '/images/placeholder.png'; const s=String(raw).trim(); if(/^https?:\/\//i.test(s)) return s; if(s.startsWith('/')) return `${apiHost}${s}`; return `${apiHost}/${s}`; }
+  function buildImageSrc(raw?: string | null) {
+    if (!raw) return '/images/placeholder.png';
+    const s = String(raw).trim();
+    if (/^https?:\/\//i.test(s)) return s;
+    // Prefix relative image paths with the API origin
+    try {
+      const origin = typeof window !== 'undefined'
+        ? new URL(API_BASE_URL, window.location.origin).origin
+        : '';
+      if (s.startsWith('/')) return `${origin}${s}`;
+      return `${origin}/${s}`;
+    } catch {
+      return s;
+    }
+  }
   function getImageSrc(p:Product){ return failed.has(p.id)?'/images/placeholder.png':buildImageSrc(pickImageField(p)); }
   function resolveImageSource(p:Product){ if(p.imageSource) return p.imageSource||'none'; const img=pickImageField(p); if(!img) return 'none'; return p.useCatalogImage?'catalog':'custom'; }
 

@@ -14,40 +14,51 @@ const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [, force] = useState(0);
   useEffect(() => {
     const handler = () => force(v => v + 1);
+    // Re-render when language changes or when resources are loaded asynchronously
     i18n.on('languageChanged', handler);
-    return () => { i18n.off('languageChanged', handler); };
+    i18n.on('loaded', handler);
+    return () => {
+      i18n.off('languageChanged', handler);
+      i18n.off('loaded', handler);
+    };
   }, []);
   return <>{children}</>;
 };
 
 export default function ClientRoot({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // Normalize trailing slash (e.g., '/login/' -> '/login') to make checks consistent with trailingSlash=true
+  const normalizedPath = pathname && pathname.length > 1 && pathname.endsWith('/')
+    ? pathname.slice(0, -1)
+    : (pathname || '/');
   // تهيئة اللغة من localStorage أو الكوكيز
   useEffect(() => {
-    try {
-      let detected: string | null = null;
-      if (typeof document !== 'undefined') {
-        const m = document.cookie.match(/(?:^|; )NEXT_LOCALE=([^;]+)/);
-        if (m) detected = decodeURIComponent(m[1]);
-      }
-      if (!detected && typeof localStorage !== 'undefined') {
-        detected = localStorage.getItem('locale');
-      }
-      if (!detected) detected = 'ar';
-      setLocale(detected);
-      loadNamespace(detected, 'common');
-    } catch {}
+    (async () => {
+      try {
+        let detected: string | null = null;
+        if (typeof document !== 'undefined') {
+          const m = document.cookie.match(/(?:^|; )NEXT_LOCALE=([^;]+)/);
+          if (m) detected = decodeURIComponent(m[1]);
+        }
+        if (!detected && typeof localStorage !== 'undefined') {
+          detected = localStorage.getItem('locale');
+        }
+        if (!detected) detected = 'ar';
+        setLocale(detected);
+        await loadNamespace(detected, 'common');
+      } catch {}
+    })();
   }, []);
-  const hideHeaderFooter = pathname === '/login' || pathname === '/register' || pathname === '/password-reset';
-  const isBackoffice = pathname?.startsWith('/admin') || pathname?.startsWith('/dev');
+  const hideHeaderFooter = ['\x2flogin','\x2fregister','\x2fpassword-reset','\x2fverify-email'].includes(normalizedPath);
+  const isBackoffice = normalizedPath.startsWith('/admin') || normalizedPath.startsWith('/dev');
   const hasRoleAreaLayout =
-    pathname?.startsWith('/tenant') ||
-    pathname?.startsWith('/distributor') ||
-    pathname?.startsWith('/owner');
+    normalizedPath.startsWith('/tenant') ||
+    normalizedPath.startsWith('/distributor') ||
+    normalizedPath.startsWith('/owner');
 
   const router = useRouter();
   useEffect(() => {
-    if (pathname !== '/login') return;
+    if (normalizedPath !== '/login') return;
     if (typeof window === 'undefined') return;
     const token = localStorage.getItem('token');
     if (!token) {
@@ -98,7 +109,7 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
       dest = `${proto}//${apex}/dev`;
     }
     router.replace(dest);
-  }, [pathname, router]);
+  }, [normalizedPath, router]);
 
 
   return (

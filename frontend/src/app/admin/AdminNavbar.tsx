@@ -23,9 +23,13 @@ export default function AdminNavbar() {
   useEffect(() => setOpenDropdown(null), [pathname]);
 
   const navItems: NavItem[] = [
-    { name: t('orders.pageTitle'), href: '/admin/dashboard' },
-    { name: t('product.pageTitle'), href: '/admin/products' },
+    // Dashboard
+    { name: t('nav.dashboard'), href: '/admin/dashboard' },
+    // Products (plural)
+    { name: t('tenant.products'), href: '/admin/products' },
+    // Orders
     { name: t('orders.pageTitle'), href: '/admin/orders' },
+    // Users
     { name: t('users.pageTitle'), href: '/admin/users' },
     {
       name: t('payments.nav.group'),

@@ -91,6 +91,18 @@ Expected responses:
 * Bad Cloudinary creds: `401 { code: cloudinary_bad_credentials }`
 * Generic upstream Cloudinary issue: `5xx { code: upload_failed }`
 
+## Django Sidecar API (/api-dj)
+
+We introduced a parallel Django service under `djangoo/` to enable gradual migration from NestJS without downtime.
+
+- Start with existing stack, then run Django:
+	- `docker compose up -d djangoo`
+- Nginx routes `/api-dj/**` to Django (Uvicorn) and forwards `Authorization` and `X-Tenant-Host` headers.
+- Current endpoints: `/api-dj/health`, `/api-dj/auth/login`, `/api-dj/auth/refresh`, `/api-dj/users/profile`, `/api-dj/users/profile-with-currency`.
+- Swagger: `/api-dj/docs`.
+
+Important: Existing `/api/**` endpoints stay served by NestJS until cutover is approved.
+
 ## Fast Remote Deployment
 
 Helper scripts in `scripts/` for quicker backend-focused deploys without waiting for CI.

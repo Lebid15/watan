@@ -1,0 +1,3204 @@
+openapi: 3.0.3
+info:
+  title: Watan DJ API
+  version: 1.0.0
+  description: Django parity API under /api-dj
+paths:
+  /api-dj/admin/deposits:
+    get:
+      operationId: api_dj_admin_deposits_retrieve
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      - in: query
+        name: cursor
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      - in: query
+        name: q
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - Admin Payments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDepositsListResponse'
+          description: ''
+  /api-dj/admin/deposits/{id}:
+    get:
+      operationId: api_dj_admin_deposits_retrieve_2
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Payments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositDetails'
+          description: ''
+    patch:
+      operationId: api_dj_admin_deposits_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Payments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminDepositActionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminDepositActionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminDepositActionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDepositActionResponse'
+          description: ''
+  /api-dj/admin/deposits/{id}/notes:
+    get:
+      operationId: api_dj_admin_deposits_notes_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Payments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDepositNotesResponse'
+          description: ''
+    post:
+      operationId: api_dj_admin_deposits_notes_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Payments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDepositNotesResponse'
+          description: ''
+  /api-dj/admin/integrations:
+    get:
+      operationId: api_dj_admin_integrations_list
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      tags:
+      - Admin Integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Integration'
+          description: ''
+    post:
+      operationId: api_dj_admin_integrations_create
+      tags:
+      - Admin Integrations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntegrationCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IntegrationCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IntegrationCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Integration'
+          description: ''
+  /api-dj/admin/integrations/{id}:
+    get:
+      operationId: api_dj_admin_integrations_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Integration'
+          description: ''
+    patch:
+      operationId: api_dj_admin_integrations_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Integrations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedIntegrationUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedIntegrationUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedIntegrationUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Integration'
+          description: ''
+    delete:
+      operationId: api_dj_admin_integrations_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api-dj/admin/integrations/{id}/import-catalog:
+    post:
+      operationId: api_dj_admin_integrations_import_catalog_create
+      description: 'Import provider catalog and optionally apply mappings and costs.
+        Query: apply, applyCosts, currency, hint, productId'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api-dj/admin/integrations/{id}/refresh-balance:
+    post:
+      operationId: api_dj_admin_integrations_refresh_balance_create
+      description: Refresh provider balance for this integration using the provider
+        adapter. Returns latest balance and timestamp.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api-dj/admin/orders:
+    get:
+      operationId: api_dj_admin_orders_retrieve
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+        description: Tenant host header
+      - in: query
+        name: cursor
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Search userIdentifier/extraField
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: pending|approved|rejected
+      tags:
+      - Admin Orders
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrdersListResponse'
+          description: ''
+  /api-dj/admin/orders/{id}:
+    get:
+      operationId: api_dj_admin_orders_retrieve_2
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Orders
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrderDetailsResponse'
+          description: ''
+    patch:
+      operationId: api_dj_admin_orders_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Orders
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminOrderStatusUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminOrderStatusUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminOrderStatusUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrderActionResponse'
+          description: ''
+  /api-dj/admin/orders/{id}/notes:
+    get:
+      operationId: api_dj_admin_orders_notes_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Orders
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrderNotesResponse'
+          description: ''
+    post:
+      operationId: api_dj_admin_orders_notes_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Orders
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrderNotesResponse'
+          description: ''
+  /api-dj/admin/orders/{id}/refresh-external:
+    post:
+      operationId: api_dj_admin_orders_refresh_external_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Orders
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrderActionResponse'
+          description: ''
+  /api-dj/admin/orders/{id}/sync-external:
+    patch:
+      operationId: api_dj_admin_orders_sync_external_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Orders
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrderSyncExternalResponse'
+          description: ''
+  /api-dj/admin/package-costs:
+    get:
+      operationId: api_dj_admin_package_costs_list
+      parameters:
+      - in: query
+        name: packageId
+        schema:
+          type: string
+        required: true
+      tags:
+      - Admin Costs
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PackageCost'
+          description: ''
+    put:
+      operationId: api_dj_admin_package_costs_update
+      tags:
+      - Admin Costs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageCostUpsertRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PackageCostUpsertRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PackageCostUpsertRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageCost'
+          description: ''
+    delete:
+      operationId: api_dj_admin_package_costs_destroy
+      parameters:
+      - in: query
+        name: packageId
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: providerId
+        schema:
+          type: string
+        required: true
+      tags:
+      - Admin Costs
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api-dj/admin/payouts:
+    get:
+      operationId: api_dj_admin_payouts_retrieve
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      - in: query
+        name: cursor
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      - in: query
+        name: q
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - Admin Payouts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPayoutsListResponse'
+          description: ''
+  /api-dj/admin/payouts/{id}:
+    get:
+      operationId: api_dj_admin_payouts_retrieve_2
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Payouts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutDetails'
+          description: ''
+    patch:
+      operationId: api_dj_admin_payouts_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Payouts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminPayoutActionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminPayoutActionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminPayoutActionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPayoutActionResponse'
+          description: ''
+  /api-dj/admin/payouts/{id}/notes:
+    get:
+      operationId: api_dj_admin_payouts_notes_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Payouts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPayoutNotesResponse'
+          description: ''
+    post:
+      operationId: api_dj_admin_payouts_notes_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Payouts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPayoutNotesResponse'
+          description: ''
+  /api-dj/admin/providers:
+    get:
+      operationId: api_dj_admin_providers_retrieve
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      tags:
+      - Admin Providers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvidersListResponse'
+          description: ''
+  /api-dj/admin/providers/{id}:
+    get:
+      operationId: api_dj_admin_providers_retrieve_2
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Providers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Provider'
+          description: ''
+  /api-dj/admin/providers/coverage:
+    get:
+      operationId: api_dj_admin_providers_coverage_retrieve
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      - in: query
+        name: productId
+        schema:
+          type: string
+      - in: query
+        name: providerId
+        schema:
+          type: string
+      tags:
+      - Admin Providers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageResponse'
+          description: ''
+  /api-dj/admin/providers/package-mappings:
+    get:
+      operationId: api_dj_admin_providers_package_mappings_retrieve
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      - in: query
+        name: cursor
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      - in: query
+        name: ourPackageId
+        schema:
+          type: string
+      - in: query
+        name: providerApiId
+        schema:
+          type: string
+      tags:
+      - Admin Providers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageMappingsListResponse'
+          description: ''
+  /api-dj/admin/reports/deposits/daily:
+    get:
+      operationId: api_dj_admin_reports_deposits_daily_retrieve
+      tags:
+      - Admin Reports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/admin/reports/orders/daily:
+    get:
+      operationId: api_dj_admin_reports_orders_daily_retrieve
+      tags:
+      - Admin Reports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/admin/reports/overview:
+    get:
+      operationId: api_dj_admin_reports_overview_retrieve
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      - in: query
+        name: from
+        schema:
+          type: string
+        description: ISO date (YYYY-MM-DD)
+      - in: query
+        name: to
+        schema:
+          type: string
+        description: ISO date (YYYY-MM-DD)
+      tags:
+      - Admin Reports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewResponse'
+          description: ''
+  /api-dj/admin/reports/payouts/daily:
+    get:
+      operationId: api_dj_admin_reports_payouts_daily_retrieve
+      tags:
+      - Admin Reports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/admin/routing/packages/{package_id}:
+    get:
+      operationId: api_dj_admin_routing_packages_retrieve
+      parameters:
+      - in: path
+        name: package_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Routing
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageRouting'
+          description: ''
+    put:
+      operationId: api_dj_admin_routing_packages_update
+      parameters:
+      - in: path
+        name: package_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Routing
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageRoutingUpsertRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PackageRoutingUpsertRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PackageRoutingUpsertRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageRouting'
+          description: ''
+  /api-dj/admin/tenants:
+    get:
+      operationId: api_dj_admin_tenants_list
+      tags:
+      - Admin Tenants
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tenant'
+          description: ''
+    post:
+      operationId: api_dj_admin_tenants_create
+      tags:
+      - Admin Tenants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TenantCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TenantCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+          description: ''
+  /api-dj/admin/tenants/{tenant_id}:
+    get:
+      operationId: api_dj_admin_tenants_retrieve
+      parameters:
+      - in: path
+        name: tenant_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tenants
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+          description: ''
+    patch:
+      operationId: api_dj_admin_tenants_partial_update
+      parameters:
+      - in: path
+        name: tenant_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tenants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTenantUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTenantUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTenantUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+          description: ''
+    delete:
+      operationId: api_dj_admin_tenants_destroy
+      parameters:
+      - in: path
+        name: tenant_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tenants
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api-dj/admin/tenants/{tenant_id}/domains:
+    get:
+      operationId: api_dj_admin_tenants_domains_list
+      parameters:
+      - in: path
+        name: tenant_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tenants
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TenantDomain'
+          description: ''
+    post:
+      operationId: api_dj_admin_tenants_domains_create
+      parameters:
+      - in: path
+        name: tenant_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tenants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DomainCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DomainCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDomain'
+          description: ''
+  /api-dj/admin/tenants/{tenant_id}/domains/{domain_id}:
+    patch:
+      operationId: api_dj_admin_tenants_domains_partial_update
+      parameters:
+      - in: path
+        name: domain_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tenant_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tenants
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDomain'
+          description: ''
+    delete:
+      operationId: api_dj_admin_tenants_domains_destroy
+      parameters:
+      - in: path
+        name: domain_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: tenant_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tenants
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api-dj/admin/tokens:
+    get:
+      operationId: api_dj_admin_tokens_list
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      - in: query
+        name: tenantId
+        schema:
+          type: string
+      - in: query
+        name: userId
+        schema:
+          type: string
+      tags:
+      - Admin Tokens
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TenantApiToken'
+          description: ''
+    post:
+      operationId: api_dj_admin_tokens_create
+      description: Returns tokenPrefix and plain token in body once
+      tags:
+      - Admin Tokens
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateTokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateTokenRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantApiToken'
+          description: ''
+  /api-dj/admin/tokens/{token_id}:
+    patch:
+      operationId: api_dj_admin_tokens_partial_update
+      parameters:
+      - in: path
+        name: token_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tokens
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRotateTokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRotateTokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRotateTokenRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantApiToken'
+          description: ''
+    delete:
+      operationId: api_dj_admin_tokens_destroy
+      parameters:
+      - in: path
+        name: token_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin Tokens
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api-dj/auth/login:
+    post:
+      operationId: api_dj_auth_login_create
+      description: |-
+        Takes a set of user credentials and returns an access and refresh JSON web
+        token pair to prove the authentication of those credentials.
+      tags:
+      - api-dj
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenObtainPair'
+          description: ''
+  /api-dj/auth/refresh:
+    post:
+      operationId: api_dj_auth_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - api-dj
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api-dj/currencies/:
+    get:
+      operationId: api_dj_currencies_retrieve
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_dj_currencies_create
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/currencies/{id}:
+    put:
+      operationId: api_dj_currencies_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_dj_currencies_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api-dj/currencies/bulk-update:
+    put:
+      operationId: api_dj_currencies_bulk_update_update
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/currencies/seed-defaults:
+    post:
+      operationId: api_dj_currencies_seed_defaults_create
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/deposits/me:
+    get:
+      operationId: api_dj_deposits_me_retrieve
+      parameters:
+      - in: query
+        name: cursor
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      tags:
+      - Payments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositsListResponse'
+          description: ''
+  /api-dj/external/orders:
+    post:
+      operationId: api_dj_external_orders_create
+      description: Creates a ProductOrder and ties it to Idempotency-Key if provided.
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: Any unique string per request to avoid duplicates
+        examples:
+          Idem:
+            value: req_20240918_001
+            summary: idem
+      - in: header
+        name: X-API-Token
+        schema:
+          type: string
+        description: Provide the plain API token
+        required: true
+        examples:
+          Token:
+            value: tok_abc123...
+            summary: token
+      tags:
+      - External API
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api-dj/orders/{id}:
+    get:
+      operationId: api_dj_orders_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Orders
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyOrderDetailsResponse'
+          description: ''
+  /api-dj/orders/me:
+    get:
+      operationId: api_dj_orders_me_retrieve
+      parameters:
+      - in: query
+        name: cursor
+        schema:
+          type: string
+        description: Cursor from previous page (ISO datetime)
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Page size (1..100)
+      tags:
+      - Orders
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersListResponse'
+              examples:
+                OrdersPage:
+                  value:
+                    items:
+                    - id: 9d3e...
+                      status: pending
+                      createdAt: '2025-09-20T12:00:00Z'
+                      product:
+                        id: a1
+                        name: Game X
+                      package:
+                        id: b1
+                        name: 100 Gems
+                        productId: a1
+                      quantity: 1
+                      userIdentifier: user#123
+                      extraField: null
+                      orderNo: 1001
+                      priceUSD: 10.0
+                      unitPriceUSD: 10.0
+                      display:
+                        currencyCode: USD
+                        totalPrice: 10.0
+                        unitPrice: 10.0
+                    pageInfo:
+                      nextCursor: null
+                      hasMore: false
+                  summary: Orders page
+          description: ''
+  /api-dj/payment-methods:
+    get:
+      operationId: api_dj_payment_methods_list
+      tags:
+      - Payments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentMethod'
+          description: ''
+  /api-dj/payouts/me:
+    get:
+      operationId: api_dj_payouts_me_retrieve
+      parameters:
+      - in: query
+        name: cursor
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      tags:
+      - Payouts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutsListResponse'
+          description: ''
+  /api-dj/products/:
+    get:
+      operationId: api_dj_products_retrieve
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/products/{id}:
+    get:
+      operationId: api_dj_products_retrieve_2
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/products/price-groups:
+    get:
+      operationId: api_dj_products_price_groups_retrieve
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_dj_products_price_groups_create
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/products/price-groups/{id}:
+    put:
+      operationId: api_dj_products_price_groups_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_dj_products_price_groups_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api-dj/products/price-groups/users:
+    get:
+      operationId: api_dj_products_price_groups_users_retrieve
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/tenants/current:
+    get:
+      operationId: api_dj_tenants_current_retrieve
+      parameters:
+      - in: header
+        name: X-Tenant-Host
+        schema:
+          type: string
+      tags:
+      - Tenants
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/users/:
+    get:
+      operationId: api_dj_users_retrieve
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/users/{id}/price-group:
+    patch:
+      operationId: api_dj_users_price_group_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/users/profile:
+    get:
+      operationId: api_dj_users_profile_retrieve
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    put:
+      operationId: api_dj_users_profile_update
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/users/profile-with-currency:
+    get:
+      operationId: api_dj_users_profile_with_currency_retrieve
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api-dj/users/with-price-group:
+    get:
+      operationId: api_dj_users_with_price_group_retrieve
+      tags:
+      - api-dj
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+components:
+  schemas:
+    AdminDepositActionResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+      required:
+      - id
+      - ok
+      - status
+    AdminDepositListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          maxLength: 20
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 10
+        userId:
+          type: string
+          format: uuid
+        methodId:
+          type: string
+          format: uuid
+          nullable: true
+        external_ref:
+          type: string
+          nullable: true
+          maxLength: 120
+        createdAt:
+          type: string
+          format: date-time
+        notesCount:
+          type: integer
+          nullable: true
+        manualNote:
+          type: string
+          nullable: true
+      required:
+      - amount
+      - createdAt
+      - currency
+      - id
+      - manualNote
+      - methodId
+      - notesCount
+      - status
+      - userId
+    AdminDepositNotesResponse:
+      type: object
+      properties:
+        depositId:
+          type: string
+          format: uuid
+        notes:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - depositId
+      - notes
+    AdminDepositsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminDepositListItem'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+      - items
+      - pageInfo
+    AdminOrderActionResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+      required:
+      - id
+      - ok
+      - status
+    AdminOrderDetailsPayload:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderNo:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          maxLength: 50
+        userIdentifier:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        sellPriceAmount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        sellPriceCurrency:
+          type: string
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        providerMessage:
+          type: string
+          nullable: true
+        notesCount:
+          type: integer
+        manualNote:
+          type: string
+          nullable: true
+        fxLocked:
+          type: boolean
+        approvedLocalDate:
+          type: string
+          format: date
+          nullable: true
+        product:
+          allOf:
+          - $ref: '#/components/schemas/_ProductMini'
+          nullable: true
+        package:
+          allOf:
+          - $ref: '#/components/schemas/_PackageMini'
+          nullable: true
+        providerId:
+          type: integer
+          nullable: true
+        externalOrderId:
+          type: string
+          nullable: true
+        externalStatus:
+          type: string
+          nullable: true
+        lastMessage:
+          type: string
+          nullable: true
+        pinCode:
+          type: string
+          nullable: true
+        notes:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - approvedLocalDate
+      - completedAt
+      - createdAt
+      - durationMs
+      - externalOrderId
+      - externalStatus
+      - fxLocked
+      - id
+      - lastMessage
+      - manualNote
+      - notes
+      - notesCount
+      - orderNo
+      - package
+      - pinCode
+      - product
+      - providerId
+      - providerMessage
+      - sellPriceAmount
+      - sellPriceCurrency
+      - sentAt
+      - userIdentifier
+    AdminOrderDetailsResponse:
+      type: object
+      properties:
+        order:
+          $ref: '#/components/schemas/AdminOrderDetailsPayload'
+      required:
+      - order
+    AdminOrderListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderNo:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          maxLength: 50
+        userIdentifier:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        sellPriceAmount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        sellPriceCurrency:
+          type: string
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        providerMessage:
+          type: string
+          nullable: true
+        notesCount:
+          type: integer
+        manualNote:
+          type: string
+          nullable: true
+        fxLocked:
+          type: boolean
+        approvedLocalDate:
+          type: string
+          format: date
+          nullable: true
+        product:
+          allOf:
+          - $ref: '#/components/schemas/_ProductMini'
+          nullable: true
+        package:
+          allOf:
+          - $ref: '#/components/schemas/_PackageMini'
+          nullable: true
+      required:
+      - approvedLocalDate
+      - completedAt
+      - createdAt
+      - durationMs
+      - fxLocked
+      - id
+      - manualNote
+      - notesCount
+      - orderNo
+      - package
+      - product
+      - providerMessage
+      - sellPriceAmount
+      - sellPriceCurrency
+      - sentAt
+      - userIdentifier
+    AdminOrderNotesResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        notes:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - notes
+      - orderId
+    AdminOrderSyncExternalResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        order:
+          type: object
+          additionalProperties: {}
+      required:
+      - message
+      - order
+    AdminOrdersListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOrderListItem'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+      - items
+      - pageInfo
+    AdminPayoutActionRequestStatusEnum:
+      enum:
+      - approved
+      - rejected
+      - sent
+      type: string
+      description: |-
+        * `approved` - approved
+        * `rejected` - rejected
+        * `sent` - sent
+    AdminPayoutActionResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+      required:
+      - id
+      - ok
+      - status
+    AdminPayoutListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          maxLength: 20
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 10
+        userId:
+          type: string
+          format: uuid
+        external_ref:
+          type: string
+          nullable: true
+          maxLength: 120
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        notesCount:
+          type: integer
+          nullable: true
+        manualNote:
+          type: string
+          nullable: true
+      required:
+      - amount
+      - completedAt
+      - createdAt
+      - currency
+      - id
+      - manualNote
+      - notesCount
+      - sentAt
+      - status
+      - userId
+    AdminPayoutNotesResponse:
+      type: object
+      properties:
+        payoutId:
+          type: string
+          format: uuid
+        notes:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - notes
+      - payoutId
+    AdminPayoutsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminPayoutListItem'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+      - items
+      - pageInfo
+    CoverageItem:
+      type: object
+      properties:
+        packageId:
+          type: string
+          format: uuid
+        packageName:
+          type: string
+          nullable: true
+        productId:
+          type: string
+          format: uuid
+          nullable: true
+        productName:
+          type: string
+          nullable: true
+        priceGroupId:
+          type: string
+          format: uuid
+          nullable: true
+        priceGroupName:
+          type: string
+          nullable: true
+        routingMode:
+          type: string
+          nullable: true
+        providerType:
+          type: string
+          nullable: true
+        providerId:
+          type: string
+          nullable: true
+        providerName:
+          type: string
+          nullable: true
+        mappingExists:
+          type: boolean
+        mappedProviderPackageId:
+          type: string
+          nullable: true
+        mappingUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        costExists:
+          type: boolean
+        costCurrency:
+          type: string
+          nullable: true
+        costAmount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+      required:
+      - costAmount
+      - costCurrency
+      - costExists
+      - mappedProviderPackageId
+      - mappingExists
+      - mappingUpdatedAt
+      - packageId
+      - packageName
+      - priceGroupId
+      - priceGroupName
+      - productId
+      - productName
+      - providerId
+      - providerName
+      - providerType
+      - routingMode
+    CoverageResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoverageItem'
+      required:
+      - items
+    CreateTokenRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+          maxLength: 80
+        user_id:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          items:
+            type: string
+            maxLength: 60
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - scopes
+      - user_id
+    DepositDetails:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          maxLength: 20
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 10
+        userId:
+          type: string
+          format: uuid
+        methodId:
+          type: string
+          format: uuid
+          nullable: true
+        external_ref:
+          type: string
+          nullable: true
+          maxLength: 120
+        createdAt:
+          type: string
+          format: date-time
+        notes:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        manualNote:
+          type: string
+          nullable: true
+      required:
+      - amount
+      - createdAt
+      - currency
+      - id
+      - manualNote
+      - methodId
+      - notes
+      - status
+      - userId
+    DepositListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          maxLength: 20
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 10
+        userId:
+          type: string
+          format: uuid
+        methodId:
+          type: string
+          format: uuid
+          nullable: true
+        external_ref:
+          type: string
+          nullable: true
+          maxLength: 120
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - amount
+      - createdAt
+      - currency
+      - id
+      - methodId
+      - status
+      - userId
+    DepositsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DepositListItem'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+      - items
+      - pageInfo
+    DomainCreateRequest:
+      type: object
+      properties:
+        domain:
+          type: string
+          maxLength: 190
+        type:
+          type: string
+          maxLength: 20
+        is_primary:
+          type: boolean
+          default: false
+      required:
+      - domain
+    Integration:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+        provider:
+          type: string
+          maxLength: 20
+        scope:
+          type: string
+          maxLength: 10
+        baseUrl:
+          type: string
+          nullable: true
+        apiToken:
+          type: string
+          nullable: true
+        kod:
+          type: string
+          nullable: true
+          maxLength: 120
+        sifre:
+          type: string
+          nullable: true
+          maxLength: 120
+        enabled:
+          type: boolean
+        balance:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,15}(?:\.\d{0,3})?$
+          nullable: true
+        balanceUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - balanceUpdatedAt
+      - createdAt
+      - id
+      - name
+      - provider
+      - tenantId
+    IntegrationCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        provider:
+          $ref: '#/components/schemas/ProviderEnum'
+        scope:
+          allOf:
+          - $ref: '#/components/schemas/ScopeEnum'
+          default: tenant
+        baseUrl:
+          type: string
+          nullable: true
+        apiToken:
+          type: string
+          nullable: true
+        kod:
+          type: string
+          nullable: true
+        sifre:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+          default: true
+      required:
+      - name
+      - provider
+    ModeEnum:
+      enum:
+      - manual
+      - auto
+      type: string
+      description: |-
+        * `manual` - manual
+        * `auto` - auto
+    MoneyTotal:
+      type: object
+      properties:
+        currency:
+          type: string
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+      required:
+      - amount
+      - currency
+    MyOrderDetailsResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          maxLength: 50
+        createdAt:
+          type: string
+          format: date-time
+        product:
+          allOf:
+          - $ref: '#/components/schemas/_ProductMini'
+          nullable: true
+        package:
+          allOf:
+          - $ref: '#/components/schemas/_PackageMini'
+          nullable: true
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        userIdentifier:
+          type: string
+          nullable: true
+        extraField:
+          type: string
+          nullable: true
+        orderNo:
+          type: integer
+          nullable: true
+        priceUSD:
+          type: string
+          readOnly: true
+        unitPriceUSD:
+          type: string
+          readOnly: true
+        display:
+          type: string
+          readOnly: true
+        manualNote:
+          type: string
+          nullable: true
+        notes:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        externalStatus:
+          type: string
+          nullable: true
+        lastMessage:
+          type: string
+          nullable: true
+        providerMessage:
+          type: string
+          nullable: true
+        pinCode:
+          type: string
+          nullable: true
+      required:
+      - createdAt
+      - display
+      - externalStatus
+      - extraField
+      - id
+      - lastMessage
+      - manualNote
+      - notes
+      - orderNo
+      - package
+      - pinCode
+      - priceUSD
+      - product
+      - providerMessage
+      - unitPriceUSD
+      - userIdentifier
+    OrderListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          maxLength: 50
+        createdAt:
+          type: string
+          format: date-time
+        product:
+          allOf:
+          - $ref: '#/components/schemas/_ProductMini'
+          nullable: true
+        package:
+          allOf:
+          - $ref: '#/components/schemas/_PackageMini'
+          nullable: true
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: -2147483648
+        userIdentifier:
+          type: string
+          nullable: true
+        extraField:
+          type: string
+          nullable: true
+        orderNo:
+          type: integer
+          nullable: true
+        priceUSD:
+          type: string
+          readOnly: true
+        unitPriceUSD:
+          type: string
+          readOnly: true
+        display:
+          type: string
+          readOnly: true
+      required:
+      - createdAt
+      - display
+      - extraField
+      - id
+      - orderNo
+      - package
+      - priceUSD
+      - product
+      - unitPriceUSD
+      - userIdentifier
+    OrdersListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderListItem'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+      - items
+      - pageInfo
+    OverviewResponse:
+      type: object
+      properties:
+        orders:
+          $ref: '#/components/schemas/SectionTotals'
+        deposits:
+          $ref: '#/components/schemas/SectionTotals'
+        payouts:
+          $ref: '#/components/schemas/SectionTotals'
+      required:
+      - deposits
+      - orders
+      - payouts
+    PackageCost:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        packageId:
+          type: string
+          format: uuid
+        providerId:
+          type: string
+        costCurrency:
+          type: string
+        costAmount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      required:
+      - costAmount
+      - costCurrency
+      - id
+      - packageId
+      - providerId
+      - tenantId
+    PackageCostUpsertRequest:
+      type: object
+      properties:
+        providerId:
+          type: string
+        costCurrency:
+          type: string
+        costAmount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      required:
+      - costAmount
+      - costCurrency
+      - providerId
+    PackageMapping:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        ourPackageId:
+          type: string
+          format: uuid
+        providerApiId:
+          type: string
+          format: uuid
+        providerPackageId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - createdAt
+      - id
+      - ourPackageId
+      - providerApiId
+      - providerPackageId
+      - tenantId
+      - updatedAt
+    PackageMappingsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackageMapping'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+      - items
+      - pageInfo
+    PackageRouting:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        packageId:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          maxLength: 10
+        providerType:
+          type: string
+        primaryProviderId:
+          type: string
+          nullable: true
+        fallbackProviderId:
+          type: string
+          nullable: true
+        codeGroupId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - codeGroupId
+      - fallbackProviderId
+      - id
+      - packageId
+      - primaryProviderId
+      - providerType
+      - tenantId
+    PackageRoutingUpsertRequest:
+      type: object
+      properties:
+        mode:
+          $ref: '#/components/schemas/ModeEnum'
+        providerType:
+          $ref: '#/components/schemas/ProviderTypeEnum'
+        primaryProviderId:
+          type: string
+          nullable: true
+        fallbackProviderId:
+          type: string
+          nullable: true
+        codeGroupId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - mode
+      - providerType
+    PageInfo:
+      type: object
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+      required:
+      - hasMore
+      - nextCursor
+    PatchedAdminDepositActionRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/StatusDc7Enum'
+        note:
+          type: string
+    PatchedAdminOrderStatusUpdateRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/StatusDc7Enum'
+        note:
+          type: string
+    PatchedAdminPayoutActionRequest:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/AdminPayoutActionRequestStatusEnum'
+        note:
+          type: string
+    PatchedIntegrationUpdateRequest:
+      type: object
+      properties:
+        baseUrl:
+          type: string
+          nullable: true
+        apiToken:
+          type: string
+          nullable: true
+        kod:
+          type: string
+          nullable: true
+        sifre:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+    PatchedRotateTokenRequest:
+      type: object
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_active:
+          type: boolean
+    PatchedTenantUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        code:
+          type: string
+          maxLength: 40
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        is_active:
+          type: boolean
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+        code:
+          type: string
+          nullable: true
+          maxLength: 60
+        isActive:
+          type: boolean
+        settings:
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - createdAt
+      - id
+      - isActive
+      - name
+      - updatedAt
+    PayoutDetails:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          maxLength: 20
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 10
+        userId:
+          type: string
+          format: uuid
+        external_ref:
+          type: string
+          nullable: true
+          maxLength: 120
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        notes:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        manualNote:
+          type: string
+          nullable: true
+      required:
+      - amount
+      - completedAt
+      - createdAt
+      - currency
+      - id
+      - manualNote
+      - notes
+      - sentAt
+      - status
+      - userId
+    PayoutListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          maxLength: 20
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        currency:
+          type: string
+          maxLength: 10
+        userId:
+          type: string
+          format: uuid
+        external_ref:
+          type: string
+          nullable: true
+          maxLength: 120
+        createdAt:
+          type: string
+          format: date-time
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - amount
+      - completedAt
+      - createdAt
+      - currency
+      - id
+      - sentAt
+      - status
+      - userId
+    PayoutsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayoutListItem'
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+      - items
+      - pageInfo
+    Provider:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+        code:
+          type: string
+          nullable: true
+          maxLength: 60
+        isActive:
+          type: boolean
+        settings:
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - createdAt
+      - id
+      - isActive
+      - name
+      - updatedAt
+    ProviderEnum:
+      enum:
+      - barakat
+      - apstore
+      - znet
+      - internal
+      type: string
+      description: |-
+        * `barakat` - barakat
+        * `apstore` - apstore
+        * `znet` - znet
+        * `internal` - internal
+    ProviderTypeEnum:
+      enum:
+      - manual
+      - external
+      - internal_codes
+      type: string
+      description: |-
+        * `manual` - manual
+        * `external` - external
+        * `internal_codes` - internal_codes
+    ProvidersListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Provider'
+      required:
+      - items
+    ScopeEnum:
+      enum:
+      - dev
+      - tenant
+      type: string
+      description: |-
+        * `dev` - dev
+        * `tenant` - tenant
+    SectionTotals:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        totals:
+          type: array
+          items:
+            $ref: '#/components/schemas/MoneyTotal'
+      required:
+      - totalCount
+      - totals
+    StatusDc7Enum:
+      enum:
+      - approved
+      - rejected
+      type: string
+      description: |-
+        * `approved` - approved
+        * `rejected` - rejected
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 120
+        code:
+          type: string
+          maxLength: 40
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - code
+      - created_at
+      - id
+      - name
+    TenantApiToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+          maxLength: 80
+        token_prefix:
+          type: string
+          maxLength: 16
+        scopes:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - created_at
+      - id
+      - scopes
+      - tenant_id
+      - token_prefix
+      - user_id
+    TenantCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        code:
+          type: string
+          maxLength: 40
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        is_active:
+          type: boolean
+          default: true
+      required:
+      - code
+      - name
+    TenantDomain:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+          maxLength: 190
+        type:
+          type: string
+          maxLength: 20
+        is_primary:
+          type: boolean
+        is_verified:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - domain
+      - id
+      - tenant_id
+    TokenObtainPair:
+      type: object
+      properties:
+        username:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          readOnly: true
+      required:
+      - access
+      - password
+      - refresh
+      - username
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          writeOnly: true
+      required:
+      - access
+      - refresh
+    _PackageMini:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+        productId:
+          type: string
+          readOnly: true
+      required:
+      - id
+      - name
+      - productId
+    _ProductMini:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          nullable: true
+      required:
+      - id
+      - name
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

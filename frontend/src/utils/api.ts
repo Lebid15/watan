@@ -37,7 +37,15 @@ function upgradeToHttpsIfNeeded(raw: string): string {
 }
 
 // Ø³Ù†Ø³ØªØ®Ø¯Ù… Ù‡Ø°Ù‡ Ø§Ù„Ù‚ÙŠÙ…Ø© Ø§Ù„ÙØ¹Ù„ÙŠØ© ÙÙŠ Ø¨Ù†Ø§Ø¡ Ø§Ù„Ù…Ø³Ø§Ø±Ø§Øª Ùˆ axios
-const EFFECTIVE_API_BASE_URL = upgradeToHttpsIfNeeded(RAW_API_BASE_URL);
+const EFFECTIVE_API_BASE_URL = (() => {
+  const v = upgradeToHttpsIfNeeded(RAW_API_BASE_URL);
+  // في التطوير: وجّه مباشرةً إلى Django لتجنب مشكلة إزالة الشرطة قبل الاستعلام في Next.js rewrites
+  if (v === '/api-dj') {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (!isProd) return 'http://127.0.0.1:8000/api-dj';
+  }
+  return v;
+})();
 // Ù†ØµØ¯Ø± Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„ÙØ¹Ù„ÙŠØ© Ø¨Ø§Ø³Ù… API_BASE_URL Ù„ÙŠØ³ØªÙ…Ø± Ø¨Ø§Ù‚ÙŠ Ø§Ù„ÙƒÙˆØ¯ (Ø§Ù„Ø°ÙŠ ÙŠØ³ØªÙˆØ±Ø¯ API_BASE_URL) Ø¨Ø§Ù„Ø¹Ù…Ù„ Ø¨Ù‚ÙŠÙ…Ø© Ù…ÙØ±Ù‚Ù‘Ø§Ø©
 export const API_BASE_URL = EFFECTIVE_API_BASE_URL;
 
@@ -119,8 +127,8 @@ export const API_ROUTES = {
   },
 
   currencies: {
-    base: `${EFFECTIVE_API_BASE_URL}/currencies`,
-    create: `${EFFECTIVE_API_BASE_URL}/currencies`,
+    base: `${EFFECTIVE_API_BASE_URL}/currencies/`,
+    create: `${EFFECTIVE_API_BASE_URL}/currencies/`,
     byId: (id: string) => `${EFFECTIVE_API_BASE_URL}/currencies/${id}`,
     bulkUpdate: `${EFFECTIVE_API_BASE_URL}/currencies/bulk-update`,
   },
@@ -259,12 +267,16 @@ export const API_ROUTES = {
   about: `${EFFECTIVE_API_BASE_URL}/pages/about`,
       /** ØªÙØ³ØªØ®Ø¯Ù… ÙÙŠ ØµÙØ­Ø§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…: /user/infoes */
   infoes: `${EFFECTIVE_API_BASE_URL}/pages/infoes`,
+      /** شريط إعلان عام يظهر أعلى الهيدر (GET فقط) */
+      banner: `${EFFECTIVE_API_BASE_URL}/pages/banner`,
     },
     admin: {
       /** ØªÙØ³ØªØ®Ø¯Ù… ÙÙŠ Ù„ÙˆØ­Ø© Ø§Ù„Ø£Ø¯Ù…Ù† (Ù‚Ø³Ù… "Ù…Ù† Ù†Ø­Ù†"): GET/PUT Ù†Øµ ÙƒØ¨ÙŠØ± */
   about: `${EFFECTIVE_API_BASE_URL}/admin/settings/about`,
       /** ØªÙØ³ØªØ®Ø¯Ù… ÙÙŠ Ù„ÙˆØ­Ø© Ø§Ù„Ø£Ø¯Ù…Ù† (Ù‚Ø³Ù… "ØªØ¹Ù„ÙŠÙ…Ø§Øª"): GET/PUT Ù†Øµ ÙƒØ¨ÙŠØ± */
   infoes: `${EFFECTIVE_API_BASE_URL}/admin/settings/infoes`,
+      /** إعدادات شريط الإعلان (GET/PUT) */
+      banner: `${EFFECTIVE_API_BASE_URL}/admin/settings/banner`,
     },
   },
 
@@ -328,9 +340,13 @@ function handleProfileFailure(err: any) {
     try { document.cookie = 'tenant_host=; Max-Age=0; path=/'; } catch {}
     __profileRedirected = true;
     const cause = status === 404 ? 'profile_404' : 'auth';
-    const url = `/login?cause=${cause}`;
-    // Use replace so back button doesn't loop
-    setTimeout(() => { window.location.replace(url); }, 50);
+    // لا تقم بإعادة توجيه إذا كنا بالفعل على /login
+    const currentPath = window.location.pathname + (window.location.search || '');
+    if (!/\/login\/?(\?.*)?$/.test(currentPath)) {
+      const url = `/login/?cause=${cause}`; // أضف الشرطة المائلة لتوافق trailingSlash
+      // Use replace so back button doesn't loop
+      setTimeout(() => { window.location.replace(url); }, 50);
+    }
   }
 }
 
@@ -356,6 +372,64 @@ export function resetProfileCache() {
 export async function forceProfileRefresh(endpoint: string = '/users/profile-with-currency') {
   resetProfileCache();
   return fetchProfileOnce(endpoint);
+}
+
+// Ensure API paths have a trailing slash to avoid redirect loops with DRF/Next
+function ensureApiTrailingSlash(u?: string): string | undefined {
+  if (!u || typeof u !== 'string') return u;
+  try {
+    // Some auth endpoints on Django are defined WITHOUT trailing slash
+    // and will 404 if we append one. Skip normalization for them.
+  const shouldSkip = (p: string) => {
+      // Handle both absolute and relative forms
+      // Examples:
+      //   /api-dj/auth/login
+      //   http://127.0.0.1:8000/api-dj/auth/login
+      //   <API_BASE>/auth/login
+      const lower = p.toLowerCase();
+      return (
+        lower.endsWith('/auth/login') ||
+        lower.endsWith('/auth/refresh') ||
+        // Users profile endpoints
+        lower.endsWith('/users/profile') ||
+        lower.endsWith('/users/profile-with-currency') ||
+        lower.endsWith('/users/with-price-group') ||
+        /\/users\/[0-9a-f-]{36}\/price-group$/i.test(lower) ||
+        // Dev/public note
+        lower.endsWith('/dev/notes/public/latest') ||
+        // Admin small counters
+        lower.endsWith('/admin/pending-orders-count') ||
+        lower.endsWith('/admin/pending-deposits-count') ||
+  // Admin codes endpoints (no trailing slash)
+  lower.endsWith('/admin/codes/groups') ||
+  lower.includes('/admin/codes/groups/') ||
+  lower.includes('/admin/codes/items/') ||
+        // Admin integrations endpoints are defined without trailing slashes in Django
+        lower.endsWith('/admin/integrations') ||
+        lower.includes('/admin/integrations/') ||
+        // Products exact endpoints defined without trailing slash in Django
+        lower.endsWith('/products/price-groups') ||
+        lower.includes('/products/price-groups/') ||
+        // product detail, and nested endpoints will manage their own slashes
+        /\/products\/[0-9a-f-]{36}$/i.test(lower)
+      );
+    };
+
+    // Accept both absolute (http...) and relative (/api-dj/...) URLs
+    const hasQuery = u.includes('?');
+    const [path, query] = hasQuery ? [u.slice(0, u.indexOf('?')), u.slice(u.indexOf('?'))] : [u, ''];
+    // Only adjust for our API base prefixes
+    const isApiDj = path.startsWith('/api-dj/');
+    const isApiAbs = path.startsWith(EFFECTIVE_API_BASE_URL + '/');
+    if (!(isApiDj || isApiAbs)) return u;
+    // Skip known no-trailing-slash endpoints
+    if (shouldSkip(path)) return u;
+    // Ignore if it already ends with '/'
+    if (path.endsWith('/')) return u;
+    // Ignore likely file assets (has extension)
+    if (/\.[a-zA-Z0-9]{1,6}$/.test(path)) return u;
+    return path + '/' + (query || '');
+  } catch { return u; }
 }
 
 // Convenience high-level methods (avoid scattering relative /api calls)
@@ -445,6 +519,14 @@ function addTenantHeaders(config: any): any {
   if (tenantCookie) {
     config.headers['X-Tenant-Host'] = tenantCookie; // always set/overwrite from cookie early if present
   }
+  // 1.b) Fallback to env-provided tenant when cookie missing (useful on plain localhost)
+  if (!config.headers['X-Tenant-Host']) {
+    const envTenant = process.env.NEXT_PUBLIC_TENANT_HOST;
+    if (envTenant) {
+      config.headers['X-Tenant-Host'] = envTenant;
+      try { if (typeof document !== 'undefined') document.cookie = `tenant_host=${envTenant}; path=/`; } catch {}
+    }
+  }
 
   // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§ØšØ±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
   if (typeof window !== 'undefined') {
@@ -490,6 +572,44 @@ if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: bo
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const newInit: RequestInit = init ? { ...init } : {};
     const headers = new Headers(newInit.headers || (typeof input === 'object' && (input as { headers?: HeadersInit }).headers) || {});
+    // طبيعـة الشرطة المائلة لمسارات API الشائعة
+    if (typeof input === 'string' || input instanceof URL) {
+      let s = String(input);
+      // Keep relative /api-dj/* so Next.js rewrites and headers can apply
+      // (do not rewrite to EFFECTIVE_API_BASE_URL here to preserve same-origin in dev)
+      // if (s.startsWith('/api-dj/')) {
+      //   s = EFFECTIVE_API_BASE_URL + s.slice('/api-dj'.length);
+      // }
+      const hasQuery = s.includes('?');
+      const path = hasQuery ? s.slice(0, s.indexOf('?')) : s;
+      // Skip adding slash for endpoints defined without trailing slash
+      const lower = path.toLowerCase();
+      const skipSlash = (
+        lower.endsWith('/auth/login') ||
+        lower.endsWith('/auth/refresh') ||
+        lower.endsWith('/health') ||
+        lower.endsWith('/users/profile') ||
+        lower.endsWith('/users/profile-with-currency') ||
+        lower.endsWith('/users/with-price-group') ||
+        /\/users\/[0-9a-f-]{36}\/price-group$/i.test(lower) ||
+        lower.endsWith('/dev/notes/public/latest') ||
+        lower.endsWith('/admin/pending-orders-count') ||
+        lower.endsWith('/admin/pending-deposits-count') ||
+  lower.endsWith('/admin/codes/groups') ||
+  lower.includes('/admin/codes/groups/') ||
+  lower.includes('/admin/codes/items/') ||
+        lower.endsWith('/admin/integrations') ||
+        lower.includes('/admin/integrations/') ||
+        lower.endsWith('/products/price-groups') ||
+        lower.includes('/products/price-groups/') ||
+        /\/products\/[0-9a-f-]{36}$/i.test(lower)
+      );
+      if (!skipSlash && (path.startsWith('/api-dj/') || path.startsWith(API_BASE_URL + '/')) &&
+          !path.endsWith('/') && !/\.[a-zA-Z0-9]{1,6}(?:$|\?)/.test(path)) {
+        s = path + '/' + (hasQuery ? s.slice(s.indexOf('?')) : '');
+      }
+      input = s;
+    }
 
     // Ø¥Ù† Ù„Ù… ÙŠÙˆØ¬Ø¯ Ø§Ù„Ø¹Ù†ÙˆØ§Ù† Ø£Ø¶ÙÙÙ‡
     if (!headers.has('X-Tenant-Host')) {
@@ -513,6 +633,15 @@ if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: bo
           }
         }
       }
+      // Fallback to NEXT_PUBLIC_TENANT_HOST when running on plain localhost
+      if (!headers.has('X-Tenant-Host')) {
+        const envTenant = process.env.NEXT_PUBLIC_TENANT_HOST;
+        if (envTenant) {
+          headers.set('X-Tenant-Host', envTenant);
+          try { document.cookie = `tenant_host=${envTenant}; path=/`; } catch {}
+          console.log(`[FETCH] Setting X-Tenant-Host header (env): ${envTenant}`);
+        }
+      }
     }
 
     // Ø£Ø¶Ù Ø§Ù„ØªÙˆÙƒÙ† Ø¥Ù† Ù„Ù… ÙŠÙƒÙ† Ù…ÙˆØ¬ÙˆØ¯Ø§Ù‹
@@ -529,13 +658,70 @@ if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: bo
 }
 // ØªØ£ÙƒØ¯ Ù…Ù† Ø¹Ø¯Ù… ØªÙƒØ±Ø§Ø± ØªØ³Ø¬ÙŠÙ„ Ù†ÙØ³ Ø§Ù„Ù€ interceptor (Ù†ÙØ­Øµ flag Ø¹Ù„Ù‰ axios Ø§Ù„Ø¹Ø§Ù„Ù…ÙŠ)
 const ANY_AXIOS = axios as typeof axios & { __TENANT_HEADERS_ATTACHED__?: boolean };
+function stripDuplicatePrefix(url?: string): string | undefined {
+  if (!url) return url;
+  try {
+    // Only normalize relative URLs that start with the effective base
+    if (EFFECTIVE_API_BASE_URL && url.startsWith(EFFECTIVE_API_BASE_URL + '/')) {
+      return url.slice(EFFECTIVE_API_BASE_URL.length);
+    }
+  } catch {}
+  return url;
+}
 if (!ANY_AXIOS.__TENANT_HEADERS_ATTACHED__) {
   ANY_AXIOS.__TENANT_HEADERS_ATTACHED__ = true;
   api.interceptors.request.use((config) => {
+    // Avoid /api-dj/api-dj/* when callers pass full API_ROUTES URLs
+    if (typeof config.url === 'string') {
+      let u = stripDuplicatePrefix(config.url);
+      u = ensureApiTrailingSlash(u);
+      // وإذا كانت المسارات نسبية (مثل '/products') مع baseURL = '/api-dj' أضف الشرطة المائلة الأخيرة أيضًا
+      if (EFFECTIVE_API_BASE_URL === '/api-dj' || EFFECTIVE_API_BASE_URL.endsWith('/api-dj')) {
+        if (typeof u === 'string' && u.startsWith('/') &&
+            !u.startsWith('/api-dj') && !u.startsWith('/_next') && !u.startsWith('/api') &&
+            !/\.[a-zA-Z0-9]{1,6}(?:$|\?)/.test(u)) {
+          // Skip auth endpoints that must NOT have trailing slash
+          const lower = u.toLowerCase();
+          const skip = (
+            lower.endsWith('/auth/login') ||
+            lower.endsWith('/auth/refresh') ||
+            lower.endsWith('/health') ||
+            lower.endsWith('/users/profile') ||
+            lower.endsWith('/users/profile-with-currency') ||
+            lower.endsWith('/users/with-price-group') ||
+            /\/users\/[0-9a-f-]{36}\/price-group$/i.test(lower) ||
+            lower.endsWith('/dev/notes/public/latest') ||
+            lower.endsWith('/admin/pending-orders-count') ||
+            lower.endsWith('/admin/pending-deposits-count') ||
+            lower.endsWith('/admin/codes/groups') ||
+            lower.includes('/admin/codes/groups/') ||
+            lower.includes('/admin/codes/items/') ||
+            lower.endsWith('/admin/integrations') ||
+            lower.includes('/admin/integrations/') ||
+            lower.endsWith('/products/price-groups') ||
+            lower.includes('/products/price-groups/') ||
+            /\/products\/[0-9a-f-]{36}$/i.test(lower)
+          );
+          // ضع الشرطة قبل الاستعلام إن وُجد
+          if (!skip && !u.endsWith('/')) {
+            if (u.includes('?')) {
+              const idx = u.indexOf('?');
+              u = u.slice(0, idx) + '/' + u.slice(idx);
+            } else {
+              u = u + '/';
+            }
+          }
+        }
+      }
+      config.url = u;
+    }
     // console.log(`[API] -> ${config.method} ${config.url}`);
     return addTenantHeaders(config);
   });
   axios.interceptors.request.use((config) => {
+    if (typeof config.url === 'string') {
+      config.url = ensureApiTrailingSlash(stripDuplicatePrefix(config.url));
+    }
     return addTenantHeaders(config);
   });
 }
@@ -552,8 +738,11 @@ api.interceptors.response.use(
         try { document.cookie = 'tenant_host=; Max-Age=0; path=/'; } catch {}
         const current = window.location.pathname || '/';
         if (!/login/.test(current)) {
-          const url = '/login?cause=tenant_mismatch';
-          window.location.replace(url);
+          const currentPath = window.location.pathname + (window.location.search || '');
+          if (!/\/login\/?(\?.*)?$/.test(currentPath)) {
+            const url = '/login/?cause=tenant_mismatch';
+            window.location.replace(url);
+          }
         }
       } else if (status === 401) {
         const p = window.location.pathname || '';
@@ -561,7 +750,9 @@ api.interceptors.response.use(
         const onAuthPages  = p === '/login' || p === '/register';
         if (!inBackoffice && !onAuthPages) {
           try { localStorage.removeItem('token'); } catch {}
-          window.location.assign('/login');
+          if (!/\/login\/?$/.test(p)) {
+            window.location.assign('/login/');
+          }
         }
       }
     }

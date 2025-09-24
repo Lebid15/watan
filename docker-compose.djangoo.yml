@@ -1,0 +1,22 @@
+services:
+  djangoo:
+    build: ./djangoo
+    container_name: watan-djangoo
+    restart: unless-stopped
+    env_file:
+      - ./djangoo/.env
+    environment:
+      DJANGO_DEBUG: "0"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: watan
+      POSTGRES_USER: watan
+      POSTGRES_PASSWORD: changeme
+      REDIS_URL: redis://redis:6379/0
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

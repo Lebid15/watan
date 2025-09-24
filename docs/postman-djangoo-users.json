@@ -1,0 +1,72 @@
+{
+  "info": {
+    "name": "djangoo Users Parity",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [
+          {"key": "X-Tenant-Host", "value": "example.wtn4.com"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api-dj/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api-dj", "health"]
+        }
+      }
+    },
+    {
+      "name": "Login (JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key": "Content-Type", "value": "application/json"},
+          {"key": "X-Tenant-Host", "value": "example.wtn4.com"}
+        ],
+        "body": {"mode": "raw", "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin\"\n}"},
+        "url": {
+          "raw": "{{baseUrl}}/api-dj/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api-dj", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{accessToken}}"},
+          {"key": "X-Tenant-Host", "value": "example.wtn4.com"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api-dj/users/profile",
+          "host": ["{{baseUrl}}"],
+          "path": ["api-dj", "users", "profile"]
+        }
+      }
+    },
+    {
+      "name": "Profile with currency",
+      "request": {
+        "method": "GET",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{accessToken}}"},
+          {"key": "X-Tenant-Host", "value": "example.wtn4.com"}
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api-dj/users/profile-with-currency",
+          "host": ["{{baseUrl}}"],
+          "path": ["api-dj", "users", "profile-with-currency"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost"},
+    {"key": "accessToken", "value": ""}
+  ]
+}

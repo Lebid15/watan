@@ -1,0 +1,16 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+{% block content %}
+  <div class="card">
+    <div class="card-header"><h2>التقارير</h2></div>
+    <div class="card-body">
+      <ul>
+        <li><a href="/api-dj/admin/reports/overview">Overview (JSON)</a></li>
+        <li><a href="/api-dj/admin/reports/daily">Daily (JSON)</a></li>
+        <li><a href="/api-dj/admin/reports/profits">Profits (JSON)</a></li>
+        <li><a href="/api-dj/admin/reports/providers">Providers (JSON)</a></li>
+        <li><a href="/api-dj/admin/reports/users">Users search (JSON)</a></li>
+      </ul>
+    </div>
+  </div>
+{% endblock %}

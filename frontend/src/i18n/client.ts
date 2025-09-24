@@ -12,6 +12,7 @@ if (!i18n.isInitialized) {
       supportedLngs: ['ar', 'en', 'tr'],
       defaultNS: 'common',
       ns: ['common'],
+      react: { useSuspense: false },
       interpolation: { escapeValue: false },
       resources: {}, // empty, we load on demand
     });

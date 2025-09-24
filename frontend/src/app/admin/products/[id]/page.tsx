@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
-import { API_ROUTES } from '@/utils/api';
+import { API_ROUTES, API_BASE_URL } from '@/utils/api';
 import { ErrorResponse } from '@/types/common';
 import { getDecimalDigits, priceInputStep, clampPriceDecimals } from '@/utils/pricingFormat';
 
@@ -110,15 +110,15 @@ export default function AdminProductDetailsPage() {
   const [unitSaving, setUnitSaving] = useState(false);
   const DECIMAL_DIGITS = getDecimalDigits();
 
-  const apiHost = API_ROUTES.products.base.replace('/api/products', '');
-  const apiBase = `${apiHost}/api`;
+  // Use configured API base directly
+  const apiBase = API_BASE_URL;
 
   const fetchProduct = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
       const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${API_ROUTES.products.base}/${id}?all=1`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${API_ROUTES.products.byId(String(id))}?all=1`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(t('errors.product.fetchFailed'));
       const data: Product = await res.json();
       setProduct(data);
@@ -141,7 +141,7 @@ export default function AdminProductDetailsPage() {
     try {
       setBridgesLoading(true);
       const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${API_ROUTES.products.base}/${id}/bridges`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${API_ROUTES.products.byId(String(id))}/bridges`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error();
       const data = await res.json();
       const raw: any[] = Array.isArray(data.available) ? data.available : [];
@@ -294,7 +294,7 @@ export default function AdminProductDetailsPage() {
         maxUnits: unitForm.maxUnits.trim() || null,
         step: unitForm.step.trim() || null,
       };
-  const res = await fetch(`/api/admin/products/packages/${unitModalPkg.id}/unit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const res = await fetch(`${API_BASE_URL}/admin/products/packages/${unitModalPkg.id}/unit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
   if (!res.ok) { let payload: any = null; try { payload = await res.json(); } catch {} throw new Error(payload?.message || t('unit.save.fail')); }
       // Optimistic local update
   setProduct(prev => prev ? ({ ...prev, packages: (prev.packages||[]).map(p => p.id === unitModalPkg.id ? { ...p, unitName: body.unitName, unitCode: body.unitCode, minUnits: min, maxUnits: max, step: stepNum } : p) }) : prev);
@@ -306,9 +306,15 @@ export default function AdminProductDetailsPage() {
   const imgSrc = product.imageUrl
     ? (product.imageUrl.startsWith('http')
       ? product.imageUrl
-      : product.imageUrl.startsWith('/')
-        ? `${apiHost}${product.imageUrl}`
-        : `${apiHost}/${product.imageUrl}`)
+      : (() => {
+          try {
+            const origin = typeof window !== 'undefined'
+              ? new URL(API_BASE_URL, window.location.origin).origin
+              : '';
+            if (product.imageUrl!.startsWith('/')) return `${origin}${product.imageUrl}`;
+            return `${origin}/${product.imageUrl}`;
+          } catch { return product.imageUrl as string; }
+        })())
     : null;
 
   const imageSource: 'catalog' | 'custom' | 'none' = product.imageSource
@@ -380,7 +386,7 @@ export default function AdminProductDetailsPage() {
                   setEditSupportsCounter(next);
                   try {
                     const token = localStorage.getItem('token') || '';
-                    const res = await fetch(`/api/admin/products/${id}/supports-counter`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ supportsCounter: next }) });
+                    const res = await fetch(`${API_BASE_URL}/admin/products/${id}/supports-counter`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ supportsCounter: next }) });
                     if (!res.ok) throw new Error(t('product.update.counterMode.fail'));
                   } catch (err:any) {
                     alert(err.message || t('product.update.counterMode.unable'));

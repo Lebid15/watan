@@ -1,0 +1,42 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Django dev server (smoke)",
+			"type": "shell",
+			"command": "python -c \"import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings'); from django.core.management import execute_from_command_line as e; e(['manage.py','check']); e(['manage.py','showmigrations']); print('OK')\"",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "pip-install-requests",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				". .\\.venv\\Scripts\\Activate.ps1; pip install -r requirements.txt"
+			],
+			"problemMatcher": [
+				"$eslint-stylish"
+			]
+		},
+		{
+			"label": "Run Django (uvicorn)",
+			"type": "shell",
+			"command": "\"C:/Users/LABED HAJ ALAYA/Desktop/watan/djangoo/.venv/Scripts/python.exe\" -m uvicorn config.asgi:application --host 127.0.0.1 --port 8000",
+			"args": [],
+			"isBackground": true,
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
+		}
+	]
+}

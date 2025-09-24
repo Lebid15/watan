@@ -1,0 +1,32 @@
+from django.urls import path
+from .views import (
+    AdminReportsOverviewView,
+    AdminReportsOverviewCSVView,
+    AdminReportsProfitsView,
+    AdminReportsUsersView,
+    AdminReportsProvidersView,
+    AdminOrdersDailyView,
+    AdminOrdersDailyCSVView,
+    AdminDepositsDailyView,
+    AdminDepositsDailyCSVView,
+    AdminPayoutsDailyView,
+    AdminPayoutsDailyCSVView,
+)
+
+admin_urlpatterns = [
+    path('reports/overview', AdminReportsOverviewView.as_view(), name='admin-reports-overview'),
+    path('reports/overview.csv', AdminReportsOverviewCSVView.as_view(), name='admin-reports-overview-csv'),
+    # Profits & helpers
+    path('reports/profits', AdminReportsProfitsView.as_view(), name='admin-reports-profits'),
+    path('reports/profits/', AdminReportsProfitsView.as_view(), name='admin-reports-profits-slash'),
+    path('reports/users', AdminReportsUsersView.as_view(), name='admin-reports-users'),
+    path('reports/users/', AdminReportsUsersView.as_view(), name='admin-reports-users-slash'),
+    path('reports/providers', AdminReportsProvidersView.as_view(), name='admin-reports-providers'),
+    path('reports/providers/', AdminReportsProvidersView.as_view(), name='admin-reports-providers-slash'),
+    path('reports/orders/daily', AdminOrdersDailyView.as_view(), name='admin-reports-orders-daily'),
+    path('reports/orders/daily.csv', AdminOrdersDailyCSVView.as_view(), name='admin-reports-orders-daily-csv'),
+    path('reports/deposits/daily', AdminDepositsDailyView.as_view(), name='admin-reports-deposits-daily'),
+    path('reports/deposits/daily.csv', AdminDepositsDailyCSVView.as_view(), name='admin-reports-deposits-daily-csv'),
+    path('reports/payouts/daily', AdminPayoutsDailyView.as_view(), name='admin-reports-payouts-daily'),
+    path('reports/payouts/daily.csv', AdminPayoutsDailyCSVView.as_view(), name='admin-reports-payouts-daily-csv'),
+]

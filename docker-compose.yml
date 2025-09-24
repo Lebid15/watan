@@ -115,6 +115,34 @@ services:
       - ./nginx:/opt/nginx-shared:rw
     restart: unless-stopped
 
+  djangoo:
+    build: ./djangoo
+    container_name: watan-djangoo
+    restart: unless-stopped
+    env_file:
+      - ./djangoo/.env
+    environment:
+      DJANGO_DEBUG: "0"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: watan
+      POSTGRES_USER: watan
+      POSTGRES_PASSWORD: changeme
+      REDIS_URL: redis://redis:6379/0
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:8000/api-dj/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   backend_logs:
   frontend_logs:

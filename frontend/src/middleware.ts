@@ -109,12 +109,16 @@ export async function middleware(req: NextRequest) {
         url.pathname = '/maintenance';
         return NextResponse.rewrite(url);
       }
-  // Fallback to API state (first request before cookie lands)
-  const state = await getMaintenanceStateAbs(req);
-      if (state?.enabled) {
-        const url = nextUrl.clone();
-        url.pathname = '/maintenance';
-        return NextResponse.rewrite(url);
+      // Only consult dynamic maintenance endpoint in production to avoid
+      // repeated internal fetches during local dev (which can look like a refresh loop)
+      const isProd = process.env.NODE_ENV === 'production';
+      if (isProd) {
+        const state = await getMaintenanceStateAbs(req);
+        if (state?.enabled) {
+          const url = nextUrl.clone();
+          url.pathname = '/maintenance';
+          return NextResponse.rewrite(url);
+        }
       }
     }
   }
@@ -164,7 +168,18 @@ export async function middleware(req: NextRequest) {
 
   // مسارات عامة لا تتطلب تسجيل دخول (أضفنا /nginx-healthz لمسار فحص Nginx فقط)
   const publicPaths = new Set(['/login','/register','/password-reset','/verify-email','/nginx-healthz']);
-  if (publicPaths.has(path)) {
+  const normalizedPath = (path.endsWith('/') && path.length > 1) ? path.slice(0, -1) : path;
+  if (publicPaths.has(normalizedPath)) {
+    // إزالة أي cause من الاستعلام لمنع التقلب بين /login و /login/?cause=auth
+    if (normalizedPath === '/login') {
+      const cause = nextUrl.searchParams.get('cause');
+      if (cause) {
+        const cleaned = nextUrl.clone();
+        cleaned.pathname = '/login/';
+        cleaned.search = '';
+        return NextResponse.rewrite(cleaned);
+      }
+    }
     // حماية إضافية: إذا كنا على النطاق الرئيسي (apex) والمستخدم ليس مطوّراً مُخوّلاً امنع حتى صفحة /login من الاستمرار بعد تسجيل سابق
     if (hostInfo && !hostInfo.isSub && token) {
       if (role !== 'developer') {
@@ -192,7 +207,8 @@ export async function middleware(req: NextRequest) {
 
   if (!token) {
     if (path === '/') return response ?? NextResponse.next();
-    return redirect('/login', req);
+    // وجّه إلى مسار تسجيل الدخول مع شرطة مائلة نهائية لتوافق إعداد trailingSlash
+    return redirect('/login/', req);
   }
 
   // Root path routing according to clarified matrix
@@ -265,6 +281,10 @@ export async function middleware(req: NextRequest) {
   return response ?? NextResponse.next();
 }
 
+// Narrow middleware to only run on HTML page navigations
 export const config = {
-  matcher: ['/((?!_next|api|favicon.ico|assets|static|public).*)'],
+  matcher: [
+    // Exclude Next internals and static assets
+    '/((?!_next/|api/|api-dj/|favicon.ico|assets/|static/|public/|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js|map|txt|xml|woff2?|ttf|otf)$).*)',
+  ],
 };

@@ -1,0 +1,12 @@
+django==5.0.7
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+drf-spectacular==0.27.2
+django-cors-headers==4.4.0
+psycopg[binary]==3.2.10
+python-dotenv==1.0.1
+uvicorn[standard]==0.30.5
+redis==5.0.8
+whitenoise==6.7.0
+django-jazzmin
+requests==2.32.3
