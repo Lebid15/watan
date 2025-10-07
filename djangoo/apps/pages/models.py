@@ -7,6 +7,8 @@ class SitePage(models.Model):
     class Meta:
         db_table = 'site_page'
         managed = False
+        verbose_name = 'صفحة'
+        verbose_name_plural = 'الصفحات'
 
     id = models.UUIDField(primary_key=True)
     tenant_id = models.UUIDField(db_column='tenantId', db_index=True, null=True)

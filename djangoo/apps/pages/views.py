@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.exceptions import ValidationError
 from drf_spectacular.utils import extend_schema
 
@@ -97,6 +97,21 @@ def _get_page_global(key: str) -> str:
     except Exception:
         return ''
 
+def _get_page_any_latest(key: str) -> tuple[str, str | None]:
+    """Fetch the most recently updated value for a key across any tenant (dev-friendly fallback)."""
+    try:
+        _ensure_table()
+        with connection.cursor() as c:
+            c.execute('SELECT content, "updatedAt" FROM site_page WHERE "key"=%s ORDER BY "updatedAt" DESC NULLS LAST LIMIT 1', [key])
+            row = c.fetchone()
+            if not row:
+                return '', None
+            content = row[0] or ''
+            updated = row[1].isoformat() if row[1] else None
+            return content, updated
+    except Exception:
+        return '', None
+
 
 def _set_page(tenant_id: str, key: str, content: str) -> None:
     try:
@@ -113,6 +128,7 @@ def _set_page(tenant_id: str, key: str, content: str) -> None:
 
 
 class PublicAboutView(APIView):
+    permission_classes = [AllowAny]
     @extend_schema(tags=["Pages"], responses={200: None})
     def get(self, request):
         tenant_id = _resolve_tenant_id(request)
@@ -122,6 +138,7 @@ class PublicAboutView(APIView):
 
 
 class PublicInfoesView(APIView):
+    permission_classes = [AllowAny]
     @extend_schema(tags=["Pages"], responses={200: None})
     def get(self, request):
         tenant_id = _resolve_tenant_id(request)
@@ -193,6 +210,7 @@ class AdminInfoesView(APIView):
 
 
 class PublicBannerView(APIView):
+    permission_classes = [AllowAny]
     @extend_schema(tags=["Pages"], responses={200: None})
     def get(self, request):
         tenant_id = _resolve_tenant_id(request)
@@ -200,6 +218,12 @@ class PublicBannerView(APIView):
         if not tenant_id:
             text = _get_page_global('banner_text')
             enabled = _get_page_global('banner_enabled') == '1'
+            # Dev fallback: if global not set, use latest across any tenant (helps when TenantDomain isn't configured locally)
+            if text == '' and not enabled:
+                any_text, _ = _get_page_any_latest('banner_text')
+                any_enabled, _ = _get_page_any_latest('banner_enabled')
+                text = any_text or ''
+                enabled = (any_enabled == '1')
             return Response({"text": text or '', "enabled": bool(enabled)})
         # Prefer tenant-specific values; if absent, fall back to global.
         text = _get_page(tenant_id, 'banner_text') or _get_page_global('banner_text')

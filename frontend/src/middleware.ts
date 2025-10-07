@@ -55,10 +55,18 @@ function parseHost(hostHeader: string | null) {
 
 async function getMaintenanceStateAbs(req: NextRequest): Promise<{ enabled: boolean; message: string } | null> {
   try {
-    const url = req.nextUrl.clone();
-    url.pathname = '/dev-maintenance';
-    url.search = '';
-    const res = await fetch(url, { cache: 'no-store' });
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/api-dj/dev-maintenance';
+      url.search = '';
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) return null;
+      return (await res.json()) as { enabled: boolean; message: string };
+    }
+    // Development: call Django directly (different origin) to allow local testing
+    const base = (process.env.NEXT_PUBLIC_DJANGO_API_BASE || 'http://127.0.0.1:8000/api-dj').replace(/\/$/, '');
+    const res = await fetch(`${base}/dev-maintenance`, { cache: 'no-store' });
     if (!res.ok) return null;
     return (await res.json()) as { enabled: boolean; message: string };
   } catch { return null; }
@@ -109,16 +117,12 @@ export async function middleware(req: NextRequest) {
         url.pathname = '/maintenance';
         return NextResponse.rewrite(url);
       }
-      // Only consult dynamic maintenance endpoint in production to avoid
-      // repeated internal fetches during local dev (which can look like a refresh loop)
-      const isProd = process.env.NODE_ENV === 'production';
-      if (isProd) {
-        const state = await getMaintenanceStateAbs(req);
-        if (state?.enabled) {
-          const url = nextUrl.clone();
-          url.pathname = '/maintenance';
-          return NextResponse.rewrite(url);
-        }
+      // Consult Django maintenance endpoint (prod: same origin, dev: absolute URL)
+      const state = await getMaintenanceStateAbs(req);
+      if (state?.enabled) {
+        const url = nextUrl.clone();
+        url.pathname = '/maintenance';
+        return NextResponse.rewrite(url);
       }
     }
   }

@@ -1,12 +1,12 @@
 ## Local Development (Database & Redis)
 
-Use `docker-compose.dev.yml` to spin up Postgres + Redis (and optionally backend) with known credentials:
+Use `docker-compose.dev.yml` to spin up Postgres + Redis (and optionally the Django backend) with known credentials:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d db redis
+docker compose -f docker-compose.dev.yml up -d db redis djangoo
 
-# Or include backend (hot reload via volume mount):
-docker compose -f docker-compose.dev.yml up -d
+# Frontend only? bring up dependencies then run Django manually:
+docker compose -f docker-compose.dev.yml up -d db redis
 ```
 
 Environment settings baked into this dev stack:
@@ -91,17 +91,17 @@ Expected responses:
 * Bad Cloudinary creds: `401 { code: cloudinary_bad_credentials }`
 * Generic upstream Cloudinary issue: `5xx { code: upload_failed }`
 
-## Django Sidecar API (/api-dj)
+## Django Backend (/api-dj)
 
-We introduced a parallel Django service under `djangoo/` to enable gradual migration from NestJS without downtime.
+`djangoo/` هو الآن الباك إند الافتراضي للتطبيق، ويقدّم نفس وظائف NestJS مع مسارات تحت `/api-dj/**`.
 
-- Start with existing stack, then run Django:
-	- `docker compose up -d djangoo`
-- Nginx routes `/api-dj/**` to Django (Uvicorn) and forwards `Authorization` and `X-Tenant-Host` headers.
-- Current endpoints: `/api-dj/health`, `/api-dj/auth/login`, `/api-dj/auth/refresh`, `/api-dj/users/profile`, `/api-dj/users/profile-with-currency`.
+- الخادم يعمل ضمن خدمة Docker (`djangoo`) أو يدويًا عبر `manage.py runserver`.
+- Nginx يوجّه `/api-dj/**` إلى Django (Uvicorn) وينقل رؤوس `Authorization` و `X-Tenant-Host`.
 - Swagger: `/api-dj/docs`.
+- المتغير البيئي `NEXT_PUBLIC_API_URL` في الواجهة الأمامية يشير افتراضيًا إلى `http://127.0.0.1:8000/api-dj`.
+- إن احتجت تشغيل الواجهة مع الباك إند القديم مؤقتًا، ضع `NEXT_PUBLIC_USE_OLD_BACKEND=true` في `frontend/.env.local` أو اضبط `NEXT_PUBLIC_API_URL` على عنوان NestJS يدويًا.
 
-Important: Existing `/api/**` endpoints stay served by NestJS until cutover is approved.
+> ملاحظة: خدمات NestJS القديمة (`backend/`) متوفرة فقط للمزايا التي لم تُنقل بعد. لا تبقي الخدمتين تعملان على نفس المجال دون ضبط المسارات بدقة.
 
 ## Fast Remote Deployment
 

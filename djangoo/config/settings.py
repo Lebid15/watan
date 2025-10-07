@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.payouts",
     "apps.providers",
     "apps.reports",
+    "apps.notifications",
     "apps.tenants",
     "apps.external_api",
     "apps.codes",
@@ -111,6 +112,7 @@ AUTH_USER_MODEL = "users.User"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
+        "apps.users.auth.LegacyJWTAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "apps.users.auth.ApiTokenAuthentication",
     ),
@@ -157,6 +159,10 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "static"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# Media (for admin uploads like product images)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

@@ -3,7 +3,29 @@ from __future__ import annotations
 from django.db import models
 
 
+"""
+⚠️ LEGACY MODELS - FOR REFERENCE ONLY ⚠️
+
+These models map to tables from the old NestJS backend:
+- 'product' table
+- 'product_packages' table  
+- 'users' table
+- 'product_orders' table
+
+They are NOT managed by Django (managed=False) and should NOT be used for new development.
+They are kept here ONLY for:
+1. Understanding the old database schema
+2. Potential data migration scripts
+3. Reference when implementing new Django models
+
+For new development, use Django models from:
+- apps.products.models (for products)
+- apps.users.models (for users)
+"""
+
+
 class Product(models.Model):
+    """Legacy Product model from old NestJS backend - DO NOT USE"""
     class Meta:
         db_table = 'product'
         managed = False
@@ -13,6 +35,7 @@ class Product(models.Model):
 
 
 class ProductPackage(models.Model):
+    """Legacy ProductPackage model from old NestJS backend - DO NOT USE"""
     class Meta:
         db_table = 'product_packages'
         managed = False
@@ -23,9 +46,15 @@ class ProductPackage(models.Model):
 
 
 class LegacyUser(models.Model):
+    """Legacy User model from old NestJS backend - DO NOT USE
+    
+    Use apps.users.models.User instead for all new development.
+    """
     class Meta:
         db_table = 'users'
         managed = False
+        verbose_name = 'Legacy User (Old Backend)'
+        verbose_name_plural = 'Legacy Users (Old Backend - DO NOT USE)'
 
     id = models.UUIDField(primary_key=True)
     tenant_id = models.UUIDField(db_column='tenantId', null=True, db_index=True)
@@ -34,9 +63,12 @@ class LegacyUser(models.Model):
 
 
 class ProductOrder(models.Model):
+    """Legacy ProductOrder model from old NestJS backend - DO NOT USE"""
     class Meta:
         db_table = 'product_orders'
         managed = False
+        verbose_name = 'Legacy Product Order (Old Backend)'
+        verbose_name_plural = 'Legacy Product Orders (Old Backend - DO NOT USE)'
 
     id = models.UUIDField(primary_key=True)
     tenant_id = models.UUIDField(db_column='tenantId', null=True, db_index=True)

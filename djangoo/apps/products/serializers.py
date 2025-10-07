@@ -12,12 +12,21 @@ class PackagePriceInlineSerializer(serializers.Serializer):
 class ProductPackageSerializer(serializers.ModelSerializer):
     basePrice = serializers.SerializerMethodField()
     prices = serializers.SerializerMethodField()
+    # Camel-cased aliases expected by the frontend
+    publicCode = serializers.IntegerField(source='public_code', allow_null=True)
+    isActive = serializers.BooleanField(source='is_active')
+    unitName = serializers.CharField(source='unit_name', allow_null=True)
+    unitCode = serializers.CharField(source='unit_code', allow_null=True)
+    minUnits = serializers.IntegerField(source='min_units', allow_null=True)
+    maxUnits = serializers.IntegerField(source='max_units', allow_null=True)
+    imageUrl = serializers.CharField(source='image_url', allow_null=True)
+    providerName = serializers.CharField(source='provider_name', allow_null=True)
 
     class Meta:
         model = ProductPackage
         fields = [
-            'id','tenant_id','public_code','name','description','image_url','basePrice','capital','type',
-            'unit_name','unit_code','min_units','max_units','step','provider_name','is_active'
+            'id', 'publicCode', 'name', 'description', 'imageUrl', 'basePrice', 'capital', 'type',
+            'unitName', 'unitCode', 'minUnits', 'maxUnits', 'step', 'providerName', 'isActive', 'prices'
         ]
 
     def get_basePrice(self, obj):
@@ -39,16 +48,36 @@ class ProductPackageSerializer(serializers.ModelSerializer):
 
 
 class ProductListSerializer(serializers.ModelSerializer):
-    packages = ProductPackageSerializer(many=True)
+    packages = serializers.SerializerMethodField()
     imageUrl = serializers.SerializerMethodField()
+    # Camel-cased aliases expected by the frontend
+    isActive = serializers.BooleanField(source='is_active')
+    supportsCounter = serializers.BooleanField(source='supports_counter')
+    customImageUrl = serializers.CharField(source='custom_image_url', allow_null=True)
+    thumbSmallUrl = serializers.CharField(source='thumb_small_url', allow_null=True)
+    thumbMediumUrl = serializers.CharField(source='thumb_medium_url', allow_null=True)
+    thumbLargeUrl = serializers.CharField(source='thumb_large_url', allow_null=True)
 
     class Meta:
         model = Product
-        fields = ['id','tenant_id','name','description','is_active','supports_counter',
-                  'imageUrl','custom_image_url','thumb_small_url','thumb_medium_url','thumb_large_url','packages']
+        fields = [
+            'id', 'name', 'description', 'isActive', 'supportsCounter',
+            'imageUrl', 'customImageUrl', 'thumbSmallUrl', 'thumbMediumUrl', 'thumbLargeUrl', 'packages'
+        ]
 
     def get_imageUrl(self, obj):
-        return obj.custom_image_url or None
+        return getattr(obj, 'custom_image_url', None) or None
+
+    def get_packages(self, obj):
+        # Prefer filtered/ordered packages attached by view
+        pkgs = getattr(obj, '_filtered_packages', None)
+        if pkgs is None:
+            rel = getattr(obj, 'packages', None)
+            if hasattr(rel, 'all'):
+                pkgs = list(rel.all())
+            else:
+                pkgs = list(rel or [])
+        return ProductPackageSerializer(pkgs, many=True, context=self.context).data
 
 
 class ProductDetailSerializer(ProductListSerializer):

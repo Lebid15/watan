@@ -7,9 +7,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 import { formatGroupsDots } from '@/utils/format';
-import { HiOutlineUserCircle } from 'react-icons/hi';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
-import api, { API_ROUTES } from '@/utils/api';
+import { useTranslation } from 'react-i18next';
+import { loadNamespace } from '@/i18n/client';
 
 function currencySymbol(code?: string) {
   switch ((code || '').toUpperCase()) {
@@ -30,13 +30,30 @@ export default function MainHeader() {
   const router = useRouter();
   const [banner, setBanner] = useState<{ text: string; enabled: boolean } | null>(null);
   const [hideBanner, setHideBanner] = useState<boolean>(false);
+  const { t, i18n } = useTranslation('common');
+  const [namespaceReady, setNamespaceReady] = useState(false);
+  const activeLocale = i18n.language || i18n.resolvedLanguage || 'ar';
+
+  useEffect(() => {
+    let mounted = true;
+    setNamespaceReady(false);
+    (async () => {
+      try {
+        await loadNamespace(activeLocale, 'common');
+      } catch {}
+      if (mounted) setNamespaceReady(true);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [activeLocale]);
 
   // ⬅️ خذ القيم الموجودة فعلًا في الـ Context
   const { user, refreshProfile: refreshUser, logout } = useUser();
 
   // حدّث بيانات المستخدم عند تحميل الهيدر (لو فيه توكن)
   useEffect(() => {
-  refreshUser();
+    refreshUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -60,22 +77,37 @@ export default function MainHeader() {
           // 3) env override for local dev if provided
           if (!tenantHost && process.env.NEXT_PUBLIC_TENANT_HOST) tenantHost = process.env.NEXT_PUBLIC_TENANT_HOST;
         } catch {}
-        const res = await fetch(url, { method: 'GET', headers: tenantHost ? { 'X-Tenant-Host': tenantHost } as any : undefined });
+  const headers: Record<string, string> | undefined = tenantHost ? { 'X-Tenant-Host': tenantHost } : undefined;
+  const res = await fetch(url, { method: 'GET', headers });
         const ok = res.ok;
-        const data = ok ? await res.json().catch(() => ({})) : {};
+        const raw = ok ? await res.json().catch(() => ({})) : {};
         if (process.env.NODE_ENV !== 'production') {
-          // eslint-disable-next-line no-console
-          console.debug('[Banner] GET', url, res.status, data);
+          console.debug('[Banner] GET', url, res.status, raw);
         }
         if (mounted) {
-          const text = String((data as any).text || '').trim();
-          const enabled = Boolean((data as any).enabled);
+          let text = '';
+          let enabled = false;
+          if (raw && typeof raw === 'object') {
+            const obj = raw as Record<string, unknown>;
+            const rawText = obj.text;
+            if (typeof rawText === 'string') {
+              text = rawText.trim();
+            } else if (rawText != null) {
+              text = String(rawText).trim();
+            }
+            const rawEnabled = obj.enabled;
+            if (typeof rawEnabled === 'boolean') {
+              enabled = rawEnabled;
+            } else if (rawEnabled != null) {
+              enabled = Boolean(rawEnabled);
+            }
+          }
           setBanner({ text, enabled });
         }
-      } catch (e: any) {
+      } catch (error: unknown) {
         if (process.env.NODE_ENV !== 'production') {
-          // eslint-disable-next-line no-console
-          console.warn('[Banner] fetch failed', e?.message || e);
+          const message = error instanceof Error ? error.message : String(error ?? '');
+          console.warn('[Banner] fetch failed', message);
         }
         if (mounted) setBanner({ text: '', enabled: false });
       }
@@ -108,9 +140,19 @@ export default function MainHeader() {
   const curr = (user?.currency || 'USD').toUpperCase();
   const sym = currencySymbol(curr);
 
-  const isEndUser = user && !['tenant_owner','distributor','developer'].includes((user.role||'').toLowerCase());
-  const showBanner = !!(banner && banner.enabled && banner.text && !hideBanner);
+  const normalizedRole = (() => {
+    const raw = (user?.role || '').toLowerCase();
+    if (['instance_owner','owner','admin'].includes(raw)) return 'tenant_owner';
+    return raw;
+  })();
+  const isMerchantFacing = ['tenant_owner','distributor','developer'].includes(normalizedRole);
+  const isEndUser = user && !isMerchantFacing;
+  const showBanner = !!(banner && banner.enabled && banner.text && !hideBanner && isMerchantFacing);
   const headerTopOffset = showBanner ? 'top-[36px]' : 'top-0';
+
+  if (!namespaceReady) {
+    return null;
+  }
   return (
     <>
       {showBanner && (
@@ -118,10 +160,10 @@ export default function MainHeader() {
           <div className="px-6 py-2 text-sm flex items-start gap-3">
             <div className="flex-1 whitespace-pre-wrap leading-5">{banner?.text}</div>
             <button
-              aria-label="إغلاق الشريط"
+              aria-label={t('header.banner.closeAria')}
               className="text-xs px-2 py-1 rounded border border-amber-300 hover:bg-amber-100"
               onClick={() => { setHideBanner(true); try { sessionStorage.setItem('banner:hidden', '1'); } catch {} }}
-            >إخفاء</button>
+            >{t('header.banner.hide')}</button>
           </div>
         </div>
       )}
@@ -136,7 +178,7 @@ export default function MainHeader() {
               balanceNum >= 0 ? 'text-success' : 'text-danger',
               'ml-3',
             ].join(' ')}
-            title="رصيد المحفظة"
+            title={t('wallet.balance')}
           >
             {formatGroupsDots(Number(balanceStr))} {sym}
           </span>
@@ -148,7 +190,7 @@ export default function MainHeader() {
               className="flex items-center hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-md"
               aria-haspopup="menu"
               aria-expanded={open}
-              aria-label="Account menu"
+              aria-label={t('header.accountMenuToggle')}
             >
               <FaUserCircle className="text-3xl" />
             </button>
@@ -164,21 +206,21 @@ export default function MainHeader() {
                     className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
                     onClick={() => { setOpen(false); router.push('/user'); }}
                   >
-                    الملف الشخصي
+                    {t('nav.profile')}
                   </button>
                   <button
                     role="menuitem"
                     className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
                     onClick={() => { setOpen(false); router.push('/user/favorites'); }}
                   >
-                    المفضلة
+                    {t('nav.favorites')}
                   </button>
                     <button
                       role="menuitem"
                       className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
                       onClick={() => { setOpen(false); router.push('/account/api'); }}
                     >
-                      API
+                      {t('nav.api')}
                     </button>
                   {isEndUser && (
                     <button
@@ -186,7 +228,7 @@ export default function MainHeader() {
                       className="w-full text-right px-4 py-2 text-sm hover:bg-bg-surface-alt"
                       onClick={() => { setOpen(false); router.push('/security'); }}
                     >
-                      الأمان
+                      {t('nav.security')}
                     </button>
                   )}
 
@@ -200,7 +242,7 @@ export default function MainHeader() {
                       logout(); // ⬅️ استخدم دالة السياق
                     }}
                   >
-                    تسجيل الخروج
+                    {t('nav.logout')}
                   </button>
                 </div>
               </div>
@@ -212,20 +254,20 @@ export default function MainHeader() {
         <div className="flex items-center gap-4 text-sm select-none">
           {/* عرض اسم المستخدم بدل النص الثابت */}
           <div className="text-xl font-semibold" title={user?.email || user?.username || user?.name || ''}>
-            {user?.username || user?.name || '...'}
+            {user?.username || user?.name || t('header.userName.fallback')}
           </div>
           {/* Role aware quick nav */}
           {user?.role === 'tenant_owner' && <nav className="hidden md:flex gap-3">
-            <Link className="hover:underline" href="/tenant/products">Products</Link>
-            <Link className="hover:underline" href="/tenant/users">Users</Link>
-            <Link className="hover:underline" href="/tenant/price-groups">Price Groups</Link>
-            <Link className="hover:underline" href="/tenant/reports">Reports</Link>
-            <Link className="hover:underline" href="/billing/overview">Billing</Link>
+            <Link className="hover:underline" href="/tenant/products">{t('tenant.products')}</Link>
+            <Link className="hover:underline" href="/tenant/users">{t('users.pageTitle')}</Link>
+            <Link className="hover:underline" href="/tenant/price-groups">{t('tenant.priceGroups')}</Link>
+            <Link className="hover:underline" href="/tenant/reports">{t('reports.nav.group')}</Link>
+            <Link className="hover:underline" href="/billing/overview">{t('billing.nav.overview')}</Link>
           </nav>}
           {user?.role === 'distributor' && <nav className="hidden md:flex gap-3">
-            <Link className="hover:underline" href="/distributor/products">Products</Link>
-            <Link className="hover:underline" href="/distributor/price-groups">Price Groups</Link>
-            <Link className="hover:underline" href="/distributor/orders">Orders</Link>
+            <Link className="hover:underline" href="/distributor/products">{t('tenant.products')}</Link>
+            <Link className="hover:underline" href="/distributor/price-groups">{t('tenant.priceGroups')}</Link>
+            <Link className="hover:underline" href="/distributor/orders">{t('orders.pageTitle')}</Link>
           </nav>}
           {/* تمت إزالة instance_owner (مُطبَّع إلى tenant_owner) */}
         </div>

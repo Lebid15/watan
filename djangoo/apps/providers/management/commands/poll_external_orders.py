@@ -5,7 +5,7 @@ from django.db import connection
 from django.utils import timezone
 from apps.orders.models import ProductOrder
 from apps.providers.models import Integration
-from apps.providers.adapters import get_adapter, ZnetCredentials
+from apps.providers.adapters import resolve_adapter_credentials
 
 class Command(BaseCommand):
     help = "Poll external order statuses for orders in sent/processing and update them using provider adapters."
@@ -38,12 +38,17 @@ class Command(BaseCommand):
                 integ = Integration.objects.get(id=o.provider_id)
             except Integration.DoesNotExist:
                 continue
-            adapter = get_adapter(integ.provider)
-            if not adapter:
+            binding, creds = resolve_adapter_credentials(
+                integ.provider,
+                base_url=integ.base_url,
+                api_token=getattr(integ, 'api_token', None),
+                kod=getattr(integ, 'kod', None),
+                sifre=getattr(integ, 'sifre', None),
+            )
+            if not binding:
                 continue
-            creds = ZnetCredentials(base_url=integ.base_url, kod=integ.kod, sifre=integ.sifre)
             try:
-                res = adapter.fetch_status(creds, str(o.external_order_id))
+                res = binding.adapter.fetch_status(creds, str(o.external_order_id))
             except Exception as e:
                 # transient error; skip
                 continue

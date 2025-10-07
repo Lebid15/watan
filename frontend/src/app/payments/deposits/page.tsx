@@ -1,9 +1,9 @@
 // src/app/payments/deposits/page.tsx  (عدّل المسار بحسب مشروعك)
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
+import api, { API_ROUTES } from '@/utils/api';
 import { useAuthRequired } from '@/hooks/useAuthRequired';
 import { ErrorResponse } from '@/types/common';
 import { useTranslation } from 'react-i18next';
@@ -20,8 +20,17 @@ interface PaymentMethod {
   config: Record<string, unknown>;
 }
 
-const FILES_BASE = API_BASE_URL.replace(/\/api$/, '');
-const fileUrl = (u?: string | null) => (!u ? '' : u.startsWith('/uploads') ? `${FILES_BASE}${u}` : u);
+type PaymentMethodApi = PaymentMethod & { logo_url?: string | null };
+
+function resolveLogoUrl(raw: string | null | undefined, apiHost: string): string {
+  if (!raw) return '/images/placeholder.png';
+  const value = String(raw).trim();
+  if (!value) return '/images/placeholder.png';
+  if (/^(https?:|data:|blob:)/i.test(value)) return value;
+  const path = value.startsWith('/') ? value : `/${value}`;
+  if (!apiHost) return path;
+  return `${apiHost}${path}`;
+}
 
 export default function DepositMethodsPage() {
   useAuthRequired();
@@ -31,13 +40,31 @@ export default function DepositMethodsPage() {
   const [loading, setLoading] = useState(true);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [error, setError] = useState('');
+  const [failed, setFailed] = useState<Set<string>>(new Set());
+
+  const apiHost = useMemo(() => {
+    const base = API_ROUTES.payments.methods.active;
+    try {
+      return new URL(base).origin;
+    } catch {
+      const trimmed = base.replace(/\/api[^]*$/i, '').replace(/\/$/, '');
+      if (trimmed) return trimmed;
+      if (typeof window !== 'undefined') return window.location.origin;
+      return '';
+    }
+  }, []);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       setError('');
-      const { data } = await api.get<PaymentMethod[]>(API_ROUTES.payments.methods.active);
-      setMethods(Array.isArray(data) ? data : []);
+      const { data } = await api.get<PaymentMethodApi[]>(API_ROUTES.payments.methods.active);
+      const list = Array.isArray(data) ? data : [];
+      const normalized: PaymentMethod[] = list.map((item) => ({
+        ...item,
+        logoUrl: item.logoUrl ?? item.logo_url ?? null,
+      }));
+      setMethods(normalized);
     } catch (e: unknown) {
       const error = e as ErrorResponse;
       const fallback = t('payments.methods.fetch.fail');
@@ -77,18 +104,21 @@ export default function DepositMethodsPage() {
             >
               <div className="w-full h-20 flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {m.logoUrl ? (
-                  <img
-                    src={fileUrl(m.logoUrl)}
-                    alt={m.name}
-                    className="max-h-full max-w-[6rem] object-contain"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-16 h-16 rounded-lg bg-bg-surface-alt border border-border grid place-items-center text-text-secondary">
-                    —
-                  </div>
-                )}
+                <img
+                  src={failed.has(m.id) ? '/images/placeholder.png' : resolveLogoUrl(m.logoUrl, apiHost)}
+                  alt={m.name}
+                  className="max-h-full max-w-[6rem] object-contain"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={() =>
+                    setFailed((prev) => {
+                      if (prev.has(m.id)) return prev;
+                      const next = new Set(prev);
+                      next.add(m.id);
+                      return next;
+                    })
+                  }
+                />
               </div>
 
               <div className="w-full text-center">

@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 from apps.providers.models import Integration
-from apps.providers.adapters import get_adapter, ZnetCredentials
+from apps.providers.adapters import resolve_adapter_credentials
 
 
 class Command(BaseCommand):
@@ -15,10 +15,15 @@ class Command(BaseCommand):
             obj = Integration.objects.get(id=iid)
         except Integration.DoesNotExist:
             raise CommandError('Integration not found')
-        adapter = get_adapter(obj.provider)
-        if not adapter:
+        binding, creds = resolve_adapter_credentials(
+            obj.provider,
+            base_url=obj.base_url,
+            api_token=getattr(obj, 'api_token', None),
+            kod=getattr(obj, 'kod', None),
+            sifre=getattr(obj, 'sifre', None),
+        )
+        if not binding:
             raise CommandError('No adapter for provider')
-        creds = ZnetCredentials(base_url=obj.base_url, kod=obj.kod, sifre=obj.sifre)
-        res = adapter.get_balance(creds)
+        res = binding.adapter.get_balance(creds)
         bal = res.get('balance')
         self.stdout.write(self.style.SUCCESS(f"Balance={bal}"))

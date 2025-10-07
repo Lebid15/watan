@@ -3,8 +3,17 @@ import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
 import TotpVerification from '@/components/TotpVerification';
-import i18n, { loadNamespace, setLocale } from '@/i18n/client';
+import { loadNamespace } from '@/i18n/client';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import { useTranslation } from 'react-i18next';
+
+type LoginPayload = {
+  role?: string;
+  email?: string;
+  user?: { email?: string | null };
+  totpPending?: boolean;
+  requiresTotp?: boolean;
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,33 +24,30 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [totpPhase, setTotpPhase] = useState<'none' | 'verify'>('none');
   const [pendingToken, setPendingToken] = useState<string | null>(null);
-  // NEW: i18n readiness flag to avoid raw keys flash
-  const [i18nReady, setI18nReady] = useState(false);
+  const { t, i18n: i18nextInstance } = useTranslation('common');
+  const [namespaceReady, setNamespaceReady] = useState(false);
+  const activeLocale = i18nextInstance.language || i18nextInstance.resolvedLanguage || 'ar';
 
-  // ensure common namespace loaded (previous inline effect replaced/enhanced)
   useEffect(() => {
     let active = true;
-    (async () => {
+    const load = async () => {
+      setNamespaceReady(false);
       try {
-        await loadNamespace(i18n.language || 'ar', 'common');
-      } catch {
-        // ignore load errors; keys fallback will show
+        await loadNamespace(activeLocale, 'common');
       } finally {
-        if (active) setI18nReady(true);
+        if (active) {
+          setNamespaceReady(true);
+        }
       }
-    })();
-    return () => { active = false; };
-  }, []);
-
-  const lang = i18n.language || 'ar';
-  const t = useCallback(
-    (k: string) => (i18n.getResource(lang, 'common', k) as string) || k,
-    [lang]
-  );
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [activeLocale]);
 
   const finalizeNavigation = useCallback((token: string) => {
-    let nextDest: string | null = null;
-    let decodedRole = '';
+  let nextDest: string | null = null;
     try {
       const url = new URL(window.location.href);
       const candidate = url.searchParams.get('next');
@@ -57,8 +63,7 @@ export default function LoginPage() {
           const json = JSON.parse(atob(b64));
           const rr = (json?.role || '').toLowerCase();
           const email = (json?.email || json?.user?.email || '').toLowerCase();
-          decodedRole = rr;
-          let norm = (rr === 'instance_owner' || rr === 'owner' || rr === 'admin') ? 'tenant_owner' : rr;
+          const norm = (rr === 'instance_owner' || rr === 'owner' || rr === 'admin') ? 'tenant_owner' : rr;
           const envList = (process.env.NEXT_PUBLIC_DEVELOPER_EMAILS || process.env.DEVELOPER_EMAILS || '')
             .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
           const whitelist = envList.length ? envList : ['alayatl.tr@gmail.com'];
@@ -89,7 +94,7 @@ export default function LoginPage() {
               document.cookie = 'access_token=; Max-Age=0; path=/';
               document.cookie = 'role=; Max-Age=0; path=/';
               localStorage.removeItem('token');
-              setError('غير مسموح: بريد غير مُخوَّل (قائمة المطورين)');
+              setError(t('login.error.developerEmailNotAllowed'));
               return;
             }
           } else if (isApex) {
@@ -100,7 +105,7 @@ export default function LoginPage() {
             document.cookie = 'access_token=; Max-Age=0; path=/';
             document.cookie = 'role=; Max-Age=0; path=/';
             localStorage.removeItem('token');
-            setError('الدخول عبر النطاق الرئيسي مقصور على المطوّر. استخدم نطاق المتجر (subdomain).');
+            setError(t('login.error.apexOnlyDeveloper'));
             return;
             }
           }
@@ -127,7 +132,7 @@ export default function LoginPage() {
       }
     } catch {}
     try { router.push(nextDest || '/'); } catch { window.location.href = nextDest || '/'; }
-  }, [router, setError]);
+  }, [router, t]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,13 +153,13 @@ export default function LoginPage() {
       
       clearTimeout(timeoutId);
       if (res.status >= 300) {
-        throw new Error((res.data as any)?.message || 'فشل الدخول');
+        throw new Error((res.data as any)?.message || t('login.error.generic'));
       }
       
   const token = (res.data as any).token || (res.data as any).access_token;
       
       if (!token) {
-        throw new Error('لم يتم استلام رمز الدخول من الخادم');
+        throw new Error(t('login.error.tokenMissing'));
       }
       
       // لا نضع التوكن في الكوكيز قبل إكمال التحقق الثنائي إن لزم.
@@ -163,7 +168,7 @@ export default function LoginPage() {
         localStorage.setItem('pre_token', token);
       } catch {}
       // استخراج الحمولة لمعرفة هل ننتقل مباشرة أو نطلب TOTP
-      let payload: any = null;
+  let payload: LoginPayload | null = null;
       try {
         const part = token.split('.')[1];
         payload = JSON.parse(atob(part.replace(/-/g,'+').replace(/_/g,'/')));
@@ -183,24 +188,27 @@ export default function LoginPage() {
       } catch {}
       finalizeNavigation(token);
       
-    } catch (e: any) {
-      console.error('Login error:', e);
-      
-      if (e.name === 'AbortError') {
-        setError('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى.');
-      } else if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
-        setError('انتهت مهلة الاتصال. تحقق من اتصال الإنترنت.');
-      } else if (e.message?.includes('Network Error')) {
-        setError('خطأ في الشبكة. تحقق من اتصال الإنترنت.');
+    } catch (error) {
+      console.error('Login error:', error);
+
+      const err = error as { name?: string; code?: string; message?: string };
+      const message = typeof err.message === 'string' ? err.message : undefined;
+
+      if (err.name === 'AbortError') {
+        setError(t('login.error.timeout'));
+      } else if (err.code === 'ECONNABORTED' || message?.includes('timeout')) {
+        setError(t('login.error.timeoutNetwork'));
+      } else if (message?.includes('Network Error')) {
+        setError(t('login.error.network'));
       } else {
-        setError(e?.message || 'فشل الدخول');
+        setError(message || t('login.error.generic'));
       }
     } finally {
       setLoading(false);
     }
   };
 
-  if (!i18nReady) {
+  if (!namespaceReady) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500 text-sm">
         <span className="animate-pulse">…</span>
@@ -238,7 +246,7 @@ export default function LoginPage() {
                 {/* Lock icon */}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-70"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               </span>
-              <input type={showPassword ? 'text' : 'password'} value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" className="w-full border rounded pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-gray-900 placeholder-gray-400 bg-white" placeholder="••••••••" />
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" className="w-full border rounded pl-3 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 text-gray-900 placeholder-gray-400 bg-white" placeholder={t('login.password.placeholder')} />
               <button type="button" onClick={()=>setShowPassword(p=>!p)} aria-label={showPassword ? t('login.password.hide') : t('login.password.show')} className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 hover:text-gray-700 focus:outline-none" tabIndex={-1}>
                 {showPassword ? (
                   // Eye-off icon
@@ -250,7 +258,7 @@ export default function LoginPage() {
               </button>
             </div>
           </div>
-            <button disabled={loading || !identifier || !password} className="w-full bg-sky-600 text-white py-2 rounded text-sm disabled:opacity-60 hover:brightness-110 transition">{loading? '...' : t('login.submit')}</button>
+            <button disabled={loading || !identifier || !password} className="w-full bg-sky-600 text-white py-2 rounded text-sm disabled:opacity-60 hover:brightness-110 transition">{loading? t('login.loading') : t('login.submit')}</button>
           <div className="flex justify-between text-xs text-gray-600">
             <a href="/password-reset" className="underline">{t('login.forgot')}</a>
             <a href="/verify-email" className="underline">{t('login.verifyEmail')}</a>
@@ -270,7 +278,7 @@ export default function LoginPage() {
                 setTotpPhase('none');
                 finalizeNavigation(promoted);
               }}
-              onCancel={() => { setTotpPhase('none'); setError('تم إلغاء التحقق الثنائي'); }}
+              onCancel={() => { setTotpPhase('none'); setError(t('login.error.totpCanceled')); }}
             />
           </div>
         </div>

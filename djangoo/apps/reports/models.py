@@ -7,8 +7,8 @@ class ReportsIndex(models.Model):
     class Meta:
         managed = False
         app_label = 'reports'
-        verbose_name = 'Reports'
-        verbose_name_plural = 'Reports'
+        verbose_name = 'تقرير'
+        verbose_name_plural = 'التقارير'
 
     def __str__(self) -> str:  # pragma: no cover
-        return "Reports"
+        return "التقارير"

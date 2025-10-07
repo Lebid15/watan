@@ -11,6 +11,7 @@ import {
   ConflictException,
   NotFoundException,
   Res,
+  Get,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
@@ -26,6 +27,7 @@ import { RateLimit } from '../common/rate-limit.guard';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { EmailService } from '../common/email.service';
+import { CurrenciesService } from '../currencies/currencies.service';
 import type { Request, Response } from 'express';
 
 class LoginDto {
@@ -52,6 +54,7 @@ export class AuthController {
     private audit: AuditService,
     private jwt: JwtService,
     private emailService: EmailService,
+    private readonly currenciesService: CurrenciesService,
   ) {}
 
   @Post('login')
@@ -263,6 +266,24 @@ export class AuthController {
     const tenantId = (req as any)?.tenant?.id;
     if (!tenantId) throw new BadRequestException('Tenant ID مفقود');
     return this.authService.register(body, tenantId);
+  }
+
+  @Get('register-context')
+  @ApiOperation({ summary: 'جلب البيانات العامة اللازمة لنموذج التسجيل' })
+  async registerContext(@Req() req: Request) {
+    const tenantId = (req as any)?.tenant?.id;
+    if (!tenantId) throw new BadRequestException('Tenant ID مفقود');
+    const currencies = await this.currenciesService.findAll(tenantId);
+    const activeCurrencies = currencies.filter((c) => c.isActive !== false);
+    return {
+      currencies: activeCurrencies.map((c) => ({
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        symbolAr: c.symbolAr ?? null,
+        isPrimary: !!c.isPrimary,
+      })),
+    };
   }
 
   @Post('change-password')

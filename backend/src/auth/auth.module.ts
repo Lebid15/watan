@@ -19,6 +19,7 @@ import { TotpCredential } from './totp/totp-credential.entity';
 import { RecoveryCode } from './totp/recovery-code.entity';
 import { AuditModule } from '../audit/audit.module';
 import { EmailService } from '../common/email.service';
+import { CurrenciesModule } from '../currencies/currencies.module';
 
 @Module({
   imports: [
@@ -30,7 +31,8 @@ import { EmailService } from '../common/email.service';
       secret: jwtConstants.secret,
       signOptions: { expiresIn: '1d' },
     }),
-    AuditModule,
+  AuditModule,
+  CurrenciesModule,
   ],
   providers: [AuthService, JwtStrategy, AuthTokenService, TotpService, RateLimiterRegistry, RateLimitGuard, EmailService],
   controllers: [AuthController, TotpController],

@@ -8,7 +8,7 @@ from apps.users.permissions import RequireAdminRole
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
 from .models import ProductOrder
 from apps.providers.models import PackageRouting, PackageMapping, Integration
-from apps.providers.adapters import get_adapter
+from apps.providers.adapters import resolve_adapter_credentials
 from django.utils import timezone
 from django.db import connection
 from datetime import datetime
@@ -374,10 +374,15 @@ class AdminOrderSyncExternalView(APIView):
         note = None
         try:
             integ = Integration.objects.get(id=chosen_provider_id, tenant_id=tenant_id)
-            adapter = get_adapter(integ.provider)
-            if adapter:
-                from apps.providers.adapters import ZnetCredentials
-                creds = ZnetCredentials(base_url=integ.base_url, kod=integ.kod, sifre=integ.sifre)
+            binding, creds = resolve_adapter_credentials(
+                integ.provider,
+                base_url=integ.base_url,
+                api_token=getattr(integ, 'api_token', None),
+                kod=getattr(integ, 'kod', None),
+                sifre=getattr(integ, 'sifre', None),
+            )
+            if binding:
+                adapter = binding.adapter
                 # prefer order_no as provider referans when available
                 referans = str(o.order_no) if getattr(o, 'order_no', None) else str(o.id)
                 payload = {
@@ -440,13 +445,17 @@ class AdminOrderRefreshStatusView(APIView):
             integ = Integration.objects.get(id=o.provider_id, tenant_id=tenant_id)
         except Integration.DoesNotExist:
             raise NotFound('تكامل المزوّد غير موجود')
-        adapter = get_adapter(integ.provider)
-        if not adapter:
+        binding, creds = resolve_adapter_credentials(
+            integ.provider,
+            base_url=integ.base_url,
+            api_token=getattr(integ, 'api_token', None),
+            kod=getattr(integ, 'kod', None),
+            sifre=getattr(integ, 'sifre', None),
+        )
+        if not binding:
             raise ValidationError('لا يوجد Adapter لهذا المزوّد')
-        from apps.providers.adapters import ZnetCredentials
-        creds = ZnetCredentials(base_url=integ.base_url, kod=integ.kod, sifre=integ.sifre)
         try:
-            res = adapter.fetch_status(creds, str(o.external_order_id))
+            res = binding.adapter.fetch_status(creds, str(o.external_order_id))
         except Exception as e:
             return Response({ 'message': f'فشل الاستعلام عن الحالة: {str(e)[:200]}', 'order': { 'id': str(o.id), 'externalStatus': o.external_status } }, status=502)
         # Map and persist

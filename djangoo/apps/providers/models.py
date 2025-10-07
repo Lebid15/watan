@@ -25,11 +25,10 @@ class PackageMapping(models.Model):
 
     id = models.UUIDField(primary_key=True)
     tenant_id = models.UUIDField(db_column='tenantId', db_index=True, null=True)
-    our_package_id = models.UUIDField(db_column='our_package_id')
-    provider_api_id = models.UUIDField(db_column='provider_api_id')
+    our_package_id = models.CharField(max_length=120, db_column='our_package_id')
+    provider_api_id = models.CharField(max_length=120, db_column='provider_api_id')
     provider_package_id = models.CharField(max_length=120, db_column='provider_package_id')
-    created_at = models.DateTimeField(db_column='createdAt', null=True)
-    updated_at = models.DateTimeField(db_column='updatedAt', null=True)
+    meta = models.JSONField(null=True)
 
 
 class Integration(models.Model):

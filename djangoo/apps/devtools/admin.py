@@ -115,6 +115,18 @@ class MaintenanceForm(forms.Form):
 class Force2FAForm(forms.Form):
     force_all = forms.BooleanField(required=False, label="فرض تفعيل المصادقة الثنائية على الجميع (ما عدا المطوّر)")
 
+        
+def get_global_state(key: str) -> str:
+    """Fetch the latest value for a given global key across tenants from site_page."""
+    try:
+        _ensure_table()
+        with connection.cursor() as c:
+            c.execute('SELECT content FROM site_page WHERE "key"=%s ORDER BY "updatedAt" DESC NULLS LAST LIMIT 1', [key])
+            row = c.fetchone()
+            return row[0] if row and row[0] is not None else ''
+    except Exception:
+        return ''
+
 @admin.register(AlertsPanel)
 class AlertsAdmin(admin.ModelAdmin):
     change_list_template = "admin/devtools_alerts.html"
@@ -241,8 +253,8 @@ class MaintenanceAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         base_ctx = self.admin_site.each_context(request)
         opts = self.model._meta
-        maint_msg = self._get_global_state('maintenance_message') or 'يرجى الانتظار لدينا صيانة على الموقع وسنعود فور الانتهاء.'
-        maint_on = self._get_global_state('maintenance_on')
+        maint_msg = get_global_state('maintenance_message') or 'يرجى الانتظار لدينا صيانة على الموقع وسنعود فور الانتهاء.'
+        maint_on = get_global_state('maintenance_on')
         maint_form = MaintenanceForm(initial={'message': maint_msg, 'enabled': (maint_on == '1')})
         ctx = {**base_ctx, "title": "وضع الصيانة", "opts": opts, "app_label": opts.app_label,
                "maint_form": maint_form, "maint_enabled": (maint_on == '1'), "maint_message": maint_msg}
@@ -255,7 +267,11 @@ class MaintenanceAdmin(admin.ModelAdmin):
         if not form.is_valid():
             messages.error(request, 'الحقول غير صالحة')
             return redirect('..')
+        # Respect explicit action buttons if present
+        action = (request.POST.get('action') or '').lower()
         enabled = bool(form.cleaned_data.get('enabled'))
+        if action in ('enable','disable'):
+            enabled = (action == 'enable')
         message = (form.cleaned_data.get('message') or '').strip()
         try:
             from apps.tenants.models import Tenant  # type: ignore
@@ -266,8 +282,20 @@ class MaintenanceAdmin(admin.ModelAdmin):
             _set_page(str(tid_all), 'maintenance_on', '1' if enabled else '0')
             if message:
                 _set_page(str(tid_all), 'maintenance_message', message)
-        messages.success(request, 'تم تحديث وضع الصيانة لجميع المستأجرين')
-        return redirect('..')
+        messages.success(request, f"تم {'تفعيل' if enabled else 'تعطيل'} وضع الصيانة لجميع المستأجرين")
+        # Also mirror cookie on apex domain so frontend middleware reacts immediately
+        domain = getattr(settings, 'APEX_DOMAIN', None) or getattr(settings, 'NEXT_PUBLIC_APEX_DOMAIN', None) or 'wtn4.com'
+        resp = redirect('..')
+        if enabled:
+            resp.set_cookie('MAINT_ON', '1', path='/', samesite='Lax', domain=f'.{domain}')
+            if getattr(settings, 'DEBUG', False):
+                resp.set_cookie('MAINT_ON', '1', path='/', samesite='Lax')
+        else:
+            # Clear both domain cookie and host-only cookie
+            resp.delete_cookie('MAINT_ON', path='/', domain=f'.{domain}')
+            if getattr(settings, 'DEBUG', False):
+                resp.delete_cookie('MAINT_ON', path='/')
+        return resp
 
 @admin.register(SecurityPanel)
 class SecurityAdmin(admin.ModelAdmin):
@@ -299,7 +327,7 @@ class SecurityAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         base_ctx = self.admin_site.each_context(request)
         opts = self.model._meta
-        force2fa = self._get_global_state('force_2fa') == '1'
+        force2fa = get_global_state('force_2fa') == '1'
         f2_form = Force2FAForm(initial={ 'force_all': force2fa })
         ctx = {**base_ctx, "title": "الأمان", "opts": opts, "app_label": opts.app_label,
                "force2fa_form": f2_form}
@@ -323,12 +351,4 @@ class SecurityAdmin(admin.ModelAdmin):
         messages.success(request, 'تم تحديث إعداد المصادقة الثنائية')
         return redirect('..')
 
-    def _get_global_state(self, key: str) -> str:
-        try:
-            _ensure_table()
-            with connection.cursor() as c:
-                c.execute('SELECT content FROM site_page WHERE "key"=%s ORDER BY "updatedAt" DESC NULLS LAST LIMIT 1', [key])
-                row = c.fetchone()
-                return row[0] if row and row[0] is not None else ''
-        except Exception:
-            return ''
+    # global state helper is defined at module level as get_global_state

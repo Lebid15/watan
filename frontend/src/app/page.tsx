@@ -33,10 +33,18 @@ export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [failed, setFailed] = useState<Set<string>>(new Set());
 
-  const apiHost = useMemo(
-    () => API_ROUTES.products.base.replace(/\/api\/products\/?$/, ""),
-    []
-  );
+  const apiHost = useMemo(() => {
+    const base = API_ROUTES.products.base;
+    try {
+      const url = new URL(base);
+      return url.origin;
+    } catch {
+      const trimmed = base.replace(/\/api[^]*$/i, "").replace(/\/$/, "");
+      if (trimmed) return trimmed;
+      if (typeof window !== "undefined") return window.location.origin;
+      return "";
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {

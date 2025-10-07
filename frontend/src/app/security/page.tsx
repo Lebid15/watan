@@ -28,8 +28,11 @@ export default function SecurityPage(){
   useEffect(()=>{ load(); },[]);
 
   async function startSetup(){
-    // الانتقال لصفحة الإعداد الحالية (لإعادة الاستخدام)
-    window.location.href = '/user/totp-setup';
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+    const inAdmin = currentPath.startsWith('/admin');
+    const nextTarget = inAdmin ? '/admin/settings/security' : '/user';
+    const setupPath = inAdmin ? '/admin/totp-setup' : '/user/totp-setup';
+    window.location.href = `${setupPath}?next=${encodeURIComponent(nextTarget)}`;
   }
 
   async function disableTotp(){

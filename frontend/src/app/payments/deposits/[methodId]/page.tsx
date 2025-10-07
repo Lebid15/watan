@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import api, { API_ROUTES, API_BASE_URL } from '@/utils/api';
+import api, { API_ROUTES } from '@/utils/api';
 import { useTranslation } from 'react-i18next';
 
 type PaymentMethodType = 'CASH_BOX' | 'BANK_ACCOUNT' | 'HAND_DELIVERY' | 'USDT' | 'MONEY_TRANSFER';
@@ -15,8 +15,10 @@ interface PaymentMethod {
   logoUrl?: string | null;
   note?: string | null;
   isActive: boolean;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
 }
+
+type PaymentMethodApi = PaymentMethod & { logo_url?: string | null };
 
 interface CurrencyRow {
   id?: string;
@@ -32,11 +34,25 @@ interface ProfileWithCurrency {
   currencyCode?: string;
 }
 
-const FILES_BASE = API_BASE_URL.replace(/\/api$/, '');
-const fileUrl = (u?: string | null) => (!u ? '' : u.startsWith('/uploads') ? `${FILES_BASE}${u}` : u);
 const valueOf = (c: CurrencyRow): number => {
   const n = Number(c.rate ?? c.value ?? c.price ?? 0);
   return isFinite(n) && n > 0 ? n : 0;
+};
+
+function resolveLogoUrl(raw: string | null | undefined, apiHost: string): string {
+  if (!raw) return '/images/placeholder.png';
+  const value = String(raw).trim();
+  if (!value) return '/images/placeholder.png';
+  if (/^(https?:|data:|blob:)/i.test(value)) return value;
+  const path = value.startsWith('/') ? value : `/${value}`;
+  if (!apiHost) return path;
+  return `${apiHost}${path}`;
+}
+
+const normalizeMethod = (item: PaymentMethodApi | null | undefined): PaymentMethod | null => {
+  if (!item) return null;
+  const { logo_url, logoUrl, ...rest } = item;
+  return { ...rest, logoUrl: logoUrl ?? logo_url ?? null };
 };
 
 export default function DepositCreatePage() {
@@ -54,6 +70,18 @@ export default function DepositCreatePage() {
   const [amount, setAmount] = useState<string>('');             // المبلغ المُرسل
   const [fromCurrency, setFromCurrency] = useState<string>(''); // العملة المُرسلة
   const [note, setNote] = useState<string>('');                 // ملاحظة اختيارية
+
+  const apiHost = useMemo(() => {
+    const base = API_ROUTES.payments.methods.active;
+    try {
+      return new URL(base).origin;
+    } catch {
+      const trimmed = base.replace(/\/api[^]*$/i, '').replace(/\/$/, '');
+      if (trimmed) return trimmed;
+      if (typeof window !== 'undefined') return window.location.origin;
+      return '';
+    }
+  }, []);
 
   // خريطة: code -> rate مقابل 1 USD
   const currencyMap = useMemo(() => {
@@ -97,10 +125,10 @@ const walletCurrency = useMemo(() => {
       setError('');
 
       // 1) الوسائل الفعّالة ثم اختر الوسيلة المطلوبة
-      const methodsRes = await api.get<PaymentMethod[]>(API_ROUTES.payments.methods.active);
-      const allMethods = Array.isArray(methodsRes.data) ? methodsRes.data : [];
-      const current = allMethods.find((m) => m.id === methodId) || null;
-      setMethod(current);
+  const methodsRes = await api.get<PaymentMethodApi[]>(API_ROUTES.payments.methods.active);
+  const allMethods = Array.isArray(methodsRes.data) ? methodsRes.data : [];
+  const current = normalizeMethod(allMethods.find((m) => m.id === methodId));
+  setMethod(current);
 
       // 2) بروفايل المستخدم
       const profRes = await api.get<ProfileWithCurrency>(API_ROUTES.users.profileWithCurrency);
@@ -176,18 +204,12 @@ const walletCurrency = useMemo(() => {
           <div className="rounded-xl border border-border bg-subnav text-text-primary p-3 mb-3">
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {method.logoUrl ? (
-                <img
-                  src={fileUrl(method.logoUrl)}
-                  alt={method.name}
-                  className="w-12 h-12 object-contain rounded bg-bg-surface border border-border"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded bg-bg-surface border border-border grid place-items-center text-text-secondary">
-                  —
-                </div>
-              )}
+              <img
+                src={resolveLogoUrl(method.logoUrl, apiHost)}
+                alt={method.name}
+                className="w-12 h-12 object-contain rounded bg-bg-surface border border-border"
+                loading="lazy"
+              />
               <div className="min-w-0">
                 <div className="font-semibold truncate">{method.name}</div>
                 {method.note && <div className="text-xs text-text-secondary mt-0.5 line-clamp-2">{method.note}</div>}
@@ -296,10 +318,26 @@ const walletCurrency = useMemo(() => {
 /* ======================
    عرض الحقول (config) الخاصة بوسيلة الدفع للمستخدم
    ====================== */
-interface MethodWithConfig { id: string; name: string; type: PaymentMethodType; config: Record<string, any>; }
+interface MethodWithConfig { id: string; name: string; type: PaymentMethodType; config: Record<string, unknown>; }
 
 function PaymentMethodConfigView({ method }: { method: MethodWithConfig }) {
-  const cfg = method?.config || {};
+  const cfg = (method?.config ?? {}) as Record<string, unknown>;
+  const pickString = (key: string) => {
+    const value = cfg[key];
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  };
+
+  const rawEntries = Object.entries(cfg).reduce<[string, string | number][]>((acc, [key, value]) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) acc.push([key, trimmed]);
+    } else if (typeof value === 'number' && Number.isFinite(value)) {
+      acc.push([key, value]);
+    }
+    return acc;
+  }, []);
   // اختيار مفاتيح معروفة بترتيب منطقي؛ ثم أي مفاتيح إضافية نصية
   const preferredOrder = [
     'bankName','bank','accountName','accountHolder','recipientName','accountNumber','iban','swift','branch','country','city','currency','walletAddress','network','phone','transferCode','note'
@@ -326,20 +364,18 @@ function PaymentMethodConfigView({ method }: { method: MethodWithConfig }) {
   };
 
   // استخراج القيم النصية / الرقمية فقط
-  const rawEntries = Object.entries(cfg).filter(([_,v]) => ['string','number'].includes(typeof v) && String(v).trim() !== '');
-
   // دمج الترتيب المفضل مع الباقي
   const ordered: [string,string|number][] = [];
   const used = new Set<string>();
   for (const k of preferredOrder) {
     const f = rawEntries.find(([rk]) => rk === k);
-    if (f) { ordered.push(f as [string,string|number]); used.add(k); }
+    if (f) { ordered.push(f); used.add(k); }
   }
-  for (const e of rawEntries) { if (!used.has(e[0])) ordered.push(e as [string,string|number]); }
+  for (const e of rawEntries) { if (!used.has(e[0])) ordered.push(e); }
 
   if (!ordered.length) return null; // لا شيء لعرضه
 
-  const bankTitle = (cfg.bankName || cfg.bank) ? (cfg.bankName || cfg.bank) : null;
+  const bankTitle = pickString('bankName') ?? pickString('bank');
 
   const copyValue = async (val: string|number) => {
     try { await navigator.clipboard?.writeText(String(val)); } catch {}

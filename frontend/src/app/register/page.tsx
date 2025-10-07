@@ -4,11 +4,20 @@ import { useState, useEffect } from 'react';
 import ResponsiveCurrencySelect from '@/components/ResponsiveCurrencySelect';
 import { useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
+import { loadNamespace } from '@/i18n/client';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
+import { useTranslation } from 'react-i18next';
 
 interface Currency {
   id: string;
   name: string;
   code: string;
+  symbolAr?: string | null;
+  isPrimary?: boolean;
+}
+
+interface RegisterContextResponse {
+  currencies: Currency[];
 }
 
 export default function RegisterPage() {
@@ -18,23 +27,48 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
-  const [currencyId, setCurrencyId] = useState(''); // ابقيه فاضي حتى يختار المستخدم
+  const [currencyId, setCurrencyId] = useState('');
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { t, i18n: i18nextInstance } = useTranslation('common');
+  const [namespaceReady, setNamespaceReady] = useState(false);
+  const activeLocale = i18nextInstance.language || i18nextInstance.resolvedLanguage || 'ar';
+
+  useEffect(() => {
+    let mounted = true;
+    const ensureNamespace = async () => {
+      setNamespaceReady(false);
+      try {
+        await loadNamespace(activeLocale, 'common');
+      } finally {
+        if (mounted) {
+          setNamespaceReady(true);
+        }
+      }
+    };
+    ensureNamespace();
+    return () => {
+      mounted = false;
+    };
+  }, [activeLocale]);
 
   // جلب العملات من الباك إند
   useEffect(() => {
     const fetchCurrencies = async () => {
       try {
-        const res = await api.get<Currency[]>(API_ROUTES.currencies.base);
-        setCurrencies(res.data);
+        const res = await api.get<RegisterContextResponse>(API_ROUTES.auth.registerContext);
+        const list = Array.isArray(res.data?.currencies) ? res.data.currencies : [];
+        setCurrencies(list);
 
-        // اختيار الليرة السورية افتراضيًا إذا موجودة، وإلا ابقِه فاضي
-        const syp = res.data.find((c) => c.code === 'SYP');
-        if (syp) setCurrencyId(syp.id);
+        // اختيار العملة الأساسية أو الليرة السورية افتراضيًا إذا وُجدت
+        const preferred =
+          list.find((c) => c.isPrimary) ||
+          list.find((c) => c.code === 'SYP') ||
+          list[0];
+        if (preferred) setCurrencyId(preferred.id);
       } catch (err) {
-        console.error('فشل في جلب العملات', err);
+        console.error('Failed to fetch currencies', err);
       }
     };
     fetchCurrencies();
@@ -45,7 +79,7 @@ export default function RegisterPage() {
     setError('');
 
     if (!currencyId) {
-      setError('يرجى اختيار العملة');
+      setError(t('register.error.currencyRequired'));
       return;
     }
 
@@ -59,19 +93,31 @@ export default function RegisterPage() {
         username,
         currencyId,
       });
-      alert('تم إنشاء الحساب بنجاح! يمكنك تسجيل الدخول الآن.');
+      alert(t('register.success'));
       router.push('/login');
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message || 'فشل التسجيل. قد يكون البريد مستخدمًا مسبقًا.'
-      );
+    } catch (error) {
+      const fallback = t('register.error.generic');
+      if (typeof error === 'object' && error !== null && 'response' in error) {
+        const message = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+        setError(typeof message === 'string' ? message : fallback);
+      } else {
+        setError(fallback);
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  if (!namespaceReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-500 text-sm">
+        <span className="animate-pulse">…</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen w-full flex justify-center">
+    <div className="min-h-screen w-full bg-[var(--bg-main)] flex justify-center relative">
       {/* ✅ أزلنا overflow-hidden لأنه كان يقطع منسدلة الـ select في الإنتاج */}
       <div className="w-full max-w-md rounded-2xl shadow-2xl overflow-visible bg-white flex flex-col">
         {/* الهيدر */}
@@ -103,14 +149,14 @@ export default function RegisterPage() {
         {/* الفورم */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-7 -mt-8 sm:-mt-10 relative z-10">
           <h2 className="text-2xl font-semibold text-center mb-4 text-gray-900">
-            إنشاء حساب جديد
+            {t('register.title')}
           </h2>
 
           {error && <div className="mb-4 text-red-600 text-center">{error}</div>}
 
           {/* الاسم الكامل */}
           <label className="block mb-1 font-medium text-gray-800" htmlFor="fullName">
-            الاسم الكامل
+            {t('register.fullName.label')}
           </label>
           <input
             id="fullName"
@@ -124,7 +170,7 @@ export default function RegisterPage() {
 
           {/* اسم المستخدم */}
           <label className="block mb-1 font-medium text-gray-800" htmlFor="username">
-            اسم المستخدم
+            {t('register.username.label')}
           </label>
           <input
             id="username"
@@ -138,7 +184,7 @@ export default function RegisterPage() {
 
           {/* البريد الإلكتروني */}
           <label className="block mb-1 font-medium text-gray-800" htmlFor="email">
-            البريد الإلكتروني
+            {t('register.email.label')}
           </label>
           <input
             id="email"
@@ -152,7 +198,7 @@ export default function RegisterPage() {
 
           {/* كلمة المرور */}
           <label className="block mb-1 font-medium text-gray-800" htmlFor="password">
-            كلمة المرور
+            {t('register.password.label')}
           </label>
           <input
             id="password"
@@ -166,14 +212,14 @@ export default function RegisterPage() {
 
           {/* اختيار العملة */}
           <label className="block mb-1 font-medium text-gray-800" htmlFor="currency">
-            اختر العملة
+            {t('register.currency.label')}
           </label>
           <div className="relative overflow-visible">
             <ResponsiveCurrencySelect
               options={currencies}
               value={currencyId}
               onChange={setCurrencyId}
-              placeholder="اختر العملة"
+              placeholder={t('register.currency.placeholder')}
             />
           </div>
 
@@ -183,16 +229,19 @@ export default function RegisterPage() {
             disabled={loading}
             className="w-full bg-sky-800 text-white py-2 rounded hover:brightness-110 transition disabled:opacity-50"
           >
-            {loading ? 'جاري التسجيل...' : 'تسجيل'}
+            {loading ? t('register.submitting') : t('register.submit')}
           </button>
 
           <p className="mt-4 text-center text-sm text-gray-600">
-            لديك حساب؟{' '}
+            {t('register.haveAccount')}{' '}
             <a href="/login" className="text-sky-600 hover:underline">
-              تسجيل الدخول
+              {t('register.loginLink')}
             </a>
           </p>
         </form>
+      </div>
+      <div className="absolute top-4 right-4">
+        <LanguageSwitcher />
       </div>
     </div>
   );

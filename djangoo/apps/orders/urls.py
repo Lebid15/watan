@@ -11,7 +11,9 @@ from .views import (
 
 urlpatterns = [
     path('orders/me', MyOrdersListView.as_view(), name='orders-me'),
+    path('orders/me/', MyOrdersListView.as_view(), name='orders-me-slash'),
     path('orders/<uuid:id>', MyOrderDetailsView.as_view(), name='orders-details'),
+    path('orders/<uuid:id>/', MyOrderDetailsView.as_view(), name='orders-details-slash'),
 ]
 
 # Admin routes are included at root include with prefix 'admin/' in config urls

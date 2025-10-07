@@ -114,7 +114,7 @@ const toLocalYMD = (d = new Date()) =>
 export default function OrdersPage() {
   useAuthRequired();
   const { user } = useUser();
-  const userCurrency = (user as any)?.currency || (user as any)?.currencyCode || 'USD';
+  const userCurrency = user?.currency || user?.currencyCode || 'USD';
   const [conversionRate, setConversionRate] = useState<number>(1);
 
   const [orders, setOrders] = useState<Order[]>([]);

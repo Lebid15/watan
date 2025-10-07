@@ -10,6 +10,8 @@ class Tenant(models.Model):
 
     class Meta:
         db_table = 'dj_tenants'
+        verbose_name = 'مستأجر'
+        verbose_name_plural = 'المستأجرون'
 
     def __str__(self):
         return self.host

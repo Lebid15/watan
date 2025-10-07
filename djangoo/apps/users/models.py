@@ -1,3 +1,6 @@
+import uuid
+
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -21,9 +24,67 @@ class User(AbstractUser):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     overdraft = models.DecimalField(max_digits=18, decimal_places=6, default=0)
     role = models.CharField(max_length=32, choices=Roles.choices, default=Roles.END_USER)
+    force_totp_enroll = models.BooleanField(default=False)
+    totp_failed_attempts = models.PositiveIntegerField(default=0)
+    totp_locked_until = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'dj_users'
+        verbose_name = 'مستخدم'
+        verbose_name_plural = 'المستخدمون'
 
     def __str__(self):
         return self.username
+
+
+class TotpCredential(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='totp_credentials',
+    )
+    tenant_id = models.UUIDField(null=True, blank=True)
+    encrypted_secret = models.CharField(max_length=200)
+    label = models.CharField(max_length=100, null=True, blank=True)
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    usage_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'dj_totp_credentials'
+        indexes = [
+            models.Index(fields=['user'], name='dj_totp_user_idx'),
+            models.Index(fields=['tenant_id', 'user'], name='dj_totp_tenant_user_idx'),
+        ]
+
+    def __str__(self) -> str:
+        return f"TOTP credential for {self.user_id}"
+
+
+class RecoveryCode(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='totp_recovery_codes',
+    )
+    code_hash = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'dj_recovery_codes'
+        indexes = [
+            models.Index(fields=['user'], name='dj_recovery_user_idx'),
+        ]
+
+    def __str__(self) -> str:
+        return f"Recovery code for {self.user_id}"
+
+
+# Legacy read-only models from old NestJS backend - kept for reference only
+# These are NOT registered in admin and should NOT be used for new development
+# Uncomment only if needed for data migration scripts
+# from .legacy_models import LegacyUser  # noqa: E402,F401

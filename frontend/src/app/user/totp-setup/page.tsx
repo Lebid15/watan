@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/utils/api';
 import { useToast } from '@/context/ToastContext';
 import Image from 'next/image';
 
-export default function TotpSetupPage() {
+function TotpSetupContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawNext = searchParams?.get('next') ?? '/user';
+  const nextPath = rawNext.startsWith('/') ? rawNext : '/user';
   const { show } = useToast();
   const [step, setStep] = useState<'setup' | 'verify' | 'backup'>('setup');
   const [qrCode, setQrCode] = useState('');
@@ -62,7 +65,7 @@ export default function TotpSetupPage() {
 
   const completeSetup = () => {
     show('تم تفعيل المصادقة الثنائية بنجاح');
-    router.push('/user');
+    router.push(nextPath);
   };
 
   if (loading && step === 'setup') {
@@ -198,5 +201,20 @@ export default function TotpSetupPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function TotpSetupPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p>جاري تحميل الصفحة...</p>
+        </div>
+      </div>
+    }>
+      <TotpSetupContent />
+    </Suspense>
   );
 }

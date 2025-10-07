@@ -1,10 +1,10 @@
  'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import AdminNavbar from './AdminNavbar';
+import AdminSidebar from './AdminSidebar';
 import AdminTopBar from './AdminTopBar';
 import MobileZoomFrame from '@/components/MobileZoomFrame';
-import api, { API_ROUTES } from '@/utils/api';
+import api, { API_ROUTES, Api } from '@/utils/api';
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   const DESIGN_WIDTH = 1280;
@@ -14,6 +14,38 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   const isMobileFrame = search.get('mobile') === '1';
   // رسالة التنبيه العامة (يتم ضبطها من صفحة المطور). نتركها فارغة إن لم تُحدد.
   const [alertMessage, setAlertMessage] = useState('');
+
+  // ===== الشارات: الطلبات المعلقة =====
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refreshOrdersBadge = useCallback(async (signal?: AbortSignal) => {
+    try {
+      if (signal?.aborted) return;
+      const res = await Api.admin.pendingOrders();
+      const { count } = res.data as { count: number };
+      setPendingCount(Number(count) || 0);
+    } catch (error: unknown) {
+      if ((error as { name?: string })?.name === 'AbortError') return;
+      setPendingCount(0);
+    }
+  }, []);
+
+  // ===== الشارات: الإيداعات المعلقة =====
+  const [pendingDepositsCount, setPendingDepositsCount] = useState<number>(0);
+  const pollingDepositsRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refreshDepositsBadge = useCallback(async (signal?: AbortSignal) => {
+    try {
+      if (signal?.aborted) return;
+      const res = await Api.admin.pendingDeposits();
+      const { count } = res.data as { count: number };
+      setPendingDepositsCount(Number(count) || 0);
+    } catch (error: unknown) {
+      if ((error as { name?: string })?.name === 'AbortError') return;
+      setPendingDepositsCount(0);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -35,6 +67,32 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     })();
     return () => { mounted = false; };
   }, [router]);
+
+  // تحميل شارات الطلبات والإيداعات
+  useEffect(() => {
+    if (!authReady) return;
+    
+    const ac1 = new AbortController();
+    const ac2 = new AbortController();
+    
+    refreshOrdersBadge(ac1.signal);
+    refreshDepositsBadge(ac2.signal);
+
+    pollingRef.current = setInterval(() => {
+      refreshOrdersBadge();
+    }, 25_000);
+
+    pollingDepositsRef.current = setInterval(() => {
+      refreshDepositsBadge();
+    }, 25_000);
+
+    return () => {
+      ac1.abort();
+      ac2.abort();
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (pollingDepositsRef.current) clearInterval(pollingDepositsRef.current);
+    };
+  }, [authReady, refreshOrdersBadge, refreshDepositsBadge]);
 
   // دالة إعادة تحميل الملاحظة من localStorage
   const loadAlert = () => {
@@ -73,13 +131,27 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   };
 
   if (!authReady) return null;
+  
   const inner = (
-    <div className="mx-auto" style={{ width: DESIGN_WIDTH, minWidth: DESIGN_WIDTH, minHeight: '100vh', overflowX: 'auto' }}>
-      <div className="bg-[var(--toppage)] text-gray-100">
-        <AdminTopBar alertMessage={alertMessage} onLogout={handleLogout} />
+    <div className="flex min-h-screen">
+      {/* Sidebar */}
+      <AdminSidebar />
+      
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Top Bar */}
+        <AdminTopBar 
+          alertMessage={alertMessage} 
+          onLogout={handleLogout}
+          pendingOrdersCount={pendingCount}
+          pendingDepositsCount={pendingDepositsCount}
+        />
+        
+        {/* Page Content */}
+        <main className="flex-1 overflow-auto p-6">
+          {children}
+        </main>
       </div>
-      <AdminNavbar />
-      <div className="p-">{children}</div>
     </div>
   );
 

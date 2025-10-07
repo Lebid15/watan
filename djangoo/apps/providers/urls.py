@@ -11,7 +11,11 @@ from .views import (
     AdminRoutingSetTypeView,
     AdminRoutingSetCodeGroupView,
     AdminPackageCostsListUpsertDeleteView,
+    AdminIntegrationPackagesView,
+    AdminIntegrationSyncProductsView,
+    AdminIntegrationBalancePreviewView,
     AdminIntegrationBalanceView,
+    AdminIntegrationTestView,
     AdminIntegrationImportCatalogView,
     AdminProvidersCoverageView,
     AdminProvidersCoverageCSVView,
@@ -24,6 +28,8 @@ admin_urlpatterns = [
     # Integrations CRUD
     path('integrations', AdminIntegrationsListCreateView.as_view(), name='admin-integrations-list-create'),
     path('integrations/<uuid:id>', AdminIntegrationDetailView.as_view(), name='admin-integrations-detail'),
+    path('integrations/<uuid:id>/packages', AdminIntegrationPackagesView.as_view(), name='admin-integrations-packages'),
+    path('integrations/<uuid:id>/sync-products', AdminIntegrationSyncProductsView.as_view(), name='admin-integrations-sync-products'),
     # Routing & Costs
     path('routing/packages/<uuid:package_id>', AdminRoutingGetUpsertView.as_view(), name='admin-routing-package'),
     path('integrations/routing/all', AdminRoutingAllView.as_view(), name='admin-routing-all'),
@@ -33,6 +39,8 @@ admin_urlpatterns = [
     path('package-costs', AdminPackageCostsListUpsertDeleteView.as_view(), name='admin-package-costs'),
     path('integrations/provider-cost', __import__('apps.providers.views', fromlist=['AdminProviderCostView']).AdminProviderCostView.as_view(), name='admin-provider-cost'),
     # Ops
+    path('integrations/<uuid:id>/test', AdminIntegrationTestView.as_view(), name='admin-integrations-test'),
+    path('integrations/<uuid:id>/balance', AdminIntegrationBalancePreviewView.as_view(), name='admin-integrations-balance'),
     path('integrations/<uuid:id>/refresh-balance', AdminIntegrationBalanceView.as_view(), name='admin-integrations-refresh-balance'),
     path('integrations/<uuid:id>/import-catalog', AdminIntegrationImportCatalogView.as_view(), name='admin-integrations-import-catalog'),
     path('providers/coverage', AdminProvidersCoverageView.as_view(), name='admin-providers-coverage'),

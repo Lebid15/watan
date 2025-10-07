@@ -3,10 +3,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Api } from '@/utils/api';
 import { FiList, FiUsers, FiDollarSign, FiShare2 } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { loadNamespace } from '@/i18n/client';
 
 interface NavItem {
   name: string;
@@ -15,12 +16,103 @@ interface NavItem {
 }
 
 export default function AdminNavbar() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation('common');
+  const [namespaceReady, setNamespaceReady] = useState(false);
+  const activeLocale = i18n.language || i18n.resolvedLanguage || 'ar';
+
+  useEffect(() => {
+    let mounted = true;
+    setNamespaceReady(false);
+    (async () => {
+      try {
+        await loadNamespace(activeLocale, 'common');
+      } catch {}
+      if (mounted) setNamespaceReady(true);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [activeLocale]);
+
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith('/admin') === true;
 
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   useEffect(() => setOpenDropdown(null), [pathname]);
+
+  const itemText = 'text-[15px]';
+
+  // ===== الشارات: الطلبات المعلقة =====
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refreshOrdersBadge = useCallback(async (signal?: AbortSignal) => {
+    try {
+      if (signal?.aborted) return;
+      const res = await Api.admin.pendingOrders();
+      const { count } = res.data as { count: number };
+      setPendingCount(Number(count) || 0);
+    } catch (error: unknown) {
+      if ((error as { name?: string })?.name === 'AbortError') return;
+      if (isAdminRoute) console.error('خطأ عند جلب الطلبات المعلقة', error);
+      setPendingCount(0);
+    }
+  }, [isAdminRoute]);
+
+  useEffect(() => {
+    // شغّل فقط داخل /admin
+    if (!isAdminRoute) return;
+
+    const ac = new AbortController();
+    refreshOrdersBadge(ac.signal);
+
+    pollingRef.current = setInterval(() => {
+      refreshOrdersBadge();
+    }, 25_000);
+
+    return () => {
+      ac.abort();
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [isAdminRoute, refreshOrdersBadge]);
+
+  // ===== الشارات: الإيداعات المعلقة =====
+  const [pendingDepositsCount, setPendingDepositsCount] = useState<number>(0);
+  const pollingDepositsRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refreshDepositsBadge = useCallback(async (signal?: AbortSignal) => {
+    try {
+      if (signal?.aborted) return;
+      const res = await Api.admin.pendingDeposits();
+      const { count } = res.data as { count: number };
+      setPendingDepositsCount(Number(count) || 0);
+    } catch (error: unknown) {
+      if ((error as { name?: string })?.name === 'AbortError') return;
+      if (isAdminRoute) console.error('خطأ عند جلب الإيداعات المعلقة', error);
+      setPendingDepositsCount(0);
+    }
+  }, [isAdminRoute]);
+
+  useEffect(() => {
+    // شغّل فقط داخل /admin
+    if (!isAdminRoute) return;
+
+    const ac = new AbortController();
+    refreshDepositsBadge(ac.signal);
+
+    pollingDepositsRef.current = setInterval(() => {
+      refreshDepositsBadge();
+    }, 25_000);
+
+    return () => {
+      ac.abort();
+      if (pollingDepositsRef.current) clearInterval(pollingDepositsRef.current);
+    };
+  }, [isAdminRoute, refreshDepositsBadge]);
+
+  if (!namespaceReady) {
+    return null;
+  }
 
   const navItems: NavItem[] = [
     // Dashboard
@@ -39,93 +131,24 @@ export default function AdminNavbar() {
       ],
     },
     {
-      name: 'التقارير',
+      name: t('reports.nav.group'),
       subItems: [
-        { name: 'الأرباح', href: '/admin/reports/profits' },
-        { name: 'جرد رأس المال', href: '/admin/reports/capital' },
+        { name: t('reports.nav.profits'), href: '/admin/reports/profits' },
+        { name: t('reports.nav.capital'), href: '/admin/reports/capital' },
       ],
     },
     {
-      name: 'الإعدادات',
+      name: t('settings.nav.group'),
       subItems: [
-        { name: 'الإشعارات', href: '/admin/notifications' },
-        { name: 'المظهر', href: '/admin/settings/theme' },
-        { name: 'من نحن', href: '/admin/settings/about' },
-        { name: 'تعليمات', href: '/admin/settings/infoes' },
-        { name: 'إعادة تعيين كلمة المرور', href: '/admin/settings/password-reset' },
-  { name: 'الأمان', href: '/admin/settings/security' },
+        { name: t('settings.nav.notifications'), href: '/admin/notifications' },
+        { name: t('settings.nav.theme'), href: '/admin/settings/theme' },
+        { name: t('settings.nav.about'), href: '/admin/settings/about' },
+        { name: t('settings.nav.help'), href: '/admin/settings/infoes' },
+        { name: t('settings.nav.passwordReset'), href: '/admin/settings/password-reset' },
+        { name: t('settings.nav.security'), href: '/admin/settings/security' },
       ],
     },
   ];
-
-  const itemText = 'text-[15px]';
-
-  // ===== الشارات: الطلبات المعلقة =====
-  const [pendingCount, setPendingCount] = useState<number>(0);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  async function refreshOrdersBadge(signal?: AbortSignal) {
-    try {
-  const res = await Api.admin.pendingOrders();
-  const { count } = res.data as { count: number };
-      setPendingCount(Number(count) || 0);
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return;
-      // لا نطبع أخطاء خارج مسارات الأدمن
-      if (isAdminRoute) console.error('خطأ عند جلب الطلبات المعلقة', e);
-      setPendingCount(0);
-    }
-  }
-
-  useEffect(() => {
-    // شغّل فقط داخل /admin
-    if (!isAdminRoute) return;
-
-    const ac = new AbortController();
-    refreshOrdersBadge(ac.signal);
-
-    pollingRef.current = setInterval(() => {
-      refreshOrdersBadge();
-    }, 25_000);
-
-    return () => {
-      ac.abort();
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, [isAdminRoute]);
-
-  // ===== الشارات: الإيداعات المعلقة =====
-  const [pendingDepositsCount, setPendingDepositsCount] = useState<number>(0);
-  const pollingDepositsRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  async function refreshDepositsBadge(signal?: AbortSignal) {
-    try {
-  const res = await Api.admin.pendingDeposits();
-  const { count } = res.data as { count: number };
-      setPendingDepositsCount(Number(count) || 0);
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return;
-      if (isAdminRoute) console.error('خطأ عند جلب الإيداعات المعلقة', e);
-      setPendingDepositsCount(0);
-    }
-  }
-
-  useEffect(() => {
-    // شغّل فقط داخل /admin
-    if (!isAdminRoute) return;
-
-    const ac = new AbortController();
-    refreshDepositsBadge(ac.signal);
-
-    pollingDepositsRef.current = setInterval(() => {
-      refreshDepositsBadge();
-    }, 25_000);
-
-    return () => {
-      ac.abort();
-      if (pollingDepositsRef.current) clearInterval(pollingDepositsRef.current);
-    };
-  }, [isAdminRoute]);
 
   return (
     <div className="bg-bg-surface-alt border-b border-border">
@@ -204,7 +227,7 @@ export default function AdminNavbar() {
               <Link
                 href="/admin/orders"
                 className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/15"
-                title={pendingCount > 0 ? `الطلبات (${pendingCount} جديد)` : 'الطلبات'}
+                title={pendingCount > 0 ? t('admin.shortcuts.ordersPending', { count: pendingCount }) : t('admin.shortcuts.orders')}
               >
                 <FiList
                   size={22}
@@ -217,7 +240,9 @@ export default function AdminNavbar() {
                 href="/admin/payments/deposits"
                 className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/15"
                 title={
-                  pendingDepositsCount > 0 ? `طلبات الإيداع (${pendingDepositsCount} جديد)` : 'الدفعات'
+                  pendingDepositsCount > 0
+                    ? t('admin.shortcuts.depositsPending', { count: pendingDepositsCount })
+                    : t('admin.shortcuts.deposits')
                 }
               >
                 <FiDollarSign
@@ -232,7 +257,7 @@ export default function AdminNavbar() {
               <Link
                 href="/admin/users"
                 className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/15"
-                title="المستخدمون"
+                title={t('admin.shortcuts.users')}
               >
                 <FiUsers size={22} />
               </Link>
@@ -241,7 +266,7 @@ export default function AdminNavbar() {
               <Link
                 href="/admin/products/api-settings"
                 className="p-1 rounded hover:bg-[rgb(var(--color-primary))]/15"
-                title="الإعدادات"
+                title={t('admin.shortcuts.apiSettings')}
               >
                 <FiShare2 size={22} />
               </Link>

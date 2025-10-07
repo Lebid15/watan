@@ -22,7 +22,32 @@ from .serializers import (
     AdminDepositActionResponseSerializer,
     AdminDepositNotesResponseSerializer,
 )
+from .serializers import LOGO_DATA_URL_KEY
+import logging
+
 from rest_framework.parsers import MultiPartParser, FormParser
+from django.db import IntegrityError
+from django.db.utils import ProgrammingError
+
+logger = logging.getLogger(__name__)
+MAX_LOGO_URL_LENGTH = 500
+
+
+def _prepare_logo_and_config(raw_logo, config, *, preserve_hidden=False, existing_hidden=None):
+    cfg = dict(config or {})
+    if raw_logo is None:
+        if preserve_hidden and existing_hidden and LOGO_DATA_URL_KEY not in cfg:
+            cfg[LOGO_DATA_URL_KEY] = existing_hidden
+        return None, cfg
+    logo_value = str(raw_logo)
+    if not logo_value:
+        cfg.pop(LOGO_DATA_URL_KEY, None)
+        return None, cfg
+    if len(logo_value) > MAX_LOGO_URL_LENGTH:
+        cfg[LOGO_DATA_URL_KEY] = logo_value
+        return None, cfg
+    cfg.pop(LOGO_DATA_URL_KEY, None)
+    return logo_value, cfg
 
 
 def _resolve_tenant_id(request) -> str | None:
@@ -70,6 +95,10 @@ class PaymentMethodsListView(APIView):
 class AdminPaymentMethodsListCreateView(APIView):
     permission_classes = [IsAuthenticated, RequireAdminRole]
 
+    def _is_unique_conflict(self, exc: Exception) -> bool:
+        text = str(exc) if exc is not None else ''
+        return 'duplicate key' in text.lower() or 'unique constraint' in text.lower()
+
     @extend_schema(tags=["Admin Payments"], responses={200: AdminPaymentMethodSerializer(many=True)})
     def get(self, request):
         tenant_id = _resolve_tenant_id(request)
@@ -88,28 +117,62 @@ class AdminPaymentMethodsListCreateView(APIView):
         s.is_valid(raise_exception=True)
         v = s.validated_data
         import uuid, datetime
+        logo_value, config_payload = _prepare_logo_and_config(v.get('logoUrl'), v.get('config'))
+
         pm = PaymentMethod(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             name=v['name'],
             is_active=bool(v.get('isActive', True)),
             type=v['type'],
-            config=v.get('config') or {},
-            logo_url=v.get('logoUrl') or None,
+            config=config_payload,
+            logo_url=logo_value,
             note=v.get('note') or None,
             created_at=datetime.datetime.utcnow(),
             updated_at=datetime.datetime.utcnow(),
         )
+
         try:
-            pm.save(force_insert=True)
-        except Exception:
-            # Unmanaged: fallback to raw insert
-            from django.db import connection
-            with connection.cursor() as c:
-                c.execute(
-                    'INSERT INTO payment_method (id, "tenantId", name, type, "isActive", config, "logoUrl", note, "createdAt", "updatedAt") VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW())',
-                    [str(pm.id), str(tenant_id), pm.name, pm.type, pm.is_active, pm.config, pm.logo_url, pm.note]
-                )
+            try:
+                pm.save(force_insert=True)
+            except IntegrityError as exc:
+                if self._is_unique_conflict(exc):
+                    raise ValidationError({'message': 'اسم وسيلة الدفع مستخدم مسبقًا داخل هذا المستأجر.'}) from exc
+                raise
+            except Exception:
+                # Unmanaged: fallback to raw insert
+                from django.db import connection
+                import json
+
+                config_payload = pm.config if pm.config is not None else {}
+                if not isinstance(config_payload, (dict, list)):
+                    # Ensure we store valid JSON structure even if serializer passed primitives
+                    config_payload = {}
+                config_json = json.dumps(config_payload)
+
+                try:
+                    with connection.cursor() as c:
+                        try:
+                            c.execute(
+                                'INSERT INTO payment_method (id, "tenantId", name, type, "isActive", config, "logoUrl", note, "createdAt", "updatedAt") VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,NOW(),NOW())',
+                                [str(pm.id), str(tenant_id), pm.name, pm.type, pm.is_active, config_json, pm.logo_url, pm.note]
+                            )
+                        except ProgrammingError:
+                            c.execute(
+                                'INSERT INTO payment_method (id, "tenantId", name, type, "isActive", config, "logoUrl", note, "createdAt", "updatedAt") VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW())',
+                                [str(pm.id), str(tenant_id), pm.name, pm.type, pm.is_active, config_json, pm.logo_url, pm.note]
+                            )
+                except IntegrityError as exc:
+                    if self._is_unique_conflict(exc):
+                        raise ValidationError({'message': 'اسم وسيلة الدفع مستخدم مسبقًا داخل هذا المستأجر.'}) from exc
+                    raise
+
+        except ValidationError:
+            raise
+        except Exception as exc:
+            self.logger.exception('Failed to create payment method', extra={'tenantId': tenant_id, 'payload': v})
+            raise ValidationError({'message': f'تعذر إنشاء وسيلة الدفع: {exc}'}) from exc
+
         return Response(AdminPaymentMethodSerializer.from_model(pm), status=201)
 
 
@@ -146,12 +209,23 @@ class AdminPaymentMethodByIdView(APIView):
         if 'isActive' in v:
             pm.is_active = bool(v['isActive'])
         pm.type = v['type']
-        if v.get('logoUrl') is not None:
-            pm.logo_url = v.get('logoUrl') or None
+        config_input_present = 'config' in v
+        current_config = dict(pm.config or {})
+        if config_input_present:
+            current_config = dict(v.get('config') or {})
+
+        logo_input_present = 'logoUrl' in v
+        if logo_input_present:
+            logo_value, current_config = _prepare_logo_and_config(v.get('logoUrl'), current_config)
+            pm.logo_url = logo_value
+        elif config_input_present:
+            _, current_config = _prepare_logo_and_config(None, current_config, preserve_hidden=True, existing_hidden=pm.config.get(LOGO_DATA_URL_KEY))
+
+        if config_input_present or logo_input_present:
+            pm.config = current_config
+
         if v.get('note') is not None:
             pm.note = v.get('note') or None
-        if v.get('config') is not None:
-            pm.config = v.get('config') or {}
         try:
             pm.save(update_fields=['name','is_active','type','config','logo_url','note','updated_at'])
         except Exception:

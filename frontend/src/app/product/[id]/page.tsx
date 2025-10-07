@@ -92,13 +92,19 @@ export default function ProductDetailsPage() {
   const [effectiveUnitPriceUSD, setEffectiveUnitPriceUSD] = useState<number | null>(null);
   const [currencyRate, setCurrencyRate] = useState<number>(1); // معدل تحويل من USD -> عملة المستخدم
 
-  const apiHost = useMemo(
-    () => API_ROUTES.products.base.replace(/\/api(?:\/products)?\/?$/, ''),
-    []
-  );
+  const apiHost = useMemo(() => {
+    const base = API_ROUTES.products.base;
+    try {
+      const url = new URL(base);
+      return url.origin;
+    } catch {
+      return base.replace(/\/api.*$/i, '').replace(/\/?$/, '');
+    }
+  }, []);
   // Memoize priceGroupId to avoid recreating function dependency loops
   const userPriceGroupId = useMemo(() => {
-    return (user as any)?.priceGroupId || (user as any)?.priceGroup?.id || null;
+    if (!user) return null;
+    return user.priceGroupId || user.priceGroup?.id || null;
   }, [user]);
 
   useEffect(() => {
@@ -109,7 +115,7 @@ export default function ProductDetailsPage() {
         const res = await api.get<Product>(url);
         if (cancelled) return;
         setProduct(res.data);
-        setCurrencyCode(res.data?.currencyCode || (user as any)?.currencyCode || 'USD');
+        setCurrencyCode(res.data?.currencyCode || user?.currencyCode || 'USD');
         // تهيئة معرف أول باقة وحدات إن لم يكن محدداً
         const firstUnit = res.data?.packages?.find(p => p.isActive && p.type === 'unit');
         setUnitSelectedPkgId(prev => prev || (firstUnit?.id || ''));

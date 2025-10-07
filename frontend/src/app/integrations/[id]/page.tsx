@@ -317,6 +317,7 @@ export default function IntegrationMappingPage() {
   const [product, setProduct] = useState<string>(searchParams.get('product') || '');
   const [productOptions, setProductOptions] = useState<string[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const skipNextAutoLoad = useRef(false);
 
   // سعر الصرف: كم ليرة لكل 1 دولار
   const [tryRate, setTryRate] = useState<number | null>(null);
@@ -364,15 +365,21 @@ export default function IntegrationMappingPage() {
     return Array.from(new Set(names));
   }, [productOptions, rows]);
 
-  const load = async () => {
-    if (!id) return;
+  type LoadOptions = {
+    productOverride?: string;
+    preserveMsg?: boolean;
+  };
+
+  const load = async (options?: LoadOptions): Promise<Row[]> => {
+    if (!id) return [];
+    const targetProduct = options?.productOverride ?? product;
     setLoading(true);
     setError('');
-    setMsg('');
+    if (!options?.preserveMsg) setMsg('');
     try {
       const { data } = await api.get<{ api: ApiInfo; packages: Row[] }>(
         `${API_ROUTES.admin.integrations.packages(String(id))}${
-          product ? `?product=${encodeURIComponent(product)}` : ''
+          targetProduct ? `?product=${encodeURIComponent(targetProduct)}` : ''
         }`
       );
       setApiInfo(data.api);
@@ -381,23 +388,30 @@ export default function IntegrationMappingPage() {
       const listRes = await api.get<IntegrationConfigRow[]>(API_ROUTES.admin.integrations.base);
       const found = (listRes.data || []).find((x) => x.id === String(id)) || null;
       setIntegrationConfig(found);
+      return data.packages || [];
     } catch (e: unknown) {
       const error = e as ErrorResponse;
       setError(error?.response?.data?.message || error?.message || 'Failed to load mapping');
+      return [];
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
+    if (skipNextAutoLoad.current) {
+      skipNextAutoLoad.current = false;
+      return;
+    }
+    void load();
   }, [id, product]);
 
-  const applyFilter = async (nextProduct: string) => {
+  const applyFilter = (nextProduct: string) => {
     const qp = new URLSearchParams(searchParams.toString());
     if (nextProduct) qp.set('product', nextProduct); else qp.delete('product');
-    router.replace(`/admin/products/integrations/${id}?${qp.toString()}`);
-    await load();
+    const qs = qp.toString();
+    const url = qs ? `/admin/products/integrations/${id}?${qs}` : `/admin/products/integrations/${id}`;
+    router.replace(url);
   };
 
   const updateRowMapping = (ourId: string, providerId: string) => {
@@ -418,8 +432,19 @@ export default function IntegrationMappingPage() {
           provider_package_id: String(r.current_mapping),
         }));
       await api.post(API_ROUTES.admin.integrations.packages(String(id)), payload);
+      const refreshedRows = await load({ preserveMsg: true });
+
+      if ((refreshedRows?.length ?? 0) === 0 && product) {
+        const fallbackProduct = productOptions.find((name) => name && name !== product) ?? productOptions[0] ?? '';
+        if (fallbackProduct && fallbackProduct !== product) {
+          skipNextAutoLoad.current = true;
+          setProduct(fallbackProduct);
+          applyFilter(fallbackProduct);
+          await load({ productOverride: fallbackProduct, preserveMsg: true });
+        }
+      }
+
       setMsg('تم حفظ الربط بنجاح.');
-      await load();
     } catch (e: unknown) {
       const error = e as ErrorResponse;
       setError(error?.response?.data?.message || error?.message || 'Failed to save mappings');
@@ -498,7 +523,7 @@ export default function IntegrationMappingPage() {
         </div>
 
         <button
-          onClick={load}
+          onClick={() => void load()}
           className="btn btn-secondary"
           disabled={loading}
         >

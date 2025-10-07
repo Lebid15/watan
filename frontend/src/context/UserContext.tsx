@@ -2,8 +2,13 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { clearAuthArtifacts } from '@/utils/authCleanup';
-import api, { Api, forceProfileRefresh, resetProfileCache } from '@/utils/api';
+import { Api, forceProfileRefresh, resetProfileCache } from '@/utils/api';
 import { ErrorResponse } from '@/types/common';
+
+type PriceGroupInfo = {
+  id: string;
+  name?: string | null;
+};
 
 type User = {
   id: string;
@@ -13,6 +18,9 @@ type User = {
   role: string;
   balance: number;
   currency: string; // رمز العملة (مبسّط)
+  currencyCode?: string;
+  priceGroupId?: string | null;
+  priceGroup?: PriceGroupInfo | null;
 };
 
 type UserContextType = {
@@ -53,14 +61,40 @@ export function UserProvider({ children }: { children: ReactNode }) {
         name: json.fullName || json.email || 'User',
         role,
         balance: 0,
-        currency: 'USD'
+        currency: 'USD',
+        currencyCode: 'USD',
+        priceGroupId: null,
+        priceGroup: null,
       } as User;
     } catch { return null; }
   };
 
   const applyProfileResponse = (data: any) => {
     if (!data) return;
-    const currency = (data.currencyCode || data.currency || 'USD') as string;
+    const currency = (data.currencyCode || data.currency_code || data.currency || 'USD') as string;
+    const rawPriceGroup = data.priceGroup || data.price_group || null;
+    const priceGroupId = (() => {
+      if (data.priceGroupId) return String(data.priceGroupId);
+      if (data.price_group_id) return String(data.price_group_id);
+      if (rawPriceGroup && rawPriceGroup.id) return String(rawPriceGroup.id);
+      const stored = typeof window !== 'undefined' ? window.localStorage?.getItem('userPriceGroupId') : null;
+      return stored || null;
+    })();
+    const priceGroupName = rawPriceGroup?.name ?? data.priceGroupName ?? data.price_group_name ?? null;
+    const priceGroup: PriceGroupInfo | null = priceGroupId
+      ? { id: priceGroupId, name: priceGroupName != null ? String(priceGroupName) : null }
+      : null;
+
+    if (typeof window !== 'undefined') {
+      try {
+        if (priceGroupId) {
+          window.localStorage.setItem('userPriceGroupId', priceGroupId);
+        } else {
+          window.localStorage.removeItem('userPriceGroupId');
+        }
+      } catch { /* ignore */ }
+    }
+
     setUser({
       id: String(data.id || ''),
       email: String(data.email || ''),
@@ -69,6 +103,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       role: String(data.role || user?.role || 'user'),
       balance: Number(data.balance ?? 0),
       currency,
+      currencyCode: currency,
+      priceGroupId,
+      priceGroup,
     });
   };
 

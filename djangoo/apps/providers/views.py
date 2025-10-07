@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 from django.db.models import Q
-from django.db import connection
+from django.db import connection, transaction
+from django.db.utils import ProgrammingError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -9,6 +11,7 @@ from apps.users.permissions import RequireAdminRole
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 import csv
+import math
 from django.http import HttpResponse
 
 from .models import ProviderAPI, PackageMapping, Integration, PackageRouting, PackageCost
@@ -17,7 +20,7 @@ try:
     from apps.tenants.models import TenantDomain  # type: ignore
 except Exception:
     TenantDomain = None
-from .adapters import get_adapter, ZnetCredentials
+from .adapters import resolve_adapter_credentials
 from .serializers import (
     ProviderSerializer,
     ProvidersListResponseSerializer,
@@ -37,6 +40,9 @@ try:
     from apps.codes.models import CodeGroup  # type: ignore
 except Exception:
     CodeGroup = None  # type: ignore
+
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_tenant_id(request) -> str | None:
@@ -61,6 +67,102 @@ def _resolve_tenant_id(request) -> str | None:
     if user and getattr(user, 'tenant_id', None):
         return str(user.tenant_id)
     return None
+
+
+def _parse_balance_value(value):
+    if value is None:
+        return None, None
+    if isinstance(value, (int, float)):
+        try:
+            num = float(value)
+        except (TypeError, ValueError):
+            return None, 'Invalid balance value'
+    else:
+        s = str(value).strip()
+        if not s:
+            return None, 'Empty balance value'
+        s = s.replace(',', '.')
+        try:
+            num = float(s)
+        except ValueError:
+            return None, f'Invalid balance value: {s}'
+    if not math.isfinite(num):
+        return None, 'Invalid balance value (non-finite)'
+    return num, None
+
+
+def _adapter_balance_result(adapter, creds):
+    try:
+        res = adapter.get_balance(creds)
+    except Exception as exc:  # pragma: no cover - defensive
+        return { 'balance': None, 'error': 'FETCH_FAILED', 'message': str(exc) }
+    if res is None:
+        return { 'balance': None }
+    if isinstance(res, dict):
+        return res
+    return { 'balance': res }
+
+
+def _build_balance_payload(integration: Integration, *, persist: bool, overrides: dict | None = None) -> dict:
+    override_map = overrides or {}
+    provider_value = override_map.get('provider') or integration.provider
+    binding, creds = resolve_adapter_credentials(
+        provider_value,
+        base_url=integration.base_url,
+        api_token=getattr(integration, 'api_token', None),
+        kod=getattr(integration, 'kod', None),
+        sifre=getattr(integration, 'sifre', None),
+        overrides=override_map or None,
+    )
+    updated_at = integration.balance_updated_at.isoformat() if integration.balance_updated_at else None
+    if not binding:
+        return { 'balance': None, 'error': 'ADAPTER_NOT_AVAILABLE', 'balanceUpdatedAt': updated_at }
+    result = _adapter_balance_result(binding.adapter, creds)
+
+    message = result.get('message')
+    if message is not None:
+        message = str(message)
+    missing_config = bool(result.get('missingConfig'))
+    raw_error = result.get('error')
+    if raw_error is not None:
+        raw_error = str(raw_error)
+
+    balance_value, parse_error = _parse_balance_value(result.get('balance'))
+
+    payload: dict = {}
+    if missing_config:
+        payload['missingConfig'] = True
+
+    error_text = raw_error
+    if parse_error and not error_text:
+        error_text = 'INVALID_BALANCE'
+        message = parse_error
+    if error_text:
+        payload['error'] = error_text
+    if message:
+        payload['message'] = message[:200]
+    if result.get('currency') is not None:
+        payload['currency'] = result.get('currency')
+
+    has_error = bool(error_text)
+    response_balance = None if has_error or missing_config or balance_value is None else balance_value
+
+    allow_persist = persist and not bool(override_map)
+    if allow_persist and response_balance is not None and response_balance != 0:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'UPDATE integrations SET balance=%s, "balanceUpdatedAt"=NOW() WHERE id=%s',
+                [response_balance, integration.id]
+            )
+        integration.refresh_from_db()
+        try:
+            response_balance = float(integration.balance) if integration.balance is not None else response_balance
+        except (TypeError, ValueError):
+            response_balance = response_balance
+
+    payload['balance'] = response_balance
+    payload['balanceUpdatedAt'] = integration.balance_updated_at.isoformat() if integration.balance_updated_at else None
+    return payload
 
 
 class AdminProvidersListView(APIView):
@@ -187,6 +289,7 @@ class AdminIntegrationDetailView(APIView):
             raise NotFound('التكامل غير موجود')
         if str(obj.tenant_id) != tenant_id:
             raise PermissionDenied('لا تملك صلاحية على هذا التكامل')
+        integration_id = str(obj.id)
         return Response(IntegrationSerializer(obj).data)
 
     @extend_schema(tags=["Admin Integrations"], request=IntegrationUpdateRequest, responses={200: IntegrationSerializer})
@@ -213,6 +316,9 @@ class AdminIntegrationDetailView(APIView):
                 c.execute(f'UPDATE integrations SET {", ".join(sets)} WHERE id=%s', params)
         obj.refresh_from_db()
         return Response(IntegrationSerializer(obj).data)
+
+    def put(self, request, id: str):
+        return self.patch(request, id)
 
     @extend_schema(tags=["Admin Integrations"], responses={204: None})
     def delete(self, request, id: str):
@@ -282,7 +388,19 @@ class AdminRoutingAllView(APIView):
         # Providers list for selection (optional if table exists)
         providers = []
         providers_map = {}
-        if 'provider_api' in existing_tables:
+        if 'integrations' in existing_tables:
+            try:
+                providers = list(
+                    Integration.objects
+                    .filter(tenant_id=tenant_id, enabled=True)
+                    .order_by('name')
+                )
+                providers_map = {str(p.id): p for p in providers}
+            except Exception:
+                providers = []
+                providers_map = {}
+        elif 'provider_api' in existing_tables:
+            # Fallback to legacy table in case integrations are not yet migrated
             try:
                 providers = list(ProviderAPI.objects.filter(tenant_id=tenant_id).order_by('name'))
                 providers_map = {str(p.id): p for p in providers}
@@ -318,12 +436,20 @@ class AdminRoutingAllView(APIView):
             except Exception:
                 routings = {}
         costs = {}
+        costs_map = {}
         if 'package_costs' in existing_tables:
             try:
-                for pc in PackageCost.objects.filter(tenant_id=tenant_id, package_id__in=pkg_ids):
-                    costs.setdefault(str(pc.package_id), []).append(pc)
+                qs = PackageCost.objects.filter(tenant_id=tenant_id, package_id__in=pkg_ids)
             except Exception:
-                costs = {}
+                try:
+                    qs = PackageCost.objects.filter(package_id__in=pkg_ids)
+                except Exception:
+                    qs = []
+            for pc in qs:
+                pkg_key = str(pc.package_id)
+                prov_key = str(pc.provider_id)
+                costs.setdefault(pkg_key, []).append(pc)
+                costs_map[(pkg_key, prov_key)] = pc
 
         for row in pkg_rows:
             pkg_id = str(row['id'])
@@ -341,11 +467,27 @@ class AdminRoutingAllView(APIView):
                 'codeGroupId': getattr(routing, 'code_group_id', None),
             }
             prov_costs = []
-            for c in costs.get(pkg_id, []) or []:
-                p = providers_map.get(str(c.provider_id))
+            known_provider_ids = set()
+            for provider in providers:
+                pid = str(provider.id)
+                known_provider_ids.add(pid)
+                cost = costs_map.get((pkg_id, pid))
                 prov_costs.append({
-                    'providerId': str(c.provider_id),
-                    'providerName': getattr(p, 'name', str(c.provider_id)),
+                    'providerId': pid,
+                    'providerName': provider.name,
+                    'costCurrency': getattr(cost, 'cost_currency', 'USD'),
+                    'costAmount': float(getattr(cost, 'cost_amount', 0) or 0),
+                })
+
+            # Preserve any legacy costs tied to providers no longer present
+            for c in costs.get(pkg_id, []) or []:
+                prov_id = str(c.provider_id)
+                if prov_id in known_provider_ids:
+                    continue
+                p = providers_map.get(prov_id)
+                prov_costs.append({
+                    'providerId': prov_id,
+                    'providerName': getattr(p, 'name', prov_id),
                     'costCurrency': c.cost_currency,
                     'costAmount': float(c.cost_amount or 0),
                 })
@@ -360,7 +502,7 @@ class AdminRoutingAllView(APIView):
             })
 
         return Response({
-            'providers': [{ 'id': str(p.id), 'name': p.name, 'type': 'external' } for p in providers],
+            'providers': [{ 'id': str(p.id), 'name': p.name, 'type': getattr(p, 'provider', 'external') } for p in providers],
             'codeGroups': [{ 'id': str(g.id), 'name': g.name } for g in groups],
             'items': items,
         })
@@ -447,14 +589,137 @@ class AdminProviderCostView(APIView):
         provider_id = (request.data.get('providerId') or '').strip()
         if not package_id or not provider_id:
             raise ValidationError('packageId و providerId مطلوبة')
-        mapped = PackageMapping.objects.filter(tenant_id=tenant_id, our_package_id=package_id, provider_api_id=provider_id).exists()
-        cost = PackageCost.objects.filter(tenant_id=tenant_id, package_id=package_id, provider_id=provider_id).first()
-        resp = { 'mapped': bool(mapped) }
-        if cost:
-            resp['cost'] = { 'amount': float(cost.cost_amount or 0), 'currency': cost.cost_currency }
-        else:
-            resp['message'] = 'لا توجد تكلفة محددة للمزوّد'
-        return Response(resp)
+        try:
+            integration = Integration.objects.get(id=provider_id)
+        except Integration.DoesNotExist:
+            raise NotFound('المزوّد غير موجود')
+        if str(integration.tenant_id or '') != tenant_id:
+            raise PermissionDenied('لا تملك صلاحية على هذا المزوّد')
+
+        try:
+            mapping = PackageMapping.objects.filter(
+                tenant_id=tenant_id,
+                our_package_id=package_id,
+                provider_api_id=provider_id,
+            ).first()
+        except Exception:
+            mapping = PackageMapping.objects.filter(
+                our_package_id=package_id,
+                provider_api_id=provider_id,
+            ).first()
+
+        if not mapping:
+            return Response({
+                'mapped': False,
+                'message': 'لا يوجد ربط لهذه الباقة مع هذا المزوّد. اذهب لإعدادات API ثم اربط الباقة.',
+            })
+
+        binding, creds = resolve_adapter_credentials(
+            integration.provider,
+            base_url=integration.base_url,
+            api_token=getattr(integration, 'api_token', None),
+            kod=getattr(integration, 'kod', None),
+            sifre=getattr(integration, 'sifre', None),
+        )
+        if not binding:
+            return Response({
+                'mapped': True,
+                'message': 'لا يوجد Adapter متاح لهذا المزوّد بعد.',
+            }, status=400)
+
+        try:
+            products = binding.adapter.list_products(creds) or []
+        except Exception as exc:
+            return Response({
+                'mapped': True,
+                'message': f'تعذر جلب باقات المزوّد: {str(exc)[:200]}',
+            }, status=502)
+
+        provider_pkg_id = str(getattr(mapping, 'provider_package_id', '') or '')
+        match: dict | None = None
+        for item in products:
+            if not isinstance(item, dict):
+                continue
+            ext = item.get('externalId') or item.get('id') or item.get('packageExternalId')
+            if ext is None:
+                continue
+            if str(ext) == provider_pkg_id:
+                match = item
+                break
+
+        if not match:
+            return Response({
+                'mapped': True,
+                'message': 'تعذر إيجاد باقة المزوّد بناءً على الربط. تأكد من صحة الربط.',
+            })
+
+        raw_amount = match.get('basePrice')
+        if raw_amount is None:
+            raw_amount = match.get('costPrice')
+        try:
+            cost_amount = float(raw_amount)
+        except (TypeError, ValueError):
+            cost_amount = 0.0
+
+        currency = (
+            match.get('currencyCode')
+            or match.get('currency')
+            or (match.get('meta') or {}).get('currency')  # type: ignore[union-attr]
+        )
+        if not currency:
+            currency = 'USD'
+
+        saved_id = None
+        has_tenant_column = True
+        with connection.cursor() as cursor:
+            try:
+                cursor.execute(
+                    'SELECT id FROM package_costs WHERE "tenantId"=%s AND package_id=%s AND "providerId"=%s',
+                    [tenant_id, package_id, provider_id],
+                )
+                row = cursor.fetchone()
+            except ProgrammingError:
+                has_tenant_column = False
+                cursor.execute(
+                    'SELECT id FROM package_costs WHERE package_id=%s AND "providerId"=%s',
+                    [package_id, provider_id],
+                )
+                row = cursor.fetchone()
+
+            if row:
+                saved_id = row[0]
+                cursor.execute(
+                    'UPDATE package_costs SET "costCurrency"=%s, "costAmount"=%s WHERE id=%s',
+                    [currency, cost_amount, saved_id],
+                )
+            else:
+                if has_tenant_column:
+                    try:
+                        cursor.execute(
+                            'INSERT INTO package_costs (id, "tenantId", package_id, "providerId", "costCurrency", "costAmount") VALUES (gen_random_uuid(), %s, %s, %s, %s, %s) RETURNING id',
+                            [tenant_id, package_id, provider_id, currency, cost_amount],
+                        )
+                        saved_id = cursor.fetchone()[0]
+                    except ProgrammingError:
+                        has_tenant_column = False
+                if not has_tenant_column:
+                    cursor.execute(
+                        'INSERT INTO package_costs (id, package_id, "providerId", "costCurrency", "costAmount") VALUES (gen_random_uuid(), %s, %s, %s, %s) RETURNING id',
+                        [package_id, provider_id, currency, cost_amount],
+                    )
+                    saved_id = cursor.fetchone()[0]
+
+        return Response({
+            'mapped': True,
+            'cost': {
+                'amount': float(cost_amount),
+                'currency': currency,
+            },
+            'message': 'تم تحديث تكلفة المزوّد لهذه الباقة.',
+            'packageId': package_id,
+            'providerId': provider_id,
+            'costId': saved_id,
+        })
 
 
 class AdminPackageCostsListUpsertDeleteView(APIView):
@@ -502,6 +767,271 @@ class AdminPackageCostsListUpsertDeleteView(APIView):
         return Response(status=204)
 
 
+class AdminIntegrationPackagesView(APIView):
+    permission_classes = [IsAuthenticated, RequireAdminRole]
+
+    @extend_schema(
+        tags=["Admin Integrations"],
+        parameters=[OpenApiParameter('product', required=False, type=str)],
+        responses={200: dict},
+    )
+    def get(self, request, id: str):
+        tenant_id = _resolve_tenant_id(request) or ''
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+        try:
+            obj = Integration.objects.get(id=id)
+        except Integration.DoesNotExist:
+            raise NotFound('التكامل غير موجود')
+        if str(obj.tenant_id) != tenant_id:
+            raise PermissionDenied('لا تملك صلاحية على هذا التكامل')
+        integration_id = str(obj.id)
+
+        product_filter = (request.query_params.get('product') or '').strip()
+
+        try:
+            tables = set(connection.introspection.table_names())
+        except Exception:
+            tables = set()
+
+        our_packages: list[ProductPackage] = []
+        if {'product_packages', 'product'}.issubset(tables):
+            qs = (
+                ProductPackage.objects
+                .filter(tenant_id=tenant_id, is_active=True)
+                .select_related('product')
+            )
+            if product_filter:
+                qs = qs.filter(product__name__icontains=product_filter)
+            our_packages = list(qs.order_by('product__name', 'name'))
+        else:
+            our_packages = []
+
+        binding, creds = resolve_adapter_credentials(
+            obj.provider,
+            base_url=obj.base_url,
+            api_token=getattr(obj, 'api_token', None),
+            kod=getattr(obj, 'kod', None),
+            sifre=getattr(obj, 'sifre', None),
+        )
+        adapter = binding.adapter if binding else None
+        provider_items: list[dict] = []
+        provider_options: list[dict] = []
+        provider_map: dict[str, dict] = {}
+        if adapter:
+            try:
+                provider_items = adapter.list_products(creds) or []
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning('Failed to list provider products', extra={'integration_id': str(obj.id), 'provider': obj.provider, 'reason': str(exc)[:120]})
+                provider_items = []
+        for item in provider_items:
+            if not isinstance(item, dict):
+                continue
+            external_id = item.get('externalId') or item.get('id')
+            if not external_id:
+                continue
+            external_id = str(external_id)
+            provider_map[external_id] = item
+            price_raw = item.get('basePrice')
+            try:
+                price_value = float(price_raw)
+            except (TypeError, ValueError):
+                price_value = 0.0
+            currency = item.get('currencyCode')
+            if not currency and isinstance(item.get('meta'), dict):
+                currency = item['meta'].get('currency') or item['meta'].get('currencyCode')
+            provider_options.append({
+                'id': external_id,
+                'name': item.get('name') or f'Package {external_id}',
+                'price': price_value,
+                'currency': currency,
+            })
+
+        try:
+            mapping_qs = PackageMapping.objects.filter(provider_api_id=integration_id, tenant_id=tenant_id)
+        except ProgrammingError:
+            mapping_qs = PackageMapping.objects.filter(provider_api_id=integration_id)
+        mapping_map: dict[str, str | None] = {}
+        for m in mapping_qs:
+            key = str(getattr(m, 'our_package_id', ''))
+            value = getattr(m, 'provider_package_id', None)
+            mapping_map[key] = str(value) if value is not None else None
+
+        packages_payload: list[dict] = []
+        for pkg in our_packages:
+            pkg_id = str(pkg.id)
+            mapping_id = mapping_map.get(pkg_id)
+            provider_pkg = provider_map.get(mapping_id) if mapping_id else None
+            provider_price = None
+            if provider_pkg is not None:
+                try:
+                    provider_price = float(provider_pkg.get('basePrice'))
+                except (TypeError, ValueError):
+                    provider_price = None
+            packages_payload.append({
+                'our_package_id': pkg_id,
+                'our_package_name': pkg.name or '',
+                'our_base_price': float(pkg.base_price or 0),
+                'provider_price': provider_price,
+                'current_mapping': mapping_id,
+                'provider_packages': provider_options,
+            })
+
+        balance_payload = _build_balance_payload(obj, persist=False)
+        api_info = {
+            'id': str(obj.id),
+            'name': obj.name,
+            'type': obj.provider,
+            'balance': balance_payload.get('balance'),
+        }
+        return Response({'api': api_info, 'packages': packages_payload})
+
+    @extend_schema(
+        tags=["Admin Integrations"],
+        request=dict,
+        responses={200: dict},
+    )
+    def post(self, request, id: str):
+        tenant_id = _resolve_tenant_id(request) or ''
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+        try:
+            obj = Integration.objects.get(id=id)
+        except Integration.DoesNotExist:
+            raise NotFound('التكامل غير موجود')
+        if str(obj.tenant_id) != tenant_id:
+            raise PermissionDenied('لا تملك صلاحية على هذا التكامل')
+        integration_id = str(obj.id)
+
+        payload = request.data
+        if not isinstance(payload, list):
+            raise ValidationError('Body must be an array of mappings')
+
+        cleaned: list[tuple[str, str]] = []
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
+            our_id = str(entry.get('our_package_id') or '').strip()
+            provider_id = str(entry.get('provider_package_id') or '').strip()
+            if not our_id or not provider_id:
+                continue
+            cleaned.append((our_id, provider_id))
+
+        has_tenant_column = True
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                try:
+                    cursor.execute('DELETE FROM package_mappings WHERE "tenantId"=%s AND provider_api_id=%s', [tenant_id, integration_id])
+                except ProgrammingError:
+                    cursor.execute('DELETE FROM package_mappings WHERE provider_api_id=%s', [integration_id])
+                    has_tenant_column = False
+
+                for our_id, provider_id in cleaned:
+                    if has_tenant_column:
+                        try:
+                            cursor.execute(
+                                'INSERT INTO package_mappings (id, "tenantId", our_package_id, provider_api_id, provider_package_id) '
+                                'VALUES (gen_random_uuid(), %s, %s, %s, %s)',
+                                [tenant_id, our_id, integration_id, provider_id],
+                            )
+                            continue
+                        except ProgrammingError:
+                            has_tenant_column = False
+                    cursor.execute(
+                        'INSERT INTO package_mappings (id, our_package_id, provider_api_id, provider_package_id) '
+                        'VALUES (gen_random_uuid(), %s, %s, %s)',
+                        [our_id, integration_id, provider_id],
+                    )
+
+        return Response({'count': len(cleaned)})
+
+
+class AdminIntegrationSyncProductsView(APIView):
+    permission_classes = [IsAuthenticated, RequireAdminRole]
+
+    @extend_schema(
+        tags=["Admin Integrations"],
+        description="جلب قائمة باقات المزود وتحديثها محلياً.",
+        responses={200: dict},
+    )
+    def post(self, request, id: str):
+        tenant_id = _resolve_tenant_id(request) or ''
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+        try:
+            obj = Integration.objects.get(id=id)
+        except Integration.DoesNotExist:
+            raise NotFound('التكامل غير موجود')
+        if str(obj.tenant_id) != tenant_id:
+            raise PermissionDenied('لا تملك صلاحية على هذا التكامل')
+
+        binding, creds = resolve_adapter_credentials(
+            obj.provider,
+            base_url=obj.base_url,
+            api_token=getattr(obj, 'api_token', None),
+            kod=getattr(obj, 'kod', None),
+            sifre=getattr(obj, 'sifre', None),
+        )
+        if not binding:
+            return Response({'synced': False, 'message': 'لا يوجد Adapter لهذا المزوّد بعد'}, status=400)
+
+        try:
+            items = binding.adapter.list_products(creds) or []
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning('Failed to sync provider products', extra={'integration_id': str(obj.id), 'provider': obj.provider, 'reason': str(exc)[:120]})
+            return Response({'synced': False, 'message': str(exc)[:200]}, status=502)
+
+        return Response({'synced': True, 'count': len(items), 'items': items})
+
+
+class AdminIntegrationTestView(APIView):
+    permission_classes = [IsAuthenticated, RequireAdminRole]
+
+    @extend_schema(
+        tags=["Admin Integrations"],
+        description="تشغيل اختبار سريع للتأكد من صلاحية الربط مع المزود وإرجاع الرصيد عند توفره.",
+        responses={200: dict},
+    )
+    def post(self, request, id: str):
+        tenant_id = _resolve_tenant_id(request) or ''
+        try:
+            obj = Integration.objects.get(id=id)
+        except Integration.DoesNotExist:
+            raise NotFound('التكامل غير موجود')
+        if str(obj.tenant_id) != tenant_id:
+            raise PermissionDenied('لا تملك صلاحية على هذا التكامل')
+        payload = _build_balance_payload(obj, persist=False)
+        return Response(payload)
+
+
+class AdminIntegrationBalancePreviewView(APIView):
+    permission_classes = [IsAuthenticated, RequireAdminRole]
+
+    @extend_schema(
+        tags=["Admin Integrations"],
+        description="Preview provider balance using supplied credentials without persisting any changes.",
+        request=dict,
+        responses={200: dict},
+    )
+    def post(self, request, id: str):
+        tenant_id = _resolve_tenant_id(request) or ''
+        try:
+            obj = Integration.objects.get(id=id)
+        except Integration.DoesNotExist:
+            raise NotFound('التكامل غير موجود')
+        if str(obj.tenant_id) != tenant_id:
+            raise PermissionDenied('لا تملك صلاحية على هذا التكامل')
+
+        overrides = {}
+        if isinstance(request.data, dict):
+            for key in ('provider', 'baseUrl', 'base_url', 'kod', 'sifre', 'apiToken'):
+                if key in request.data:
+                    overrides[key] = request.data[key]
+
+        payload = _build_balance_payload(obj, persist=False, overrides=overrides or None)
+        return Response(payload)
+
+
 class AdminIntegrationBalanceView(APIView):
     permission_classes = [IsAuthenticated, RequireAdminRole]
 
@@ -518,27 +1048,8 @@ class AdminIntegrationBalanceView(APIView):
             raise NotFound('التكامل غير موجود')
         if str(obj.tenant_id) != tenant_id:
             raise PermissionDenied('لا تملك صلاحية على هذا التكامل')
-        adapter = get_adapter(obj.provider)
-        if not adapter:
-            # Keep behavior if no adapter yet
-            with connection.cursor() as c:
-                c.execute('UPDATE integrations SET balance=COALESCE(balance,0)+0, "balanceUpdatedAt"=NOW() WHERE id=%s', [id])
-            obj.refresh_from_db()
-            return Response({ 'balance': float(obj.balance) if obj.balance is not None else None, 'balanceUpdatedAt': obj.balance_updated_at.isoformat() if obj.balance_updated_at else None })
-        creds = ZnetCredentials(base_url=obj.base_url, kod=obj.kod, sifre=obj.sifre)
-        try:
-            res = adapter.get_balance(creds)
-            bal = res.get('balance')
-            with connection.cursor() as c:
-                c.execute('UPDATE integrations SET balance=%s, "balanceUpdatedAt"=NOW() WHERE id=%s', [bal, id])
-            obj.refresh_from_db()
-            return Response({ 'balance': float(obj.balance) if obj.balance is not None else None, 'balanceUpdatedAt': obj.balance_updated_at.isoformat() if obj.balance_updated_at else None })
-        except Exception as e:
-            # If balance unsupported, surface graceful message
-            msg = str(e)
-            if 'BALANCE_UNSUPPORTED' in msg:
-                return Response({ 'balance': float(obj.balance) if obj.balance is not None else None, 'balanceUpdatedAt': obj.balance_updated_at.isoformat() if obj.balance_updated_at else None, 'note': 'Balance endpoint not configured for this provider. It will update after successful orders.' })
-            raise
+        payload = _build_balance_payload(obj, persist=True)
+        return Response(payload)
 
 
 class AdminIntegrationImportCatalogView(APIView):
@@ -558,13 +1069,18 @@ class AdminIntegrationImportCatalogView(APIView):
         if str(obj.tenant_id) != tenant_id:
             raise PermissionDenied('لا تملك صلاحية على هذا التكامل')
 
-        adapter = get_adapter(obj.provider)
-        if not adapter:
+        binding, creds = resolve_adapter_credentials(
+            obj.provider,
+            base_url=obj.base_url,
+            api_token=getattr(obj, 'api_token', None),
+            kod=getattr(obj, 'kod', None),
+            sifre=getattr(obj, 'sifre', None),
+        )
+        if not binding:
             return Response({'accepted': False, 'message': 'لا يوجد Adapter لهذا المزوّد'}, status=400)
 
-        creds = ZnetCredentials(base_url=obj.base_url, kod=obj.kod, sifre=obj.sifre)
         try:
-            catalog = adapter.fetch_catalog(creds)
+            catalog = binding.adapter.fetch_catalog(creds)
         except Exception as e:
             return Response({'accepted': False, 'message': f'فشل جلب الكتالوج: {str(e)[:200]}'}, status=502)
 

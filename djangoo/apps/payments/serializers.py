@@ -3,6 +3,8 @@ from __future__ import annotations
 from rest_framework import serializers
 from .models import PaymentMethod, Deposit
 
+LOGO_DATA_URL_KEY = '__logoDataUrl'
+
 
 class PaymentMethodSerializer(serializers.ModelSerializer):
     isActive = serializers.BooleanField(source='is_active')
@@ -12,6 +14,15 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentMethod
         fields = ('id', 'name', 'type', 'isActive', 'config', 'logo_url', 'note', 'createdAt', 'updatedAt')
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        config = dict(getattr(obj, 'config', {}) or {})
+        data_url = config.pop(LOGO_DATA_URL_KEY, None)
+        if data_url:
+            data['logo_url'] = data_url
+        data['config'] = config
+        return data
 
 
 class AdminPaymentMethodSerializer(serializers.Serializer):
@@ -26,14 +37,17 @@ class AdminPaymentMethodSerializer(serializers.Serializer):
 
     @staticmethod
     def from_model(obj: PaymentMethod):
+        config = dict(getattr(obj, 'config', {}) or {})
+        data_url = config.pop(LOGO_DATA_URL_KEY, None)
+        logo = getattr(obj, 'logo_url', None) or data_url
         return {
             'id': obj.id,
             'name': obj.name,
             'type': obj.type or 'CASH_BOX',
-            'logoUrl': getattr(obj, 'logo_url', None),
+            'logoUrl': logo,
             'note': getattr(obj, 'note', None),
             'isActive': bool(getattr(obj, 'is_active', False)),
-            'config': getattr(obj, 'config', {}) or {},
+            'config': config,
             'createdAt': getattr(obj, 'created_at', None),
         }
 

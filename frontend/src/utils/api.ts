@@ -6,7 +6,12 @@ import axios from 'axios';
    ========================= */
 
 // عنوان الـ API (مثال إنتاج: https://api.wtn4.com/api) نستخدمه كما هو بدون أي fallback نسبي.
-const RAW_API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api').replace(/\/$/, '');
+// افتراضيًا بعد الانتقال إلى djangoo نوجّه إلى /api-dj على المنفذ 8000.
+const DEFAULT_API_BASE_URL = (process.env.NEXT_PUBLIC_USE_OLD_BACKEND || '').toLowerCase() === 'true'
+  ? 'http://localhost:3001/api'
+  : 'http://127.0.0.1:8000/api-dj';
+
+const RAW_API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '');
 
 // Prefer relative /api when on a tenant subdomain (non api/www) of wtn4.com to eliminate cross-origin & CORS preflight.
 // This should help with mysterious timeouts in normal browser mode while incognito works.
@@ -36,7 +41,7 @@ function upgradeToHttpsIfNeeded(raw: string): string {
   return raw;
 }
 
-// Ø³Ù†Ø³ØªØ®Ø¯Ù… Ù‡Ø°Ù‡ Ø§Ù„Ù‚ÙŠÙ…Ø© Ø§Ù„ÙØ¹Ù„ÙŠØ© ÙÙŠ Ø¨Ù†Ø§Ø¡ Ø§Ù„Ù…Ø³Ø§Ø±Ø§Øª Ùˆ axios
+// Ø³Ù†Ø³ØªØ®Ø¯Ù… Ù‡Ø°Ù‡ Ø§Ù„Ù‚ÙŠÙمØ© Ø§Ù„ÙØ¹Ù„ÙŠØ© ÙÙŠ Ø¨Ù†Ø§Ø¡ Ø§Ù„Ù…Ø³Ø§Ø±Ø§Øª Ùˆ axios
 const EFFECTIVE_API_BASE_URL = (() => {
   const v = upgradeToHttpsIfNeeded(RAW_API_BASE_URL);
   // في التطوير: وجّه مباشرةً إلى Django لتجنب مشكلة إزالة الشرطة قبل الاستعلام في Next.js rewrites
@@ -46,7 +51,7 @@ const EFFECTIVE_API_BASE_URL = (() => {
   }
   return v;
 })();
-// Ù†ØµØ¯Ø± Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„ÙØ¹Ù„ÙŠØ© Ø¨Ø§Ø³Ù… API_BASE_URL Ù„ÙŠØ³ØªÙ…Ø± Ø¨Ø§Ù‚ÙŠ Ø§Ù„ÙƒÙˆØ¯ (Ø§Ù„Ø°ÙŠ ÙŠØ³ØªÙˆØ±Ø¯ API_BASE_URL) Ø¨Ø§Ù„Ø¹Ù…Ù„ Ø¨Ù‚ÙŠÙ…Ø© Ù…ÙØ±Ù‚Ù‘Ø§Ø©
+// Ù†ØµØ¯Ø± Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„ÙØ¹Ù„ÙŠØ© Ø¨Ø§Ø³Ù… API_BASE_URL Ù„ÙŠØ³ØªÙ…Ø± Ø¨Ø§Ù‚ÙŠ Ø§Ù„ÙƒÙˆØ¯ (Ø§Ù„Ø°ÙŠ ÙŠØ³ØªÙˆØ±Ø¯ API_BASE_URL) Ø¨Ø§Ù„Ø¹Ù…Ù„ Ø¨Ù‚ÙŠÙمØ© Ù…ÙØ±Ù‚Ù‘Ø§Ø©
 export const API_BASE_URL = EFFECTIVE_API_BASE_URL;
 
 // Ù‡Ù„ Ø§Ù„Ù€ API Ù…Ø­Ù„ÙŠØŸ
@@ -94,6 +99,7 @@ export const API_ROUTES = {
   auth: {
     login: `${EFFECTIVE_API_BASE_URL}/auth/login`,
     register: `${EFFECTIVE_API_BASE_URL}/auth/register`,
+    registerContext: `${EFFECTIVE_API_BASE_URL}/auth/register-context`,
     profile: `${EFFECTIVE_API_BASE_URL}/users/profile`,
     changePassword: `${EFFECTIVE_API_BASE_URL}/auth/change-password`,
   forgotPassword: `${EFFECTIVE_API_BASE_URL}/auth/password/forgot`,
@@ -286,9 +292,10 @@ export const API_ROUTES = {
       active: `${EFFECTIVE_API_BASE_URL}/payment-methods/active`,
     },
     deposits: {
-      base: `${EFFECTIVE_API_BASE_URL}/deposits`,    // GET Ù‚Ø§Ø¦Ù…Ø©/ POST Ø¥Ù†Ø´Ø§Ø¡
+      base: `${EFFECTIVE_API_BASE_URL}/deposits`,    // GET قائمة/ POST إنشاء
       create: `${EFFECTIVE_API_BASE_URL}/deposits`,  // POST /deposits
-      mine: `${EFFECTIVE_API_BASE_URL}/deposits/mine`,
+      mine: `${EFFECTIVE_API_BASE_URL}/deposits/me`,
+      legacyMine: `${EFFECTIVE_API_BASE_URL}/deposits/mine`, // توافق مسارات قديمة
     },
   },
   dev: {
@@ -390,6 +397,8 @@ function ensureApiTrailingSlash(u?: string): string | undefined {
       return (
         lower.endsWith('/auth/login') ||
         lower.endsWith('/auth/refresh') ||
+  lower.endsWith('/auth/register') ||
+        lower.endsWith('/auth/register-context') ||
         // Users profile endpoints
         lower.endsWith('/users/profile') ||
         lower.endsWith('/users/profile-with-currency') ||
@@ -536,7 +545,7 @@ function addTenantHeaders(config: any): any {
       if (sub && sub !== 'localhost' && sub !== 'www') {
         const tenantHost = `${sub}.localhost`;
   config.headers['X-Tenant-Host'] = tenantHost;
-        // Ø®Ø²Ù‘Ù†Ù‡ ÙÙŠ ÙƒÙˆÙƒÙŠ Ù„ÙŠØ³ØªÙÙŠØ¯ Ù…Ù†Ù‡ Ø£ÙŠ Ø·Ù„Ø¨ ÙŠØªÙ… Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ± (SSR) Ø£Ùˆ fetch Ø¨Ø¯ÙˆÙ† window Ù„Ø§Ø­Ù‚Ø§Ù‹
+        // Ø®Ø²Ù‘Ù†Ù‡ Ø¨ÙˆÙ† ØƒÙˆÙƒÙŠ Ø„ÙŠØ³ØªÙÙŠØ¯ Ù…Ù†Ù‡ Ø£ÙŠ Ø·Ù„Ø¨ ÙŠØªÙ… Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ± (SSR) Ø£Ùˆ fetch Ø¨Ø¯ÙˆÙ† window Ù„Ø§Ø­Ù‚Ø§Ù‹
         document.cookie = `tenant_host=${tenantHost}; path=/`;
       }
     }
@@ -587,6 +596,7 @@ if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: bo
       const skipSlash = (
         lower.endsWith('/auth/login') ||
         lower.endsWith('/auth/refresh') ||
+        lower.endsWith('/auth/register-context') ||
         lower.endsWith('/health') ||
         lower.endsWith('/users/profile') ||
         lower.endsWith('/users/profile-with-currency') ||
@@ -595,9 +605,9 @@ if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: bo
         lower.endsWith('/dev/notes/public/latest') ||
         lower.endsWith('/admin/pending-orders-count') ||
         lower.endsWith('/admin/pending-deposits-count') ||
-  lower.endsWith('/admin/codes/groups') ||
-  lower.includes('/admin/codes/groups/') ||
-  lower.includes('/admin/codes/items/') ||
+        lower.endsWith('/admin/codes/groups') ||
+        lower.includes('/admin/codes/groups/') ||
+        lower.includes('/admin/codes/items/') ||
         lower.endsWith('/admin/integrations') ||
         lower.includes('/admin/integrations/') ||
         lower.endsWith('/products/price-groups') ||
@@ -685,6 +695,8 @@ if (!ANY_AXIOS.__TENANT_HEADERS_ATTACHED__) {
           const skip = (
             lower.endsWith('/auth/login') ||
             lower.endsWith('/auth/refresh') ||
+            lower.endsWith('/auth/register') ||
+            lower.endsWith('/auth/register-context') ||
             lower.endsWith('/health') ||
             lower.endsWith('/users/profile') ||
             lower.endsWith('/users/profile-with-currency') ||
@@ -746,8 +758,8 @@ api.interceptors.response.use(
         }
       } else if (status === 401) {
         const p = window.location.pathname || '';
-        const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
-        const onAuthPages  = p === '/login' || p === '/register';
+  const inBackoffice = p.startsWith('/admin') || p.startsWith('/dev');
+  const onAuthPages  = /^\/(login|register)(\/|$)/.test(p);
         if (!inBackoffice && !onAuthPages) {
           try { localStorage.removeItem('token'); } catch {}
           if (!/\/login\/?$/.test(p)) {

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import os
 import requests
 from requests import Response
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 DEFAULT_TIMEOUT = (5, 20)  # (connect, read) seconds
 
@@ -21,14 +21,24 @@ class ZnetCredentials:
 
 
 class ZnetAdapter:
+    def __init__(self) -> None:
+        self._product_cache: Dict[str, Dict[str, Any]] = {}
+
     def _sim(self) -> bool:
         return str(os.getenv('DJ_ZNET_SIMULATE') or '').lower() in ('1','true','yes','on')
     def _path(self, default_name: str, env_key: str) -> str:
         # allow overriding endpoint names via env (e.g., DJ_ZNET_BALANCE_PATH)
         v = os.getenv(env_key)
-        if v:
-            return v.lstrip('/')
-        return default_name
+        if not v:
+            return default_name
+        raw = v.strip()
+        if not raw:
+            return ''
+        raw = raw.lstrip('/')
+        if '/' not in raw:
+            suffix = raw if raw.endswith('.php') else f"{raw}.php"
+            return f"servis/{suffix}"
+        return raw
     def _headers(self, creds: ZnetCredentials) -> Dict[str, str]:
         h = { 'Accept': 'application/json' }
         # Some Znet deployments use basic query params (kod/sifre) rather than headers; keep headers minimal
@@ -68,59 +78,176 @@ class ZnetAdapter:
     def get_balance(self, creds: ZnetCredentials):
         if self._sim():
             return { 'balance': 123.45 }
-        # If an explicit balance path is provided, use it; otherwise, provider does not expose balance
-        # and we expect balance to be updated from order responses.
-        balance_path = os.getenv('DJ_ZNET_BALANCE_PATH')
-        if not balance_path:
-            raise ZnetError('BALANCE_UNSUPPORTED: No DJ_ZNET_BALANCE_PATH configured for Znet')
-        url = f"{self._base(creds)}/{balance_path.lstrip('/')}"
-        params = self._auth_params(creds)
-        r = requests.get(url, headers=self._headers(creds), params=params, timeout=DEFAULT_TIMEOUT)
-        data = self._handle(r)
-        bal = None
-        if isinstance(data, dict):
-            for k in ('balance','bakiye','Balance','Bakiye'):
-                if k in data:
-                    bal = data.get(k)
-                    break
-            if bal is None and isinstance(data.get('data'), dict):
-                inner = data['data']
-                for k in ('balance','bakiye'):
-                    if k in inner:
-                        bal = inner.get(k); break
-        return { 'balance': bal }
 
-    def fetch_catalog(self, creds: ZnetCredentials):
+        path = self._path('servis/bakiye_kontrol.php', 'DJ_ZNET_BALANCE_PATH').lstrip('/')
+        if not path:
+            return { 'balance': 0, 'error': 'BALANCE_UNSUPPORTED', 'message': 'No balance endpoint configured for Znet' }
+        url = f"{self._base(creds)}/{path}"
+        params = self._auth_params(creds)
+        try:
+            resp = requests.get(url, headers=self._headers(creds), params=params, timeout=DEFAULT_TIMEOUT)
+            resp.raise_for_status()
+            body = resp.text.strip()
+            if not body:
+                raise ZnetError('Empty response from Znet balance endpoint')
+
+            # Allow JSON-style responses if the provider proxy wraps it
+            first_char = body[:1]
+            if first_char in ('{', '['):
+                try:
+                    data = resp.json()
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise ZnetError(f'Unable to parse JSON balance response: {body[:200]}') from exc
+
+                bal = None
+                if isinstance(data, dict):
+                    for key in ('balance', 'bakiye', 'Balance', 'Bakiye'):
+                        if data.get(key) is not None:
+                            bal = data.get(key)
+                            break
+                    if bal is None and isinstance(data.get('data'), dict):
+                        inner = data['data']
+                        for key in ('balance', 'bakiye'):
+                            if inner.get(key) is not None:
+                                bal = inner.get(key)
+                                break
+                if bal is None:
+                    raise ZnetError(f'Balance key missing in JSON response: {str(data)[:200]}')
+                try:
+                    value = float(str(bal).replace(',', '.'))
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise ZnetError('Invalid balance number in JSON response') from exc
+                return { 'balance': value }
+
+            parts = [p.strip() for p in body.split('|')]
+            if parts and parts[0].upper() == 'OK' and len(parts) >= 2:
+                raw_value = parts[1]
+                if not raw_value:
+                    raise ZnetError('Missing balance field in response')
+                try:
+                    value = float(raw_value.replace(',', '.'))
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise ZnetError('Invalid balance number in response') from exc
+                return { 'balance': value }
+
+            raise ZnetError(f'Unexpected balance response: {body[:200]}')
+        except Exception as exc:
+            msg = str(exc)
+            return { 'balance': 0, 'error': 'FETCH_FAILED', 'message': msg[:200] }
+
+    def list_products(self, creds: ZnetCredentials) -> List[Dict[str, Any]]:
         if self._sim():
-            # Provide a small generic catalog; names are generic to rely on hint/productId filtering or direct mapping
             return [
-                { 'externalId': '1001', 'name': 'Generic Package 1001', 'desc': 'Simulated', 'kupur': None, 'raw': {} },
-                { 'externalId': '1002', 'name': 'Generic Package 1002', 'desc': 'Simulated', 'kupur': None, 'raw': {} },
+                {
+                    'externalId': '1001',
+                    'name': 'Generic Package 1001',
+                    'basePrice': 10.0,
+                    'category': 'Simulated',
+                    'available': True,
+                    'inputParams': ['oyuncu_bilgi', 'musteri_tel'],
+                    'quantity': {'type': 'none'},
+                    'kind': 'package',
+                    'meta': {'currency': 'TRY', 'oyun_bilgi_id': '2001', 'kupur': '1001'},
+                },
+                {
+                    'externalId': '1002',
+                    'name': 'Generic Package 1002',
+                    'basePrice': 15.0,
+                    'category': 'Simulated',
+                    'available': True,
+                    'inputParams': ['oyuncu_bilgi', 'musteri_tel'],
+                    'quantity': {'type': 'none'},
+                    'kind': 'package',
+                    'meta': {'currency': 'TRY', 'oyun_bilgi_id': '2002', 'kupur': '1002'},
+                },
             ]
-        # GET pin_listesi.php?kod&sifre under base (/servis)
+
         path = self._path('servis/pin_listesi.php', 'DJ_ZNET_CATALOG_PATH')
         url = f"{self._base(creds)}/{path}"
         params = self._auth_params(creds)
-        r = requests.get(url, headers=self._headers(creds), params=params, timeout=DEFAULT_TIMEOUT)
-        data = self._handle(r)
-        items: list[dict] = []
-        if isinstance(data, dict) and data.get('success') is True and isinstance(data.get('result'), list):
-            for it in data['result']:
-                if not isinstance(it, dict):
+        resp = requests.get(url, headers=self._headers(creds), params=params, timeout=DEFAULT_TIMEOUT)
+        data = self._handle(resp)
+
+        if not isinstance(data, dict) or data.get('success') is not True or not isinstance(data.get('result'), list):
+            raise ZnetError(f'Unexpected catalog response: {str(data)[:200]}')
+
+        currency_fallback = 'TRY'
+        products: List[Dict[str, Any]] = []
+        cache: Dict[str, Dict[str, Any]] = {}
+
+        for raw in data['result']:
+            if not isinstance(raw, dict):
+                continue
+            external_id = raw.get('id') or raw.get('externalId') or raw.get('kupur') or raw.get('oyun_bilgi_id')
+            if external_id is None:
+                continue
+            external_id = str(external_id)
+
+            name = raw.get('adi') or raw.get('oyun_adi') or raw.get('name') or f'Package {external_id}'
+            category = raw.get('oyun_adi') or raw.get('category')
+            price_fields = ['fiyat', 'price', 'maliyet', 'bayi_maliyeti', 'bayiMaliyeti']
+            base_price = None
+            for field in price_fields:
+                if raw.get(field) is None:
                     continue
-                # Provider fields of interest
-                oyun_bilgi_id = it.get('oyun_bilgi_id')
-                kupur = it.get('kupur')
-                items.append({
-                    'externalId': oyun_bilgi_id,
-                    'name': it.get('adi') or it.get('oyun_adi'),
-                    'desc': it.get('aciklama'),
-                    'kupur': kupur,
-                    'raw': it,
-                })
-        else:
-            raise ZnetError(f"Unexpected catalog response: {data}")
-        return items
+                try:
+                    base_price = float(str(raw[field]).replace(',', '.'))
+                    break
+                except Exception:
+                    continue
+            if base_price is None:
+                base_price = 0.0
+
+            currency = raw.get('para_birimi') or raw.get('currency') or raw.get('currencyCode') or currency_fallback
+
+            meta = {
+                'oyun_bilgi_id': str(raw.get('oyun_bilgi_id')) if raw.get('oyun_bilgi_id') else None,
+                'kupur': str(raw.get('kupur')) if raw.get('kupur') else None,
+                'currency': currency,
+                'raw': raw,
+            }
+
+            product = {
+                'externalId': external_id,
+                'name': str(name),
+                'basePrice': float(base_price),
+                'category': str(category) if category else None,
+                'available': True,
+                'inputParams': ['oyuncu_bilgi', 'musteri_tel'],
+                'quantity': {'type': 'none'},
+                'kind': 'package',
+                'meta': meta,
+                'currencyCode': currency,
+            }
+            products.append(product)
+            cache[external_id] = meta
+
+        self._product_cache = cache
+        return products
+
+    def fetch_catalog(self, creds: ZnetCredentials):
+        if self._sim():
+            return [
+                { 'productExternalId': '2001', 'productName': 'Simulated Product', 'packageExternalId': '1001', 'packageName': 'Generic Package 1001', 'costPrice': 10.0, 'currencyCode': 'TRY' },
+                { 'productExternalId': '2002', 'productName': 'Simulated Product', 'packageExternalId': '1002', 'packageName': 'Generic Package 1002', 'costPrice': 15.0, 'currencyCode': 'TRY' },
+            ]
+
+        items = self.list_products(creds)
+        catalog = []
+        for item in items:
+            meta = item.get('meta') or {}
+            product_external_id = meta.get('oyun_bilgi_id') or item.get('category') or item.get('externalId')
+            product_name = item.get('category') or item.get('name')
+            catalog.append({
+                'productExternalId': str(product_external_id) if product_external_id is not None else None,
+                'productName': str(product_name) if product_name is not None else None,
+                'productImageUrl': None,
+                'packageExternalId': str(item.get('externalId')),
+                'packageName': item.get('name'),
+                'costPrice': item.get('basePrice'),
+                'currencyCode': meta.get('currency') or item.get('currencyCode'),
+            })
+        return catalog
 
     def place_order(self, creds: ZnetCredentials, provider_package_id: str, payload: dict):
         if self._sim():

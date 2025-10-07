@@ -2,6 +2,23 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Backend dependency
+
+> **New:** the frontend now talks to the Django sidecar that lives in `djangoo/` under the prefix `/api-dj/**`.
+
+1. داخل مجلد `djangoo/` فعّل البيئة وشغّل الخادم:
+	```powershell
+	cd ..\djangoo
+	python -m venv .venv
+	.\.venv\Scripts\Activate.ps1
+	pip install -r requirements.txt
+	python manage.py migrate
+	python manage.py runserver 0.0.0.0:8000
+	```
+2. تأكد من أن المتغير `NEXT_PUBLIC_API_URL` (أو الافتراضي الجديد) يشير إلى `http://127.0.0.1:8000/api-dj`.
+	- للإبقاء على الباك إند القديم (NestJS) يمكنك ضبط `NEXT_PUBLIC_USE_OLD_BACKEND=true` في `.env.local`.
+
+بعد تشغيل الـ backend يمكن بدء خادم Next.js:
 First, run the development server:
 
 ```bash

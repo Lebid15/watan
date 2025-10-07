@@ -9,6 +9,7 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/(api\/)?metrics$/,
   /^\/api\/auth\/login$/,
   /^\/api\/auth\/register$/,
+  /^\/api\/auth\/register-context$/,
   /^\/api\/auth\/logout$/,
   /^\/api\/auth\/request-password-reset$/,
   /^\/api\/auth\/reset-password$/,
@@ -20,6 +21,7 @@ const PUBLIC_PATHS: RegExp[] = [
   // السماح بإصدار dev-token بدون مصادقة مسبقة (محمي بالسر DEV_ISSUE_SECRET) - دعم مع وبدون البادئة /api
   /^\/auth\/dev-token$/,
   /^\/api\/auth\/dev-token$/,
+  /^\/auth\/register-context$/,
   /^\/api\/auth\/assume-tenant$/,
   /^\/api\/auth\/passkeys\/options\/register$/,
   /^\/api\/auth\/passkeys\/register$/,

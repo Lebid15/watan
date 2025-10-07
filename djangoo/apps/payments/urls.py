@@ -17,6 +17,8 @@ urlpatterns = [
     path('payment-methods/active/', PaymentMethodsListView.as_view(), name='payment-methods-active-slash'),
     path('deposits/me', MyDepositsListView.as_view(), name='deposits-me'),
     path('deposits/me/', MyDepositsListView.as_view(), name='deposits-me-slash'),
+    path('deposits/mine', MyDepositsListView.as_view(), name='deposits-mine'),
+    path('deposits/mine/', MyDepositsListView.as_view(), name='deposits-mine-slash'),
 ]
 
 # Admin routes
