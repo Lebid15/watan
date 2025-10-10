@@ -160,7 +160,7 @@
   "orders.table.package": "Paket",
   "orders.table.playerId": "Oyuncu ID",
   "orders.table.cost": "Maliyet",
-  "orders.table.price": "Fiyat",
+  "orders.table.price": "Satış Fiyatı",
   "orders.table.profit": "Kar",
   "orders.table.status": "Durum",
   "orders.table.api": "API",

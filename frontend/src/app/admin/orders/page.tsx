@@ -12,6 +12,8 @@ type FilterMethod = '' | 'manual' | string;
 
 /* ============== صور موحّدة (من منتجات) ============== */
 const apiHost = API_ROUTES.products.base.replace(/\/api\/products\/?$/, '');
+// For images, always use the NestJS backend (port 3001) since images are stored there
+const imageHost = 'http://localhost:3001';
 
 // توحيد منطق بناء رابط الصورة (يحاكي صفحة تفاصيل المنتج)
 function resolveImage(raw?: string | null): string {
@@ -20,7 +22,11 @@ function resolveImage(raw?: string | null): string {
   if (!s) return '/images/placeholder.png';
   // مطلق
   if (/^https?:\/\//i.test(s)) return s;
-  // مسار يبدأ بـ /uploads أو /images نربطه بأصل الصفحة الحالي (قد يختلف عن apiHost)
+  // مسار يبدأ بـ /media أو /uploads - استخدم NestJS backend
+  if (s.startsWith('/media') || s.startsWith('/uploads')) {
+    return `${imageHost}${s}`;
+  }
+  // مسار يبدأ بـ /images نربطه بأصل الصفحة الحالي
   if (s.startsWith('/')) {
     if (typeof window !== 'undefined') return `${window.location.origin}${s}`;
     return `${apiHost}${s}`; // fallback أثناء SSR
@@ -1294,7 +1300,7 @@ export default function AdminOrdersPage() {
                 <div>{money(detailOrder.costTRY ?? detailOrder.costAmount, detailOrder.currencyTRY ?? detailOrder.costCurrency)}</div>
               </div> */}
               {/* <div>
-                <div className="text-text-secondary">السعر</div>
+                <div className="text-text-secondary">سعر البيع</div>
                 <div>{money(detailOrder.sellTRY ?? detailOrder.sellPriceAmount ?? detailOrder.price, detailOrder.currencyTRY ?? detailOrder.sellPriceCurrency)}</div>
               </div> */}
 

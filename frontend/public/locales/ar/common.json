@@ -161,7 +161,7 @@
   "orders.table.package": "الباقة",
   "orders.table.playerId": "رقم اللاعب",
   "orders.table.cost": "التكلفة",
-  "orders.table.price": "السعر",
+  "orders.table.price": "سعر البيع",
   "orders.table.profit": "الربح",
   "orders.table.status": "الحالة",
   "orders.table.api": "API",

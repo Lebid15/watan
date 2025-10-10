@@ -440,12 +440,28 @@ class MyOrderDetailsView(APIView):
     @extend_schema(tags=["Orders"], responses={200: MyOrderDetailsResponseSerializer})
     def get(self, request, id: str):
         user = request.user
+        
+        # Resolve tenant
+        tenant_id_raw = _resolve_tenant_id(request)
+        if not tenant_id_raw:
+            raise ValidationError('TENANT_ID_REQUIRED')
+        
+        try:
+            tenant_uuid = uuid.UUID(str(tenant_id_raw))
+        except (ValueError, TypeError):
+            raise ValidationError('TENANT_ID_INVALID')
+        
+        # Get order
         try:
             o = ProductOrder.objects.select_related('product', 'package', 'user').get(id=id)
         except ProductOrder.DoesNotExist:
             raise NotFound('الطلب غير موجود')
-        # restrict to own order
-        if str(getattr(o, 'user_id', '')) != str(getattr(user, 'id', '')):
+        
+        # Resolve legacy user for current request
+        legacy_user = _resolve_legacy_user_for_request(request, user, tenant_uuid, required=True)
+        
+        # Check if order belongs to this user
+        if str(o.user_id or '') != str(legacy_user.id):
             raise PermissionDenied('لا تملك صلاحية على هذا الطلب')
 
         # details payload: merge list item fields + details

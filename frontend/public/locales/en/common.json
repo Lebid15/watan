@@ -160,7 +160,7 @@
   "orders.table.package": "Package",
   "orders.table.playerId": "Player ID",
   "orders.table.cost": "Cost",
-  "orders.table.price": "Price",
+  "orders.table.price": "Sell Price",
   "orders.table.profit": "Profit",
   "orders.table.status": "Status",
   "orders.table.api": "API",

@@ -15,15 +15,72 @@ class OrderCreateRequestSerializer(serializers.Serializer):
 class _ProductMiniSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField(allow_null=True)
+    imageUrl = serializers.SerializerMethodField()
+    
+    def get_imageUrl(self, obj):
+        """Pick image from multiple possible fields (like NestJS pickImage) - for Product"""
+        if not obj:
+            return None
+        
+        # Get the raw image path
+        raw_image = (
+            getattr(obj, 'custom_image_url', None) or
+            getattr(obj, 'thumb_medium_url', None) or
+            getattr(obj, 'thumb_small_url', None) or
+            getattr(obj, 'thumb_large_url', None) or
+            getattr(obj, 'image_url', None) or
+            getattr(obj, 'image', None) or
+            getattr(obj, 'logo_url', None) or
+            getattr(obj, 'icon_url', None) or
+            getattr(obj, 'icon', None) or
+            None
+        )
+        
+        if not raw_image:
+            return None
+        
+        # If it's already a full URL, return as is
+        if raw_image.startswith('http://') or raw_image.startswith('https://'):
+            return raw_image
+        
+        # For relative paths, return as-is and let frontend resolve them
+        # Frontend will use its apiHost or window.location.origin
+        return raw_image
 
 
 class _PackageMiniSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField(allow_null=True)
     productId = serializers.SerializerMethodField()
+    imageUrl = serializers.SerializerMethodField()
 
     def get_productId(self, obj):
         return getattr(obj, 'product_id', None)
+    
+    def get_imageUrl(self, obj):
+        """Pick image from multiple possible fields (like NestJS pickImage) - for Package"""
+        if not obj:
+            return None
+        
+        # Get the raw image path
+        raw_image = (
+            getattr(obj, 'image_url', None) or
+            getattr(obj, 'image', None) or
+            getattr(obj, 'logo_url', None) or
+            getattr(obj, 'icon_url', None) or
+            getattr(obj, 'icon', None) or
+            None
+        )
+        
+        if not raw_image:
+            return None
+        
+        # If it's already a full URL, return as is
+        if raw_image.startswith('http://') or raw_image.startswith('https://'):
+            return raw_image
+        
+        # For relative paths, return as-is and let frontend resolve them
+        return raw_image
 
 
 class OrderListItemSerializer(serializers.ModelSerializer):
@@ -63,6 +120,23 @@ class OrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_display(self, obj: ProductOrder):
+        # If order is approved and FX is locked, use frozen values
+        if getattr(obj, 'fx_locked', False) and getattr(obj, 'sell_try_at_approval', None) is not None:
+            # Use frozen TRY values
+            total_try = float(obj.sell_try_at_approval)
+            unit_try = None
+            if obj.quantity and obj.quantity > 0:
+                try:
+                    unit_try = total_try / float(obj.quantity)
+                except Exception:
+                    pass
+            return {
+                'currencyCode': 'TRY',
+                'totalPrice': total_try,
+                'unitPrice': unit_try,
+            }
+        
+        # Otherwise, use current calculation (for pending/rejected orders)
         sell_amount = getattr(obj, 'sell_price_amount', None)
         if sell_amount in (None, '') and hasattr(obj, 'sell_price_amount_value'):
             sell_amount = getattr(obj, 'sell_price_amount_value', None)
@@ -136,7 +210,12 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_costTRY(self, obj):
-        """Get cost in TRY from package capital/base_price, converting from USD to TRY"""
+        """Get cost in TRY - use frozen value if available, otherwise calculate from current rates"""
+        # If FX is locked, use frozen cost
+        if getattr(obj, 'fx_locked', False) and getattr(obj, 'cost_try_at_approval', None) is not None:
+            return float(obj.cost_try_at_approval)
+        
+        # Otherwise calculate from current exchange rates
         if not obj.package_id:
             return None
         
@@ -181,7 +260,12 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_sellTRY(self, obj):
-        """Get sell price in TRY from user's price group or direct sell_price_amount"""
+        """Get sell price in TRY - use frozen value if available, otherwise calculate from current rates"""
+        # If FX is locked, use frozen sell price
+        if getattr(obj, 'fx_locked', False) and getattr(obj, 'sell_try_at_approval', None) is not None:
+            return float(obj.sell_try_at_approval)
+        
+        # Otherwise calculate from current exchange rates
         from apps.currencies.models import Currency
         from decimal import Decimal
         
@@ -210,7 +294,12 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_profitTRY(self, obj):
-        # Calculate profit if both cost and sell are available
+        """Get profit in TRY - use frozen value if available, otherwise calculate from cost and sell"""
+        # If FX is locked, use frozen profit
+        if getattr(obj, 'fx_locked', False) and getattr(obj, 'profit_try_at_approval', None) is not None:
+            return float(obj.profit_try_at_approval)
+        
+        # Otherwise calculate from current cost and sell
         cost = self.get_costTRY(obj)
         sell = self.get_sellTRY(obj)
         if cost is not None and sell is not None:
@@ -249,29 +338,15 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
             return None
 
     def get_sellUsdAtOrder(self, obj):
-        """Get sell price in USD"""
-        # If already in USD, return it
+        """Get sell price in USD - use original price field which is always in USD"""
+        # The 'price' field is always stored in USD at order creation time
+        # Do NOT convert from TRY as that would use current exchange rate
+        if obj.price:
+            return float(obj.price)
+        
+        # Fallback: if sell_price is in USD
         if obj.sell_price_currency == 'USD' and obj.sell_price_amount:
             return float(obj.sell_price_amount)
-        
-        # If in TRY, convert to USD
-        if obj.sell_price_currency == 'TRY' and obj.sell_price_amount:
-            from apps.currencies.models import Currency
-            from decimal import Decimal
-            
-            try:
-                currency = Currency.objects.filter(
-                    tenant_id=obj.tenant_id,
-                    code__iexact='TRY',
-                    is_active=True
-                ).first()
-                
-                if currency and currency.rate and currency.rate > 0:
-                    exchange_rate = Decimal(str(currency.rate))
-                    sell_usd = Decimal(str(obj.sell_price_amount)) / exchange_rate
-                    return float(sell_usd)
-            except Exception:
-                pass
         
         return None
 

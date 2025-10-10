@@ -31,6 +31,7 @@ interface OrderDetails extends Order {
   externalStatus?: string | null;
   lastMessage?: string | null;
   providerMessage?: string | null;
+  pinCode?: string | null;
 }
 
 interface PageInfo { nextCursor?: string | null; hasMore?: boolean; }
@@ -84,26 +85,6 @@ function resolvePriceView(
     };
   }
   return { currencyCode: 'USD', total: totalUSD, unit: unitUSD };
-}
-
-const DETAILS_ENDPOINT_ENABLED = Boolean((API_ROUTES as any)?.orders?.detailsEnabled);
-function buildDetailsUrls(id: string): string[] {
-  if (!DETAILS_ENDPOINT_ENABLED) return [];
-  const orders = (API_ROUTES as any).orders || {};
-  const urls = new Set<string>();
-  if (orders.byId) {
-    const u = typeof orders.byId === 'function'
-      ? orders.byId(id)
-      : String(orders.byId).replace(/:id|\{id\}|\$id/g, id).replace(/\/$/, '');
-    urls.add(u);
-  }
-  if (typeof orders.mine === 'string') urls.add(`${orders.mine.replace(/\/$/, '')}/${id}`);
-  if (typeof orders.base === 'string') urls.add(`${orders.base.replace(/\/$/, '')}/${id}`);
-  for (const alt of (orders._alts ?? [])) {
-    const clean = String(alt).replace(/\/$/, '');
-    urls.add(/\/me$/.test(clean) ? clean.replace(/\/me$/, `/${id}`) : `${clean}/${id}`);
-  }
-  return Array.from(urls);
 }
 
 // === أدوات التاريخ ===
@@ -230,6 +211,35 @@ export default function OrdersPage() {
     } finally { setLoadingMore(false); }
   }
 
+  // ========== جلب تفاصيل طلب ==========
+  async function fetchOrderDetails(order: Order) {
+    setSelectedOrder(order);
+    setDetailsLoading(true);
+    setDetailsError('');
+    setDetails(null);
+
+    try {
+      // استخدام المسار الصحيح لجلب تفاصيل الطلب
+      const url = API_ROUTES.orders.byId(order.id);
+      const res = await api.get<OrderDetails>(url);
+      setDetails(res.data);
+      setDetailsLoading(false);
+    } catch (e: any) {
+      setDetailsLoading(false);
+      const status = e?.response?.status;
+      if (status === 401) {
+        setDetailsError('انتهت الجلسة، الرجاء تسجيل الدخول مجددًا');
+      } else if (status === 403) {
+        setDetailsError('لا تملك صلاحية لعرض هذا الطلب');
+      } else if (status === 404) {
+        setDetailsError('الطلب غير موجود');
+      } else {
+        setDetailsError('فشل في جلب التفاصيل');
+      }
+      console.error('Order details fetch error:', e);
+    }
+  }
+
   const getStatusText  = (s: OrderStatus) => s === 'approved' ? 'مقبول' : s === 'rejected' ? 'مرفوض' : 'قيد المراجعة';
   const getStatusColor = (s: OrderStatus) => s === 'approved' ? 'text-success' : s === 'rejected' ? 'text-danger' : 'text-warning';
   const getStatusIcon  = (s: OrderStatus) => s === 'approved'
@@ -237,6 +247,12 @@ export default function OrdersPage() {
     : s === 'rejected'
       ? (<span className="inline-flex w-4 h-4 rounded-full bg-danger items-center justify-center"><span className="w-2 h-[2px] bg-[rgb(var(--color-primary-contrast))] block"/></span>)
       : (<span className="inline-block w-4 h-4 rounded-full bg-warning" />);
+
+  // دالة لعرض رقم الطلب بنفس طريقة صفحة الإدارة
+  const displayOrderNumber = (o: Order) => {
+    if (o.orderNo != null) return String(o.orderNo);
+    return o.id.slice(-6).toUpperCase();
+  };
 
   // ====== الفلترة (باستخدام القيم المُطبَّقة فقط) ======
   const filteredOrders = useMemo(() => {
@@ -361,7 +377,7 @@ export default function OrdersPage() {
               return (
                 <div key={order.id} className="max-w-[980px] mx-auto relative card p-3 shadow text-xs flex justify-between items-center">
                   <div className="text-right">
-                    <div className="text-text-secondary">رقم: {order.orderNo ?? `${order.id.slice(0, 8)}...`}</div>
+                    <div className="text-text-secondary">رقم: {displayOrderNumber(order)}</div>
                     <div className="text-text-primary text-[11px]">
                       {order.package?.name ?? order.product?.name ?? '—'}
                       {order.quantity && order.quantity > 1 ? (
@@ -386,7 +402,7 @@ export default function OrdersPage() {
                     </div>
                   </div>
 
-                  <button onClick={() => setSelectedOrder(order)} className="absolute top-2 left-0 text-link hover:opacity-80 text-sm" title="عرض التفاصيل">📝</button>
+                  <button onClick={() => fetchOrderDetails(order)} className="absolute top-2 left-0 text-link hover:opacity-80 text-sm" title="عرض التفاصيل">📝</button>
                 </div>
               );
             })}
@@ -405,8 +421,18 @@ export default function OrdersPage() {
       {/* ===== نافذة التفاصيل ===== */}
       {selectedOrder && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="card w-full max-w-md p-6 shadow relative text-sm">
-            <button onClick={() => setSelectedOrder(null)} className="absolute top-2 left-2 text-text-secondary hover:text-danger text-lg" title="إغلاق">✖</button>
+          <div className="card w-full max-w-md p-6 shadow relative text-sm max-h-[90vh] overflow-y-auto">
+            <button 
+              onClick={() => { 
+                setSelectedOrder(null); 
+                setDetails(null); 
+                setDetailsError(''); 
+              }} 
+              className="absolute top-2 left-2 text-text-secondary hover:text-danger text-lg" 
+              title="إغلاق"
+            >
+              ✖
+            </button>
             <h2 className="text-xl mb-4 font-bold text-center">تفاصيل الطلب</h2>
             {detailsLoading ? (
               <div className="text-center py-6 text-text-secondary">جاري جلب التفاصيل…</div>
@@ -418,7 +444,7 @@ export default function OrdersPage() {
               const totalNum = Number(view.total) || 0;
               return (
                 <div className="space-y-3">
-                  <p><span className="text-text-secondary">رقم الطلب:</span> {base.orderNo ?? (base.id?.slice ? `${base.id.slice(0, 8)}...` : base.id)}</p>
+                  <p><span className="text-text-secondary">رقم الطلب:</span> {displayOrderNumber(base)}</p>
                   <p><span className="text-text-secondary">اسم المنتج:</span> {base.product.name}</p>
                   <p><span className="text-text-secondary">الباقة:</span> {base.package.name} {base.quantity && base.quantity > 1 ? (<span className="text-text-secondary">(الكمية: {base.quantity})</span>) : null}</p>
                   <p><span className="text-text-secondary">المعرف:</span> {base.userIdentifier || '—'}</p>
@@ -426,22 +452,37 @@ export default function OrdersPage() {
                   <p><span className="text-text-secondary">السعر:</span> <span className="text-text-primary">{currencySymbol(view.currencyCode)} {formatGroupsDots(totalNum)}</span></p>
                   <p><span className="text-text-secondary">الحالة:</span> <span className={getStatusColor(base.status)}>{getStatusText(base.status)}</span></p>
                   <p><span className="text-text-secondary">التاريخ:</span> {new Date(base.createdAt).toLocaleString('en-US')}</p>
-                  {(() => {
-                    const rawNote = (base as any).providerMessage ?? base.lastMessage;
-                    const note = extractProviderNote(rawNote);
-                    return note ? (
-                      <p className="flex flex-col mt-2 bg-orange-900 px-2 py-1 rounded">
-                        <span className="text-white mb-2">رسالة الملاحظة:</span>
-                        <span className="text-white break-words">{note}</span>
-                      </p>
-                    ) : null;
-                  })()}
-                  {base.manualNote ? (
-                    <div className="mt-3 p-2 rounded bg-[rgba(255,165,0,0.08)] border border-[rgba(255,165,0,0.25)]">
-                      <div className="font-medium mb-2">📝 ملاحظة</div>
-                      <div className="text-text-primary break-words whitespace-pre-wrap">{base.manualNote}</div>
+                  
+                  {/* PIN Code إن وجد */}
+                  {base.pinCode && (
+                    <div className="mt-3 p-3 rounded bg-green-50 border border-green-300">
+                      <div className="font-medium mb-1 text-green-900">🔑 رمز PIN</div>
+                      <div className="text-green-900 font-mono text-lg tracking-wider">{base.pinCode}</div>
                     </div>
-                  ) : null}
+                  )}
+                  
+                  {/* رسالة المزود */}
+                  {(() => {
+                    const provMsg = base.providerMessage;
+                    // نعرضها فقط إذا كانت مختلفة عن manualNote
+                    if (provMsg && provMsg !== base.manualNote) {
+                      return (
+                        <div className="mt-3 p-3 rounded bg-orange-50 border border-orange-300">
+                          <div className="font-medium mb-2 text-orange-900">� رسالة المزود</div>
+                          <div className="text-orange-900 break-words whitespace-pre-wrap">{provMsg}</div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* ملاحظة */}
+                  {base.manualNote && (
+                    <div className="mt-3 p-3 rounded bg-yellow-50 border border-yellow-300">
+                      <div className="font-medium mb-2 text-yellow-900">� ملاحظة</div>
+                      <div className="text-yellow-900 break-words whitespace-pre-wrap">{base.manualNote}</div>
+                    </div>
+                  )}
                 </div>
               );
             })()}

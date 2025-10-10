@@ -323,6 +323,20 @@ def apply_order_status_change(
         except Exception:
             logger.exception("Failed to verify persisted order status", extra={"order_id": str(order.id)})
 
+        # Freeze FX rates when approving order
+        if normalized_status == 'approved':
+            try:
+                freeze_fx_on_approval(order_id=str(order.id))
+            except Exception:
+                logger.exception("Failed to freeze FX on approval", extra={"order_id": str(order.id)})
+        
+        # Unfreeze FX rates when moving from approved to another status
+        if prev_status == 'approved' and normalized_status != 'approved':
+            try:
+                unfreeze_fx_on_unapproval(order_id=str(order.id))
+            except Exception:
+                logger.exception("Failed to unfreeze FX on unapproval", extra={"order_id": str(order.id)})
+
         django_updated = django_user is not None and prev_status != normalized_status and delta != 0
         return OrderStatusChange(
             order=order,
@@ -330,3 +344,143 @@ def apply_order_status_change(
             delta_amount_user_currency=delta,
             django_user_updated=django_updated,
         )
+
+
+def freeze_fx_on_approval(order_id: str) -> None:
+    """
+    Freeze FX rates and calculate profits when an order is approved.
+    
+    This function:
+    1. Checks if the order is already locked (fxLocked = True)
+    2. Fetches current TRY exchange rate from currencies table
+    3. Calculates sell/cost/profit in TRY based on current FX
+    4. Saves all values to database with fxLocked = True
+    5. Sets approvedAt, approvedLocalDate, approvedLocalMonth
+    
+    This ensures that once an order is approved, its financial values are frozen
+    and won't change when currency rates are updated later.
+    """
+    from apps.currencies.models import Currency
+    from apps.products.models import ProductPackage
+    
+    try:
+        order = ProductOrder.objects.select_related('user', 'package').get(id=order_id)
+    except ProductOrder.DoesNotExist:
+        logger.warning("Cannot freeze FX: order not found", extra={"order_id": order_id})
+        return
+    
+    # Check if already locked
+    if getattr(order, 'fx_locked', False) is True:
+        logger.debug("Order FX already locked, skipping", extra={"order_id": order_id})
+        return
+    
+    # Get tenant_id
+    tenant_id = getattr(order.user, 'tenant_id', None) if order.user else None
+    
+    # Fetch TRY rate from currencies table (same tenant)
+    try_query = Currency.objects.filter(code='TRY', is_active=True)
+    if tenant_id:
+        try_query = try_query.filter(tenant_id=tenant_id)
+    
+    try_row = try_query.first()
+    fx_usd_try = Decimal(str(try_row.rate)) if try_row and try_row.rate else Decimal('1')
+    
+    # Calculate sellTryAtApproval
+    price_usd = Decimal(str(order.price or 0))
+    sell_try_at_approval = _quantize(price_usd * fx_usd_try, Decimal('0.01'))
+    
+    # Calculate costTryAtApproval from package capital/base_price
+    base_usd = Decimal('0')
+    if order.package:
+        try:
+            pkg = ProductPackage.objects.get(id=order.package_id)
+            base_usd = Decimal(str(pkg.base_price or pkg.capital or 0))
+        except ProductPackage.DoesNotExist:
+            pass
+    
+    qty = Decimal(str(order.quantity or 1))
+    cost_try_at_approval = _quantize(base_usd * qty * fx_usd_try, Decimal('0.01'))
+    
+    # Calculate profits
+    profit_try_at_approval = _quantize(sell_try_at_approval - cost_try_at_approval, Decimal('0.01'))
+    profit_usd_at_approval = _quantize(profit_try_at_approval / fx_usd_try, Decimal('0.01')) if fx_usd_try > 0 else Decimal('0')
+    
+    # Get approved timestamp
+    approved_at = getattr(order, 'approved_at', None) or datetime.datetime.utcnow()
+    if not isinstance(approved_at, datetime.datetime):
+        approved_at = datetime.datetime.utcnow()
+    
+    # Calculate local date/month (Istanbul timezone = UTC+3)
+    # Simple approach: add 3 hours to UTC
+    approved_local = approved_at + datetime.timedelta(hours=3)
+    approved_local_date = approved_local.date()
+    approved_local_month = approved_local.strftime('%Y-%m')
+    
+    # Update order with frozen values using raw SQL for reliability
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            UPDATE product_orders
+            SET 
+                "fxUsdTryAtApproval" = %s,
+                "sellTryAtApproval" = %s,
+                "costTryAtApproval" = %s,
+                "profitTryAtApproval" = %s,
+                "profitUsdAtApproval" = %s,
+                "fxCapturedAt" = %s,
+                "approvedAt" = %s,
+                "approvedLocalDate" = %s,
+                "approvedLocalMonth" = %s,
+                "fxLocked" = TRUE
+            WHERE id = %s
+        """, [
+            float(fx_usd_try),
+            float(sell_try_at_approval),
+            float(cost_try_at_approval),
+            float(profit_try_at_approval),
+            float(profit_usd_at_approval),
+            datetime.datetime.utcnow(),
+            approved_at,
+            approved_local_date,
+            approved_local_month,
+            str(order.id),
+        ])
+    
+    logger.info(
+        "FX frozen on approval",
+        extra={
+            "order_id": str(order.id),
+            "fx_usd_try": str(fx_usd_try),
+            "sell_try": str(sell_try_at_approval),
+            "cost_try": str(cost_try_at_approval),
+            "profit_try": str(profit_try_at_approval),
+            "profit_usd": str(profit_usd_at_approval),
+        }
+    )
+
+
+def unfreeze_fx_on_unapproval(order_id: str) -> None:
+    """
+    Unfreeze FX rates when an order is moved from approved to another status.
+    Clears all frozen financial values.
+    """
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE product_orders
+                SET 
+                    "fxLocked" = FALSE,
+                    "fxUsdTryAtApproval" = NULL,
+                    "sellTryAtApproval" = NULL,
+                    "costTryAtApproval" = NULL,
+                    "profitTryAtApproval" = NULL,
+                    "profitUsdAtApproval" = NULL,
+                    "fxCapturedAt" = NULL,
+                    "approvedAt" = NULL,
+                    "approvedLocalDate" = NULL,
+                    "approvedLocalMonth" = NULL
+                WHERE id = %s
+            """, [str(order_id)])
+        
+        logger.info("FX unfrozen on unapproval", extra={"order_id": str(order_id)})
+    except Exception:
+        logger.exception("Failed to unfreeze FX", extra={"order_id": str(order_id)})
