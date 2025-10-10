@@ -1,5 +1,5 @@
 ﻿// src/utils/api.ts
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 
 /* =========================
    Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª ÙˆØ¨ÙŠØ¦Ø© Ø§Ù„ØªØ´ØºÙŠÙ„
@@ -97,13 +97,13 @@ const ORDERS_ALTS = parseAltsEnv('NEXT_PUBLIC_ORDERS_ALTS');
 
 export const API_ROUTES = {
   auth: {
-    login: `${EFFECTIVE_API_BASE_URL}/auth/login`,
-    register: `${EFFECTIVE_API_BASE_URL}/auth/register`,
-    registerContext: `${EFFECTIVE_API_BASE_URL}/auth/register-context`,
-    profile: `${EFFECTIVE_API_BASE_URL}/users/profile`,
-    changePassword: `${EFFECTIVE_API_BASE_URL}/auth/change-password`,
-  forgotPassword: `${EFFECTIVE_API_BASE_URL}/auth/password/forgot`,
-  resetPassword: `${EFFECTIVE_API_BASE_URL}/auth/password/reset`,
+    login: '/auth/login',
+    register: '/auth/register',
+    registerContext: 'auth/register-context',
+    profile: '/users/profile',
+    changePassword: '/auth/change-password',
+  forgotPassword: '/auth/password/forgot',
+  resetPassword: '/auth/password/reset',
   },
 
   users: {
@@ -325,7 +325,10 @@ export const API_ROUTES = {
 
 const api = axios.create({
   baseURL: EFFECTIVE_API_BASE_URL, // هذا ينتهي بـ /api
-  headers: { 'Content-Type': 'application/json' },
+  headers: { 
+    'Content-Type': 'application/json',
+    'X-Tenant-Host': 'alsham.localhost'
+  },
   // ضروري لإرسال كوكي auth (SameSite=None) عبر الدومين api.<root>
   withCredentials: true,
 });
@@ -442,6 +445,8 @@ function ensureApiTrailingSlash(u?: string): string | undefined {
 }
 
 // Convenience high-level methods (avoid scattering relative /api calls)
+export type TenantAwareRequestConfig = AxiosRequestConfig & { skipAuth?: boolean };
+
 export const Api = {
   client: api,
   // baseURL يحتوي /api بالفعل، فلا نضيف /api هنا
@@ -523,6 +528,13 @@ function getCookie(name: string): string | null {
 function addTenantHeaders(config: any): any {
   config.headers = config.headers || {};
 
+  const skipAuth = Boolean(config?.skipAuth);
+
+  if (skipAuth) {
+    if (config.headers.Authorization) delete config.headers.Authorization;
+    if (config.headers.authorization) delete config.headers.authorization;
+  }
+
   // 1) Ø­Ø§ÙˆÙ„ Ø£Ø®Ø° subdomain Ù…Ù† Ø§Ù„ÙƒÙˆÙƒÙŠ (ÙŠÙÙŠØ¯ Ø£Ø«Ù†Ø§Ø¡ SSR Ø£Ùˆ Ù‚Ø¨Ù„ ØªÙˆÙØ± window)
   const tenantCookie = getCookie('tenant_host');
   if (tenantCookie) {
@@ -563,13 +575,19 @@ function addTenantHeaders(config: any): any {
   }
 
   // 3) Ø§Ù„ØªÙˆÙƒÙ†
-  if (typeof window !== 'undefined') {
-    let token: string | null = localStorage.getItem('token');
-    if (!token) token = getCookie('access_token');
-    if (!token) token = getCookie('auth'); // legacy/httpOnly support
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`; // always overwrite to keep fresh token
+  if (!skipAuth) {
+    if (typeof window !== 'undefined') {
+      let token: string | null = localStorage.getItem('token');
+      if (!token) token = getCookie('access_token');
+      if (!token) token = getCookie('auth'); // legacy/httpOnly support
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`; // always overwrite to keep fresh token
+      }
     }
+  }
+
+  if ('skipAuth' in config) {
+    delete config.skipAuth;
   }
 
   return config;

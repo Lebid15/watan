@@ -20,6 +20,10 @@ export default function AdminPasswordResetPage() {
       setMessage('تم إرسال رابط إعادة التعيين بنجاح');
       setEmail('');
     } catch (error: any) {
+      if (error?.code === 'ERR_NETWORK') {
+        setMessage('تعذّر الاتصال بخدمة إعادة التعيين. تأكد من تشغيل خادم Django ثم أعد المحاولة.');
+        return;
+      }
       setMessage(error?.response?.data?.message || 'فشل في إرسال رابط إعادة التعيين');
     } finally {
       setLoading(false);
@@ -43,7 +47,7 @@ export default function AdminPasswordResetPage() {
               type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full px-3 py-2 border border-border rounded-md bg-bg-input text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="example@mail.com"
             />
           </div>

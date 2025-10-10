@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import ResponsiveCurrencySelect from '@/components/ResponsiveCurrencySelect';
 import { useRouter } from 'next/navigation';
-import api, { API_ROUTES } from '@/utils/api';
+import api, { API_ROUTES, type TenantAwareRequestConfig } from '@/utils/api';
 import { loadNamespace } from '@/i18n/client';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { useTranslation } from 'react-i18next';
@@ -57,7 +57,11 @@ export default function RegisterPage() {
   useEffect(() => {
     const fetchCurrencies = async () => {
       try {
-        const res = await api.get<RegisterContextResponse>(API_ROUTES.auth.registerContext);
+        const requestConfig: TenantAwareRequestConfig = { skipAuth: true };
+        const res = await api.get<RegisterContextResponse>(
+          API_ROUTES.auth.registerContext,
+          requestConfig
+        );
         const list = Array.isArray(res.data?.currencies) ? res.data.currencies : [];
         setCurrencies(list);
 

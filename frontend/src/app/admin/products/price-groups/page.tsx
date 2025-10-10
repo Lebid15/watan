@@ -210,6 +210,7 @@ function Modal({
    الصفحة
 ========================================================= */
 export default function PriceGroupsPage() {
+  const MAX_PRICE_GROUPS = 6;
   const [packages, setPackages] = useState<ProductPackage[]>([]);
   const [priceGroups, setPriceGroups] = useState<PriceGroup[]>([]);
   const [productsList, setProductsList] = useState<{ id: string; name: string; packageIds: string[] }[]>([]);
@@ -592,6 +593,10 @@ export default function PriceGroupsPage() {
 
         <button
           onClick={async () => {
+            if (priceGroups.length >= MAX_PRICE_GROUPS) {
+              toast.error(`وصلت للحد الأقصى (${MAX_PRICE_GROUPS} مجموعات). احذف مجموعة لإضافة أخرى.`);
+              return;
+            }
             const name = prompt('أدخل اسم مجموعة أسعار جديدة:');
             if (!name || !name.trim()) return;
             try {
@@ -603,6 +608,7 @@ export default function PriceGroupsPage() {
             }
           }}
           className="btn"
+          title={priceGroups.length >= MAX_PRICE_GROUPS ? `الحد الأقصى ${MAX_PRICE_GROUPS} مجموعات` : undefined}
         >
           + مجموعة جديدة
         </button>
@@ -616,7 +622,7 @@ export default function PriceGroupsPage() {
         {/* فلتر المنتج */}
         <div className="min-w-[240px]">
           <ComboBox
-            label="فلتر المنتج"
+            label=""
             value={filterProductId}
             onChange={(v) => setFilterProductId(v as any)}
             options={productOptions}
@@ -647,7 +653,7 @@ export default function PriceGroupsPage() {
                         <th key={group.id}>{group.name}</th>
                       ))}
                       {/* Unit price column removed */}
-                      <th className="w-28">الحالة</th>
+                      <th className="w-28 hidden">الحالة</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -685,7 +691,7 @@ export default function PriceGroupsPage() {
                           );
                         })}
                         {/* Unit price cell removed */}
-                        <td className="text-sm text-center">
+                        <td className="text-sm text-center hidden">
                           {savingMap[pkg.id] ? (
                             <span className="text-warning">يحفظ…</span>
                           ) : (

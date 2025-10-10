@@ -204,3 +204,13 @@ JAZZMIN_UI_TWEAKS = {
 }
 
 JAZZMIN_SETTINGS["custom_css"] = "admin_rtl.css"
+
+# Email defaults (console backend in dev unless overridden)
+EMAIL_BACKEND = os.getenv("DJANGO_EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "noreply@watan.local")
+
+# Frontend base URL for building links in transactional emails
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+
+# Password reset token TTL in minutes
+PASSWORD_RESET_TOKEN_TTL_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_MINUTES", "60"))

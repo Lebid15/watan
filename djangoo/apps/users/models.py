@@ -27,6 +27,13 @@ class User(AbstractUser):
     force_totp_enroll = models.BooleanField(default=False)
     totp_failed_attempts = models.PositiveIntegerField(default=0)
     totp_locked_until = models.DateTimeField(null=True, blank=True)
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)
+    full_name = models.CharField(max_length=255, blank=True)
+    phone_number = models.CharField(max_length=64, blank=True)
+    country_code = models.CharField(max_length=32, blank=True)
+    price_group_id = models.UUIDField(null=True, blank=True)
+    preferred_currency_code = models.CharField(max_length=10, blank=True)
+    legacy_password_hash = models.CharField(max_length=255, blank=True)
 
     class Meta:
         db_table = 'dj_users'
@@ -88,3 +95,22 @@ class RecoveryCode(models.Model):
 # These are NOT registered in admin and should NOT be used for new development
 # Uncomment only if needed for data migration scripts
 # from .legacy_models import LegacyUser  # noqa: E402,F401
+
+
+class LegacyPasswordResetToken(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_id = models.UUIDField(db_index=True)
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)
+    token_hash = models.CharField(max_length=128, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'dj_password_reset_tokens'
+        indexes = [
+            models.Index(fields=['user_id', 'used_at'], name='dj_pwdreset_user_used_idx'),
+        ]
+
+    def __str__(self) -> str:
+        return f"PasswordResetToken(user={self.user_id})"

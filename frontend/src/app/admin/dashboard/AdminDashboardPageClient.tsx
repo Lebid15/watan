@@ -35,7 +35,7 @@ export default function AdminDashboardPageClient() {
       <h1 className="text-lg p-5 font-bold mb-3">لوحة تحكم المشرف</h1>
       <div className="space-y-2">
         <p>مرحباً، {user?.fullName || user?.email}</p>
-        <p>هنا سنقدم جميع التعلميات الخاصة بالموضع88</p>
+        <p>هنا سنقدم جميع التعلميات الخاصة بالموقع</p>
         <p>أهلا وسهلا بكم دائماً.</p>
       </div>
     </div>

@@ -118,3 +118,33 @@ class AdminDepositActionResponseSerializer(serializers.Serializer):
 class AdminDepositNotesResponseSerializer(serializers.Serializer):
     depositId = serializers.UUIDField()
     notes = serializers.ListField(child=serializers.DictField(), allow_empty=True)
+
+
+class AdminDepositTopupRequestSerializer(serializers.Serializer):
+    userId = serializers.UUIDField()
+    amount = serializers.DecimalField(max_digits=18, decimal_places=6)
+    methodId = serializers.UUIDField()
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=1000)
+
+
+class AdminDepositTopupDepositSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    userId = serializers.UUIDField()
+    methodId = serializers.UUIDField(allow_null=True)
+    originalAmount = serializers.DecimalField(max_digits=18, decimal_places=6)
+    originalCurrency = serializers.CharField()
+    walletCurrency = serializers.CharField()
+    rateUsed = serializers.DecimalField(max_digits=18, decimal_places=6)
+    convertedAmount = serializers.DecimalField(max_digits=18, decimal_places=6)
+    note = serializers.CharField(allow_null=True)
+    status = serializers.CharField()
+    source = serializers.CharField()
+    createdAt = serializers.DateTimeField()
+    approvedAt = serializers.DateTimeField()
+
+
+class AdminDepositTopupResponseSerializer(serializers.Serializer):
+    ok = serializers.BooleanField()
+    balance = serializers.DecimalField(max_digits=18, decimal_places=6)
+    currency = serializers.JSONField(allow_null=True, required=False)
+    deposit = AdminDepositTopupDepositSerializer()

@@ -47,6 +47,10 @@
   "lang.en": "English",
   "lang.tr": "Turkish"
   ,
+  "common.save": "Save",
+  "common.cancel": "Cancel",
+  "common.loading": "Loading…",
+  "common.error": "An error occurred",
   "nav.dashboard": "Dashboard",
   "tenant.products": "Products",
   "tenant.priceGroups": "Price Groups",

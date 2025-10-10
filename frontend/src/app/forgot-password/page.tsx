@@ -13,7 +13,7 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.post(API_ROUTES.auth.forgotPassword, { email });
+      await api.post(API_ROUTES.auth.forgotPassword, { emailOrUsername: email });
       setSent(true);
       show('تم الإرسال إن وجد الحساب');
     } catch (e:any) { show(e?.message || 'خطأ'); }
@@ -25,7 +25,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded shadow p-6">
         <h1 className="text-xl font-semibold mb-4">استعادة كلمة المرور</h1>
         {sent ? (
-          <p className="text-sm text-gray-600">إن كان البريد موجوداً ستصلك رسالة تحتوي رابط إعادة التعيين.</p>
+          <p className="text-sm text-gray-600">إن كان الحساب موجوداً ستصلك رسالة تحتوي رابط إعادة التعيين.</p>
         ) : (
           <form onSubmit={submit} className="space-y-4">
             <div>

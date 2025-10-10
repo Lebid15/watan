@@ -82,7 +82,7 @@ export default function ProductsPageClient(){
         <h1 className='text-lg md:text-2xl font-bold'>إدارة المنتجات</h1>
         <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder='بحث...' className='w-full md:w-1/3 border rounded-xl px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base bg-[rgb(var(--color-bg-input))]' />
         <button onClick={()=>setShowSnapshotModal(v=>!v)} className='px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-sm md:text-base whitespace-nowrap bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary-hover))] text-[rgb(var(--color-primary-contrast))]'>
-          {showSnapshotModal?'إغلاق':'+ استنساخ منتج من المخزن'}
+          {showSnapshotModal?'إغلاق':'+ اضافة منتج'}
         </button>
         {selected.size>0 && (
           <div className='flex items-center gap-2 flex-wrap text-xs md:text-sm'>
@@ -127,7 +127,7 @@ export default function ProductsPageClient(){
         <div className='fixed inset-0 z-40 flex items-start justify-center p-4 bg-black/40 backdrop-blur-sm'>
           <div className='w-full max-w-2xl bg-[rgb(var(--color-bg-surface))] border border-[rgb(var(--color-border))] rounded-xl shadow-xl flex flex-col max-h-[90vh]'>
             <div className='flex items-center justify-between px-4 py-3 border-b border-[rgb(var(--color-border))]'>
-              <h2 className='font-bold text-base md:text-lg'>استنساخ منتج من المخزن</h2>
+              <h2 className='font-bold text-base md:text-lg'>اضافة منتج</h2>
               <button onClick={()=>setShowSnapshotModal(false)} className='text-sm text-[rgb(var(--color-text-secondary))] hover:text-[rgb(var(--color-text-primary))]'>إغلاق</button>
             </div>
             <div className='p-3 flex items-center gap-2 border-b border-[rgb(var(--color-border))]'>

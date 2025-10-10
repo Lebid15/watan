@@ -4,7 +4,13 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect
 from rest_framework_simplejwt.views import TokenRefreshView
-from apps.users.views import LoginView, RegisterContextView, RegisterView
+from apps.users.views import (
+    LoginView,
+    RegisterContextView,
+    RegisterView,
+    request_password_reset,
+    reset_password,
+)
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.core.views import health, public_latest_note, dev_maintenance_get, dev_maintenance_post
 from apps.products.dev_views import SeedGlobalProductsView
@@ -25,6 +31,11 @@ urlpatterns = [
     path(f"{API_PREFIX}/auth/login", LoginView.as_view(), name="token_obtain_pair"),
     path(f"{API_PREFIX}/auth/register", RegisterView.as_view(), name="auth_register"),
     path(f"{API_PREFIX}/auth/register-context", RegisterContextView.as_view(), name="auth_register_context"),
+    path(f"{API_PREFIX}/auth/register-context/", RegisterContextView.as_view(), name="auth_register_context_slash"),
+    path(f"{API_PREFIX}/auth/request-password-reset", request_password_reset, name="auth_request_password_reset"),
+    path(f"{API_PREFIX}/auth/request-password-reset/", request_password_reset, name="auth_request_password_reset_slash"),
+    path(f"{API_PREFIX}/auth/reset-password", reset_password, name="auth_reset_password"),
+    path(f"{API_PREFIX}/auth/reset-password/", reset_password, name="auth_reset_password_slash"),
     path(f"{API_PREFIX}/auth/refresh", TokenRefreshView.as_view(), name="token_refresh"),
     path(f"{API_PREFIX}/auth/totp/", include("apps.users.totp_urls")),
     path(f"{API_PREFIX}/users/", include("apps.users.urls")),

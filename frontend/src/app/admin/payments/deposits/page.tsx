@@ -290,13 +290,29 @@ export default function AdminDepositsPage() {
                       <td className="border border-border px-3 py-2">{rate}</td>
                       <td className="border border-border px-3 py-2">{converted}</td>
                       <td className="border border-border px-3 py-2">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium
-                          ${r.status === 'approved'
-                            ? 'bg-success text-text-inverse'
-                            : r.status === 'rejected'
-                            ? 'bg-danger text-text-inverse'
-                            : 'bg-warning text-text-inverse'}`}
-                        >{t(`payments.deposits.status.${r.status}`)}</span>
+                        <span
+                          className={
+                            r.status === 'approved'
+                              ? 'inline-flex items-center justify-center text-[11px] font-medium'
+                              : `inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${r.status === 'rejected'
+                                  ? 'bg-danger text-text-inverse'
+                                  : r.status === 'pending'
+                                  ? 'bg-warning text-text-inverse'
+                                  : 'bg-success text-text-inverse'}`
+                          }
+                        >
+                          {r.status === 'approved' ? (
+                            <>
+                              <span className="sr-only">{t('payments.deposits.status.approved')}</span>
+                              <span
+                                aria-hidden
+                                className="inline-block w-4 h-4 rounded-full bg-green-400"
+                              />
+                            </>
+                          ) : (
+                            t(`payments.deposits.status.${r.status}`)
+                          )}
+                        </span>
                       </td>
                       <td className="border border-border px-3 py-2">
                         {fmtDateStable(r.createdAt)}

@@ -47,6 +47,10 @@
   "lang.en": "İngilizce",
   "lang.tr": "Türkçe"
   ,
+  "common.save": "Kaydet",
+  "common.cancel": "İptal",
+  "common.loading": "Yükleniyor…",
+  "common.error": "Bir hata oluştu",
   "nav.dashboard": "Kontrol Paneli",
   "tenant.products": "Ürünler",
   "tenant.priceGroups": "Fiyat Grupları",

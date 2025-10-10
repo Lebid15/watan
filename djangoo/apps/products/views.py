@@ -884,6 +884,10 @@ class PriceGroupsListCreateView(APIView):
         tenant_id = _resolve_tenant_id(request)
         if not tenant_id:
             raise ValidationError('tenantId مفقود')
+        max_groups = getattr(settings, 'TENANT_PRICE_GROUP_LIMIT', 6)
+        current_total = PriceGroup.objects.filter(tenant_id=tenant_id).count()
+        if current_total >= max_groups:
+            raise ValidationError(f'لا يمكن إضافة أكثر من {max_groups} مجموعات أسعار. احذف مجموعة قائمة أولاً.')
         name = (request.data.get('name') or '').strip()
         if not name:
             raise ValidationError('اسم المجموعة مطلوب')

@@ -1,6 +1,9 @@
 import uuid
-import secrets
-from datetime import datetime, timedelta, timezone
+import logging
+from decimal import Decimal, InvalidOperation
+
+import bcrypt
+from argon2.low_level import Type, verify_secret
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.views import APIView
@@ -8,91 +11,134 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.exceptions import ValidationError, NotFound
+from django.db import transaction
 from django.db.models import Q
 from django.contrib.auth import authenticate, get_user_model
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.conf import settings
-import jwt
+from django.utils import timezone as django_timezone
 from rest_framework_simplejwt.tokens import RefreshToken
-from argon2.low_level import hash_secret, verify_secret, Type
-import bcrypt
 from .serializers import (
     UserProfileSerializer, UserProfileWithCurrencySerializer,
-    LegacyUserListSerializer, LegacyUserWithPriceGroupSerializer,
+    AdminUserSerializer,
+    build_currency_payload,
 )
-from .legacy_models import LegacyUser
+from .password_reset import (
+    consume_password_reset_token,
+    create_password_reset_token,
+    send_password_reset_email,
+)
 from apps.products.views import _resolve_tenant_id
 from apps.currencies.models import Currency
 
 
-def _argon2_hash(password: str) -> str:
-    if not isinstance(password, str) or not password:
-        raise ValidationError('PASSWORD_INVALID')
-    salt = secrets.token_bytes(16)
-    hashed = hash_secret(
-        password.encode('utf-8'),
-        salt,
-        time_cost=3,
-        memory_cost=4096,
-        parallelism=1,
-        hash_len=32,
-        type=Type.ID,
-    )
-    return hashed.decode('utf-8')
+logger = logging.getLogger(__name__)
 
 
-def _verify_password(password: str, hashed: str) -> bool:
-    if not password or not hashed:
-        return False
+UserModel = get_user_model()
+
+
+def _user_detail_payload(user) -> dict:
+    currency_payload = build_currency_payload(user)
+    currency_code = None
+    if currency_payload and currency_payload.get('code'):
+        currency_code = currency_payload['code']
+    else:
+        raw_code = getattr(user, 'preferred_currency_code', None) or getattr(user, 'currency', None)
+        currency_code = str(raw_code).strip().upper() if raw_code else None
+
+    full_name = user.full_name
+    if not full_name:
+        parts = [user.first_name or '', user.last_name or '']
+        full_name = ' '.join(part for part in parts if part).strip() or None
+
+    status_value = getattr(user, 'status', None)
+    is_active = True
     try:
-        if hashed.startswith('$argon2'):
-            return bool(
-                verify_secret(
-                    hashed.encode('utf-8'),
-                    password.encode('utf-8'),
-                    type=Type.ID,
-                )
-            )
-        if hashed.startswith('$2'):  # bcrypt legacy hashes
-            return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+        if status_value is not None and hasattr(UserModel, 'Status'):
+            is_active = status_value != UserModel.Status.DISABLED
+        else:
+            is_active = bool(getattr(user, 'is_active', True))
     except Exception:
-        return False
-    return False
+        is_active = bool(getattr(user, 'is_active', True))
 
+    overdraft_value = getattr(user, 'overdraft', None)
+    overdraft_limit = getattr(user, 'overdraft_limit', None)
+    if overdraft_value in (None, '') and overdraft_limit not in (None, ''):
+        overdraft_value = overdraft_limit
 
-def _issue_legacy_token(user: LegacyUser, minutes: int = 60) -> str:
-    now = datetime.now(timezone.utc)
-    exp = now + timedelta(minutes=minutes)
-    payload = {
-        'sub': str(user.id),
-        'email': user.email,
-        'role': (user.role or 'user').lower(),
-        'tenantId': str(user.tenant_id) if user.tenant_id else None,
-        'iat': int(now.timestamp()),
-        'exp': int(exp.timestamp()),
-        'legacy': True,
-        'totpVerified': True,
-        'tokenVersion': 1,
-    }
-    # Remove None values to keep payload compact
-    payload = {k: v for k, v in payload.items() if v is not None}
-    token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
-    # PyJWT >= 2 returns str, older versions bytes
-    return token if isinstance(token, str) else token.decode('utf-8')
-
-
-def _legacy_user_payload(user: LegacyUser) -> dict:
     return {
         'id': str(user.id),
         'email': user.email,
         'username': user.username,
-        'role': (user.role or 'user').lower(),
-        'tenantId': str(user.tenant_id) if user.tenant_id else None,
-        'fullName': user.full_name,
+        'fullName': full_name,
+        'firstName': user.first_name,
+        'lastName': user.last_name,
         'phoneNumber': user.phone_number,
         'countryCode': user.country_code,
+        'role': (user.role or 'user').lower(),
+        'isActive': is_active,
+        'balance': float(user.balance or 0),
+        'overdraftLimit': float(overdraft_value or 0),
+        'currency': currency_payload,
+        'currencyCode': currency_code,
+        'currency_code': currency_code,
+        'tenantId': str(user.tenant_id) if user.tenant_id else None,
+        'priceGroupId': str(user.price_group_id) if user.price_group_id else None,
+        'priceGroup': {'id': str(user.price_group_id)} if user.price_group_id else None,
     }
+
+
+def _normalize_uuid(value):
+    if value in (None, ''):
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+def _require_tenant_uuid(raw_tenant_id):
+    tenant_uuid = _normalize_uuid(raw_tenant_id)
+    if tenant_uuid is None:
+        raise ValidationError('TENANT_ID_INVALID')
+    return tenant_uuid
+
+
+def _get_user_for_tenant_or_404(user_id, tenant_id):
+    qs = UserModel.objects.all()
+    tenant_uuid = _normalize_uuid(tenant_id)
+    if tenant_uuid is not None:
+        qs = qs.filter(tenant_id=tenant_uuid)
+
+    user_uuid = _normalize_uuid(user_id)
+    if user_uuid is not None:
+        try:
+            return qs.get(id=user_uuid)
+        except UserModel.DoesNotExist:
+            pass
+
+    try:
+        return qs.get(id=user_id)
+    except (UserModel.DoesNotExist, ValueError, TypeError):
+        raise NotFound('المستخدم غير موجود')
+
+
+def _verify_legacy_hash(password: str, hashed: str) -> bool:
+    if not password or not hashed:
+        return False
+    try:
+        if hashed.startswith('$argon2'):
+            return bool(verify_secret(hashed.encode('utf-8'), password.encode('utf-8'), type=Type.ID))
+        if hashed.startswith('$2'):
+            return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        logger.warning('Failed to verify legacy password hash', exc_info=True)
+        return False
+    return False
 
 
 def _set_auth_cookies(response: Response, token: str, request) -> None:
@@ -132,65 +178,19 @@ def _set_auth_cookies(response: Response, token: str, request) -> None:
 @permission_classes([IsAuthenticated])
 def profile(request):
     user = request.user
-    if isinstance(user, LegacyUser):
-        if request.method == "PUT":
-            return Response({'message': 'لا يمكن تعديل الملف من هذه الواجهة حالياً'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        currency_code = user.preferred_currency_code or 'USD'
-        price_group_id = getattr(user, 'price_group_id', None)
-        data = {
-            'id': str(user.id),
-            'username': user.username,
-            'email': user.email,
-            'first_name': (user.full_name or '').split(' ', 1)[0] if user.full_name else '',
-            'last_name': (user.full_name or '').split(' ', 1)[1] if user.full_name and ' ' in user.full_name else '',
-            'balance': float(user.balance or 0),
-            'currency': currency_code,
-            'currencyCode': currency_code,
-            'currency_code': currency_code,
-            'status': 'active' if user.is_active else 'disabled',
-            'overdraft': float(user.overdraft_limit or 0),
-            'role': (user.role or 'user').lower(),
-            'priceGroupId': str(price_group_id) if price_group_id else None,
-            'price_group_id': str(price_group_id) if price_group_id else None,
-            'priceGroup': {'id': str(price_group_id)} if price_group_id else None,
-        }
-        return Response(data)
     if request.method == "PUT":
-        # Allow updating first_name/last_name only for now to avoid schema drift
-        data = {k: v for k, v in request.data.items() if k in ["first_name", "last_name"]}
-        serializer = UserProfileSerializer(user, data=data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-        else:
+        allowed_fields = {k: v for k, v in request.data.items() if k in ["first_name", "last_name", "full_name", "phone_number", "country_code"]}
+        serializer = UserProfileSerializer(user, data=allowed_fields, partial=True)
+        if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    return Response(UserProfileSerializer(user).data)
+        serializer.save()
+    return Response(_user_detail_payload(user))
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def profile_with_currency(request):
     user = request.user
-    if isinstance(user, LegacyUser):
-        currency_code = user.preferred_currency_code or 'USD'
-        price_group_id = getattr(user, 'price_group_id', None)
-        data = {
-            'id': str(user.id),
-            'username': user.username,
-            'email': user.email,
-            'first_name': (user.full_name or '').split(' ', 1)[0] if user.full_name else '',
-            'last_name': (user.full_name or '').split(' ', 1)[1] if user.full_name and ' ' in user.full_name else '',
-            'balance': float(user.balance or 0),
-            'currency': currency_code,
-            'currencyCode': currency_code,
-            'currency_code': currency_code,
-            'status': 'active' if user.is_active else 'disabled',
-            'overdraft': float(user.overdraft_limit or 0),
-            'role': (user.role or 'user').lower(),
-            'priceGroupId': str(price_group_id) if price_group_id else None,
-            'price_group_id': str(price_group_id) if price_group_id else None,
-            'priceGroup': {'id': str(price_group_id)} if price_group_id else None,
-        }
-        return Response(data)
     data = UserProfileWithCurrencySerializer(user).data
     currency_code = data.get('currency_code') or data.get('currency')
     if currency_code:
@@ -199,55 +199,263 @@ def profile_with_currency(request):
     data['priceGroupId'] = str(price_group_id) if price_group_id else None
     data['price_group_id'] = str(price_group_id) if price_group_id else None
     data['priceGroup'] = {'id': str(price_group_id)} if price_group_id else None
+    data['fullName'] = getattr(user, 'full_name', None)
+    data['role'] = (getattr(user, 'role', '') or 'user').lower()
+    data['isActive'] = bool(getattr(user, 'is_active', True))
     return Response(data)
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_users(request):
-    tenant_id = _resolve_tenant_id(request)
-    if not tenant_id:
+    tenant_raw = _resolve_tenant_id(request)
+    if not tenant_raw:
         raise ValidationError('TENANT_ID_REQUIRED')
-    qs = LegacyUser.objects.filter(tenant_id=tenant_id)
+    tenant_id = _require_tenant_uuid(tenant_raw)
+    qs = UserModel.objects.filter(tenant_id=tenant_id)
     # optional search by q
     q = (request.query_params.get('q') or '').strip()
     if q:
         qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q))
-    # exclude soft system roles similar to UI filters? leaving raw list for now
-    return Response(LegacyUserListSerializer(qs, many=True).data)
+    serializer = AdminUserSerializer(qs, many=True)
+    return Response(serializer.data)
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def users_with_price_group(request):
-    tenant_id = _resolve_tenant_id(request)
-    if not tenant_id:
+    tenant_raw = _resolve_tenant_id(request)
+    if not tenant_raw:
         raise ValidationError('TENANT_ID_REQUIRED')
-    qs = LegacyUser.objects.filter(tenant_id=tenant_id)
-    return Response(LegacyUserWithPriceGroupSerializer(qs, many=True).data)
+    tenant_id = _require_tenant_uuid(tenant_raw)
+    qs = UserModel.objects.filter(tenant_id=tenant_id, price_group_id__isnull=False)
+    serializer = AdminUserSerializer(qs, many=True)
+    return Response(serializer.data)
 
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def set_user_price_group(request, id: str):
-    tenant_id = _resolve_tenant_id(request)
-    if not tenant_id:
+    tenant_raw = _resolve_tenant_id(request)
+    if not tenant_raw:
         raise ValidationError('TENANT_ID_REQUIRED')
-    try:
-        user = LegacyUser.objects.get(id=id, tenant_id=tenant_id)
-    except LegacyUser.DoesNotExist:
-        raise NotFound('المستخدم غير موجود')
+    tenant_id = _require_tenant_uuid(tenant_raw)
+    user = _get_user_for_tenant_or_404(id, tenant_id)
     price_group_id = request.data.get('priceGroupId', None)
     if price_group_id in ('', None):
         user.price_group_id = None
     else:
-        # Accept UUID only
-        s = str(price_group_id)
-        if len(s) != 36:
+        try:
+            user.price_group_id = _normalize_uuid(price_group_id) or uuid.UUID(str(price_group_id))
+        except (ValueError, TypeError):
             raise ValidationError('priceGroupId غير صالح')
-        user.price_group_id = s
     user.save(update_fields=['price_group_id'])
-    return Response({ 'ok': True })
+    return Response({'ok': True})
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([IsAuthenticated])
+def legacy_user_detail(request, id: str):
+    tenant_raw = _resolve_tenant_id(request)
+    if not tenant_raw:
+        raise ValidationError('TENANT_ID_REQUIRED')
+    tenant_id = _require_tenant_uuid(tenant_raw)
+    user = _get_user_for_tenant_or_404(id, tenant_id)
+
+    if request.method == "GET":
+        return Response(_user_detail_payload(user))
+
+    payload = request.data or {}
+    username = (payload.get('username') or '').strip() or None
+    full_name = (payload.get('fullName') or '').strip() or None
+    phone_number = (payload.get('phoneNumber') or '').strip() or None
+    country_code = (payload.get('countryCode') or '').strip() or None
+    role_raw = (payload.get('role') or payload.get('roleFinal') or user.role or 'user')
+    role = str(role_raw).lower()
+    is_active = payload.get('isActive')
+
+    updates = {}
+    if username is not None:
+        updates['username'] = username
+    if full_name is not None:
+        updates['full_name'] = full_name
+    if phone_number is not None:
+        updates['phone_number'] = phone_number
+    if country_code is not None:
+        updates['country_code'] = country_code
+
+    if role:
+        valid_roles = set(getattr(UserModel, 'Roles').values) if hasattr(UserModel, 'Roles') else None
+        normalized_role = role
+        if valid_roles and normalized_role not in valid_roles:
+            raise ValidationError('دور المستخدم غير صالح')
+        updates['role'] = normalized_role
+
+    if is_active is not None:
+        is_active_bool = bool(is_active)
+        if hasattr(UserModel, 'Status'):
+            updates['status'] = UserModel.Status.ACTIVE if is_active_bool else UserModel.Status.DISABLED
+        else:
+            updates['is_active'] = is_active_bool
+
+    if updates:
+        for field, value in updates.items():
+            setattr(user, field, value)
+        user.save(update_fields=list(updates.keys()))
+
+    return Response(_user_detail_payload(user))
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def legacy_user_set_password(request, id: str):
+    tenant_raw = _resolve_tenant_id(request)
+    if not tenant_raw:
+        raise ValidationError('TENANT_ID_REQUIRED')
+    tenant_id = _require_tenant_uuid(tenant_raw)
+    user = _get_user_for_tenant_or_404(id, tenant_id)
+    password = (request.data.get('password') or '').strip()
+    if not password:
+        raise ValidationError('كلمة المرور مطلوبة')
+    if len(password) < 6:
+        raise ValidationError('كلمة المرور قصيرة جداً')
+    user.set_password(password)
+    if hasattr(user, 'legacy_password_hash'):
+        user.legacy_password_hash = ''
+    user.save(update_fields=['password', 'legacy_password_hash'] if hasattr(user, 'legacy_password_hash') else ['password'])
+    return Response({'ok': True})
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def legacy_user_set_overdraft(request, id: str):
+    tenant_raw = _resolve_tenant_id(request)
+    if not tenant_raw:
+        raise ValidationError('TENANT_ID_REQUIRED')
+    tenant_id = _require_tenant_uuid(tenant_raw)
+    user = _get_user_for_tenant_or_404(id, tenant_id)
+
+    raw_value = request.data.get('overdraftLimit')
+    if raw_value in (None, ''):
+        value = Decimal('0')
+    else:
+        try:
+            value = Decimal(str(raw_value))
+        except (InvalidOperation, ValueError):
+            raise ValidationError('overdraftLimit غير صالح')
+    if hasattr(user, 'overdraft'):
+        user.overdraft = value
+        update_fields = ['overdraft']
+    else:
+        user.overdraft_limit = value
+        update_fields = ['overdraft_limit']
+    user.save(update_fields=update_fields)
+    return Response({'ok': True, 'overdraftLimit': float(value or 0)})
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def request_password_reset(request):
+    data = request.data or {}
+    identifier = (data.get('emailOrUsername') or data.get('email') or data.get('username') or '').strip()
+    tenant_code = (data.get('tenantCode') or '').strip()
+    if not identifier:
+        return Response({'message': 'emailOrUsername required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    tenant_id = _resolve_tenant_id(request)
+    tenant_uuid = _normalize_uuid(tenant_id)
+    if not tenant_uuid and tenant_code:
+        try:
+            from apps.tenants.models import Tenant as LegacyTenant
+
+            tenant = LegacyTenant.objects.filter(code__iexact=tenant_code).first()
+            if tenant and getattr(tenant, 'is_active', True):
+                tenant_uuid = _normalize_uuid(getattr(tenant, 'id', None))
+        except Exception:
+            logger.warning('Failed to resolve tenant by code %s', tenant_code, exc_info=True)
+
+    def match_user(qs):
+        try:
+            return qs.filter(email__iexact=identifier).first() or qs.filter(username__iexact=identifier).first()
+        except Exception:
+            return None
+
+    user = None
+    base_qs = UserModel.objects.all()
+    if tenant_uuid:
+        user = match_user(base_qs.filter(tenant_id=tenant_uuid))
+    if not user:
+        user = match_user(base_qs.filter(tenant_id__isnull=True))
+    if not user:
+        user = match_user(base_qs)
+        if user:
+            logger.info('Password reset fallback matched user %s without tenant scoping', user.id)
+
+    tenant_host = request.META.get(getattr(settings, 'TENANT_HEADER', 'HTTP_X_TENANT_HOST')) or request.META.get('HTTP_HOST')
+
+    if user:
+        try:
+            raw_token = create_password_reset_token(user.id, getattr(user, 'tenant_id', None))
+            send_password_reset_email(user.email, raw_token, tenant_host=tenant_host)
+            logger.info('Password reset token issued for user %s', user.id)
+        except Exception as exc:
+            logger.warning('Password reset generation failed for user %s: %s', getattr(user, 'id', None), exc, exc_info=True)
+    else:
+        logger.info('Password reset requested for unknown identifier "%s"', identifier)
+
+    return Response({'ok': True})
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def reset_password(request):
+    data = request.data or {}
+    token = (data.get('token') or '').strip()
+    new_password = (data.get('newPassword') or '').strip()
+    if not token or not new_password:
+        return Response({'message': 'token & newPassword required'}, status=status.HTTP_400_BAD_REQUEST)
+    if len(new_password) < 6:
+        return Response({'message': 'weak password'}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        token_entry = consume_password_reset_token(token)
+        if not token_entry:
+            return Response({'message': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
+        user = None
+        raw_user_id = token_entry.user_id
+        user_uuid = _normalize_uuid(raw_user_id)
+        if user_uuid:
+            user = UserModel.objects.filter(id=user_uuid).first()
+            if not user:
+                try:
+                    user = UserModel.objects.filter(id=user_uuid.int).first()
+                except (AttributeError, ValueError):
+                    user = None
+        if not user:
+            try:
+                user_id_int = int(str(raw_user_id))
+                user = UserModel.objects.filter(id=user_id_int).first()
+            except (ValueError, TypeError):
+                user = None
+
+        if not user:
+            token_entry.used_at = django_timezone.now()
+            token_entry.save(update_fields=['used_at'])
+            logger.warning('Password reset token %s references missing user %s', token_entry.id, token_entry.user_id)
+            return Response({'message': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        if hasattr(user, 'legacy_password_hash'):
+            user.legacy_password_hash = ''
+        save_fields = ['password']
+        if hasattr(user, 'legacy_password_hash'):
+            save_fields.append('legacy_password_hash')
+        user.save(update_fields=save_fields)
+        token_entry.used_at = django_timezone.now()
+        token_entry.save(update_fields=['used_at'])
+
+    logger.info('Password reset completed for user %s', token_entry.user_id)
+    return Response({'ok': True})
 
 
 class LoginView(APIView):
@@ -263,45 +471,42 @@ class LoginView(APIView):
             return Response({ 'message': 'Missing credentials' }, status=status.HTTP_400_BAD_REQUEST)
 
         tenant_id = _resolve_tenant_id(request)
+        tenant_uuid = _normalize_uuid(tenant_id)
 
-        legacy_user = None
-        if tenant_id:
-            base_qs = LegacyUser.objects.filter(tenant_id=tenant_id)
-            if '@' in str(identifier):
-                legacy_user = base_qs.filter(email__iexact=identifier).first()
-            if not legacy_user:
-                legacy_user = base_qs.filter(username__iexact=identifier).first()
-
-        if legacy_user:
-            if not _verify_password(password, legacy_user.password):
-                return Response({'message': 'بيانات الاعتماد غير صحيحة'}, status=status.HTTP_401_UNAUTHORIZED)
-            token = _issue_legacy_token(legacy_user)
-            body = {
-                'token': token,
-                'access': token,
-                'access_token': token,
-                'refresh': None,
-                'user': _legacy_user_payload(legacy_user),
-                'requiresTotp': False,
-                'totpPending': False,
-            }
-            response = Response(body)
-            _set_auth_cookies(response, token, request)
-            return response
-
-        # Try authenticate by username first; if identifier contains @, try email lookup
-        user = None
-        User = get_user_model()
-        # Direct username attempt
         user = authenticate(request, username=identifier, password=password)
         if user is None and '@' in str(identifier):
             try:
-                u = User.objects.get(email__iexact=identifier)
-                user = authenticate(request, username=u.username, password=password)
-            except User.DoesNotExist:
+                candidate = UserModel.objects.get(email__iexact=identifier)
+                user = authenticate(request, username=candidate.username, password=password)
+            except UserModel.DoesNotExist:
                 user = None
+
         if user is None:
-            return Response({ 'message': 'بيانات الاعتماد غير صحيحة' }, status=status.HTTP_401_UNAUTHORIZED)
+            candidate_qs = UserModel.objects.all()
+            if tenant_uuid:
+                candidate_qs = candidate_qs.filter(tenant_id=tenant_uuid)
+            if '@' in str(identifier):
+                candidate = candidate_qs.filter(email__iexact=identifier).first()
+                if not candidate:
+                    candidate = UserModel.objects.filter(email__iexact=identifier).first()
+            else:
+                candidate = candidate_qs.filter(username__iexact=identifier).first()
+
+            if candidate and _verify_legacy_hash(password, getattr(candidate, 'legacy_password_hash', '')):
+                candidate.set_password(password)
+                if hasattr(candidate, 'legacy_password_hash'):
+                    candidate.legacy_password_hash = ''
+                    candidate.save(update_fields=['password', 'legacy_password_hash'])
+                else:
+                    candidate.save(update_fields=['password'])
+                user = candidate
+
+        if user is None:
+            return Response({'message': 'بيانات الاعتماد غير صحيحة'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        if hasattr(user, 'status') and getattr(UserModel, 'Status', None):
+            if user.status == UserModel.Status.DISABLED:
+                return Response({'message': 'الحساب غير نشط'}, status=status.HTTP_403_FORBIDDEN)
 
         # jwt pair with extra claims for client-side routing
         refresh = RefreshToken.for_user(user)
@@ -326,6 +531,9 @@ class LoginView(APIView):
             # Aliases expected by the frontend
             'token': access,
             'access_token': access,
+            'user': _user_detail_payload(user),
+            'requiresTotp': False,
+            'totpPending': False,
         }
         response = Response(body)
         _set_auth_cookies(response, access, request)
@@ -336,9 +544,40 @@ class RegisterContextView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        tenant_id = _resolve_tenant_id(request)
-        if not tenant_id:
-            raise ValidationError('TENANT_ID_REQUIRED')
+        # Debug logging
+        logger.info('RegisterContextView: Headers - X-Tenant-Host: %s, Host: %s, Origin: %s', 
+                   request.META.get('HTTP_X_TENANT_HOST'), 
+                   request.META.get('HTTP_HOST'),
+                   request.META.get('HTTP_ORIGIN'))
+        
+        tenant_raw = _resolve_tenant_id(request)
+        logger.info('RegisterContextView: _resolve_tenant_id returned: %s', tenant_raw)
+        
+        if not tenant_raw:
+            # Try to resolve from HTTP_HOST header if X-Tenant-Host is missing
+            host_header = request.META.get('HTTP_HOST')
+            if host_header:
+                host = host_header.split(':')[0]
+                try:
+                    from apps.tenants.models import TenantDomain
+                    dom = TenantDomain.objects.filter(domain=host).order_by('-is_primary').first()
+                    if dom and getattr(dom, 'tenant_id', None):
+                        tenant_raw = str(dom.tenant_id)
+                        logger.info('RegisterContextView: Resolved tenant_id %s from Host header %s', tenant_raw, host)
+                except Exception:
+                    logger.exception('Failed to resolve tenant from Host header')
+            
+            if not tenant_raw:
+                # Return empty currencies list if no tenant is resolved
+                # This allows frontend to work even without proper tenant setup
+                logger.warning('RegisterContextView: No tenant_id resolved from request (Host: %s)', request.META.get('HTTP_HOST'))
+                return Response({'currencies': []})
+        
+        try:
+            tenant_id = _require_tenant_uuid(tenant_raw)
+        except ValidationError:
+            logger.warning('RegisterContextView: Invalid tenant_id format: %s', tenant_raw)
+            return Response({'currencies': []})
 
         currencies = (
             Currency.objects
@@ -365,11 +604,9 @@ class RegisterView(APIView):
     def post(self, request):
         tenant_raw = _resolve_tenant_id(request)
         if not tenant_raw:
+            logger.warning('RegisterView: No tenant_id resolved from request')
             raise ValidationError('TENANT_ID_REQUIRED')
-        try:
-            tenant_id = uuid.UUID(str(tenant_raw))
-        except (ValueError, TypeError):
-            raise ValidationError('TENANT_ID_INVALID')
+        tenant_id = _require_tenant_uuid(tenant_raw)
 
         payload = request.data or {}
         email_raw = (payload.get('email') or '').strip()
@@ -411,35 +648,52 @@ class RegisterView(APIView):
         if not currency:
             raise ValidationError('العملة غير متاحة أو غير فعّالة')
 
-        if LegacyUser.objects.filter(tenant_id=tenant_id, email__iexact=email).exists():
+        if UserModel.objects.filter(tenant_id=tenant_id, email__iexact=email).exists():
             return Response({'message': 'البريد الإلكتروني مستخدم مسبقًا'}, status=status.HTTP_409_CONFLICT)
 
-        if LegacyUser.objects.filter(tenant_id=tenant_id, username__iexact=username).exists():
+        if UserModel.objects.filter(tenant_id=tenant_id, username__iexact=username).exists():
             return Response({'message': 'اسم المستخدم مستخدم مسبقًا'}, status=status.HTTP_409_CONFLICT)
 
-        hashed_password = _argon2_hash(password)
-
-        legacy_user = LegacyUser.objects.create(
-            id=uuid.uuid4(),
-            tenant_id=tenant_id,
-            email=email,
-            password=hashed_password,
+        user = UserModel.objects.create_user(
             username=username,
-            full_name=full_name or None,
-            phone_number=phone_number,
-            country_code=country_code,
-            currency_id=currency.id,
-            preferred_currency_code=currency.code,
-            role='user',
-            is_active=True,
+            email=email,
+            password=password,
         )
+
+        first_name = (payload.get('firstName') or '').strip()
+        last_name = (payload.get('lastName') or '').strip()
+        if not first_name and not last_name and full_name:
+            parts = full_name.split()
+            if parts:
+                first_name = parts[0]
+                last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
+
+        user.first_name = first_name
+        user.last_name = last_name
+        user.full_name = full_name or f"{first_name} {last_name}".strip()
+        user.phone_number = phone_number or ''
+        user.country_code = country_code or ''
+        user.tenant_id = tenant_id
+        user.currency = currency.code
+        user.preferred_currency_code = currency.code
+
+        update_fields = [
+            'first_name', 'last_name', 'full_name', 'phone_number', 'country_code',
+            'tenant_id', 'currency', 'preferred_currency_code'
+        ]
+        if hasattr(user, 'role'):
+            user.role = getattr(UserModel.Roles, 'END_USER', 'end_user')
+            update_fields.append('role')
+
+        user.save(update_fields=update_fields)
 
         return Response(
             {
-                'id': str(legacy_user.id),
-                'email': legacy_user.email,
-                'fullName': legacy_user.full_name,
-                'username': legacy_user.username,
+                'id': str(user.id),
+                'email': user.email,
+                'fullName': user.full_name,
+                'username': user.username,
+                'currencyCode': currency.code,
             },
             status=status.HTTP_201_CREATED,
         )
