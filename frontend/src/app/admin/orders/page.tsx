@@ -810,11 +810,12 @@ export default function AdminOrdersPage() {
   if (selected.size === 0) return toast(t('orders.bulk.needSelection'));
     try {
       await api.post(bulkApproveUrl, { ids: [...selected], note: note || undefined });
-      setOrders((prev) => prev.map((o) => (selected.has(o.id) ? { ...o, status: 'approved' } : o)));
       const n = selected.size;
       setSelected(new Set());
       setNote('');
   toast(t('orders.bulk.approve.success',{count:n}));
+      // إعادة تحميل البيانات من السيرفر لضمان التزامن
+      setTimeout(fetchOrders, 300);
     } catch (e: any) {
   toast(e?.response?.data?.message || t('orders.bulk.approve.fail'));
     }
@@ -824,11 +825,12 @@ export default function AdminOrdersPage() {
   if (selected.size === 0) return toast(t('orders.bulk.needSelection'));
     try {
       await api.post(bulkRejectUrl, { ids: [...selected], note: note || undefined });
-      setOrders((prev) => prev.map((o) => (selected.has(o.id) ? { ...o, status: 'rejected' } : o)));
       const n = selected.size;
       setSelected(new Set());
       setNote('');
   toast(t('orders.bulk.reject.success',{count:n}));
+      // إعادة تحميل البيانات من السيرفر لضمان التزامن
+      setTimeout(fetchOrders, 300);
     } catch (e: any) {
   toast(e?.response?.data?.message || t('orders.bulk.reject.fail'));
     }

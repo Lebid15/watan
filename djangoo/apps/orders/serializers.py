@@ -4,6 +4,14 @@ from rest_framework import serializers
 from .models import ProductOrder
 
 
+class OrderCreateRequestSerializer(serializers.Serializer):
+    productId = serializers.UUIDField()
+    packageId = serializers.UUIDField()
+    quantity = serializers.IntegerField(min_value=1, default=1)
+    userIdentifier = serializers.CharField(required=False, allow_blank=True)
+    extraField = serializers.CharField(required=False, allow_blank=True)
+
+
 class _ProductMiniSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField(allow_null=True)
@@ -42,7 +50,7 @@ class OrderListItemSerializer(serializers.ModelSerializer):
         return float(v) if v is not None else None
 
     def get_unitPriceUSD(self, obj: ProductOrder):
-        if obj.unit_price_applied is not None:
+        if hasattr(obj, 'unit_price_applied') and obj.unit_price_applied is not None:
             try:
                 return float(obj.unit_price_applied)
             except Exception:
@@ -55,7 +63,10 @@ class OrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_display(self, obj: ProductOrder):
-        total = obj.sell_price_amount or obj.price
+        sell_amount = getattr(obj, 'sell_price_amount', None)
+        if sell_amount in (None, '') and hasattr(obj, 'sell_price_amount_value'):
+            sell_amount = getattr(obj, 'sell_price_amount_value', None)
+        total = sell_amount or obj.price
         try:
             total_f = float(total) if total is not None else None
         except Exception:
@@ -64,7 +75,7 @@ class OrderListItemSerializer(serializers.ModelSerializer):
         if total_f is None and unit is None:
             return None
         return {
-            'currencyCode': obj.sell_price_currency or 'USD',
+            'currencyCode': getattr(obj, 'sell_price_currency', None) or 'USD',
             'totalPrice': total_f or 0,
             'unitPrice': unit,
         }
@@ -86,6 +97,18 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
     manualNote = serializers.CharField(source='manual_note', allow_null=True)
     fxLocked = serializers.BooleanField(source='fx_locked')
     approvedLocalDate = serializers.DateField(source='approved_local_date', allow_null=True)
+    username = serializers.SerializerMethodField()
+    userEmail = serializers.SerializerMethodField()
+    costTRY = serializers.SerializerMethodField()
+    sellTRY = serializers.SerializerMethodField()
+    profitTRY = serializers.SerializerMethodField()
+    currencyTRY = serializers.SerializerMethodField()
+    costUsdAtOrder = serializers.SerializerMethodField()
+    sellUsdAtOrder = serializers.SerializerMethodField()
+    profitUsdAtOrder = serializers.SerializerMethodField()
+    providerId = serializers.CharField(source='provider_id', allow_null=True)
+    providerType = serializers.SerializerMethodField()
+    externalOrderId = serializers.CharField(source='external_order_id', allow_null=True)
 
     class Meta:
         model = ProductOrder
@@ -94,8 +117,182 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
             'createdAt', 'sentAt', 'completedAt', 'durationMs',
             'sellPriceAmount', 'sellPriceCurrency', 'price',
             'providerMessage', 'notesCount', 'manualNote', 'fxLocked',
-            'approvedLocalDate', 'product', 'package',
+            'approvedLocalDate', 'product', 'package', 'username', 'userEmail',
+            'costTRY', 'sellTRY', 'profitTRY', 'currencyTRY',
+            'costUsdAtOrder', 'sellUsdAtOrder', 'profitUsdAtOrder',
+            'providerId', 'providerType', 'externalOrderId',
         )
+
+    def get_username(self, obj):
+        # Get username from the related user if it exists
+        if hasattr(obj, 'user') and obj.user:
+            return getattr(obj.user, 'username', None)
+        return None
+
+    def get_userEmail(self, obj):
+        # Get email from the related user if it exists
+        if hasattr(obj, 'user') and obj.user:
+            return getattr(obj.user, 'email', None)
+        return None
+
+    def get_costTRY(self, obj):
+        """Get cost in TRY from package capital/base_price, converting from USD to TRY"""
+        if not obj.package_id:
+            return None
+        
+        from apps.currencies.models import Currency
+        from apps.products.models import ProductPackage
+        from decimal import Decimal
+        
+        try:
+            # Explicitly fetch the package to ensure we have capital/base_price
+            package = ProductPackage.objects.filter(id=obj.package_id).first()
+            if not package:
+                return None
+            
+            capital_usd = package.capital or package.base_price or Decimal('0')
+            
+            if capital_usd <= 0:
+                return None
+            
+            capital_usd = Decimal(str(capital_usd))
+            quantity = obj.quantity if obj.quantity else 1
+            total_cost_usd = capital_usd * quantity
+            
+            # Get exchange rate from currencies table
+            currency = Currency.objects.filter(
+                tenant_id=obj.tenant_id,
+                code__iexact='TRY',
+                is_active=True
+            ).first()
+            
+            exchange_rate = Decimal('1')
+            if currency and currency.rate:
+                exchange_rate = Decimal(str(currency.rate))
+            
+            # Convert USD to TRY
+            total_cost_try = total_cost_usd * exchange_rate
+            
+            return float(total_cost_try)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error calculating costTRY for order {obj.id}: {e}")
+        
+        return None
+
+    def get_sellTRY(self, obj):
+        """Get sell price in TRY from user's price group or direct sell_price_amount"""
+        from apps.currencies.models import Currency
+        from decimal import Decimal
+        
+        # If sell price is already in TRY, return it directly
+        if obj.sell_price_currency == 'TRY':
+            return float(obj.sell_price_amount) if obj.sell_price_amount else None
+        
+        # If sell price is in USD, convert to TRY
+        if obj.sell_price_currency == 'USD' and obj.sell_price_amount:
+            try:
+                currency = Currency.objects.filter(
+                    tenant_id=obj.tenant_id,
+                    code__iexact='TRY',
+                    is_active=True
+                ).first()
+                
+                exchange_rate = Decimal('1')
+                if currency and currency.rate:
+                    exchange_rate = Decimal(str(currency.rate))
+                
+                sell_try = Decimal(str(obj.sell_price_amount)) * exchange_rate
+                return float(sell_try)
+            except Exception:
+                pass
+        
+        return None
+
+    def get_profitTRY(self, obj):
+        # Calculate profit if both cost and sell are available
+        cost = self.get_costTRY(obj)
+        sell = self.get_sellTRY(obj)
+        if cost is not None and sell is not None:
+            return sell - cost
+        return None
+
+    def get_currencyTRY(self, obj):
+        # Return 'TRY' if we have any TRY values
+        if self.get_costTRY(obj) is not None or self.get_sellTRY(obj) is not None:
+            return 'TRY'
+        return None
+
+    def get_costUsdAtOrder(self, obj):
+        """Get cost in USD from package capital/base_price"""
+        if not obj.package_id:
+            return None
+        
+        from apps.products.models import ProductPackage
+        from decimal import Decimal
+        
+        try:
+            package = ProductPackage.objects.filter(id=obj.package_id).first()
+            if not package:
+                return None
+            
+            capital_usd = package.capital or package.base_price or Decimal('0')
+            
+            if capital_usd <= 0:
+                return None
+            
+            quantity = obj.quantity if obj.quantity else 1
+            total_cost_usd = Decimal(str(capital_usd)) * quantity
+            
+            return float(total_cost_usd)
+        except Exception:
+            return None
+
+    def get_sellUsdAtOrder(self, obj):
+        """Get sell price in USD"""
+        # If already in USD, return it
+        if obj.sell_price_currency == 'USD' and obj.sell_price_amount:
+            return float(obj.sell_price_amount)
+        
+        # If in TRY, convert to USD
+        if obj.sell_price_currency == 'TRY' and obj.sell_price_amount:
+            from apps.currencies.models import Currency
+            from decimal import Decimal
+            
+            try:
+                currency = Currency.objects.filter(
+                    tenant_id=obj.tenant_id,
+                    code__iexact='TRY',
+                    is_active=True
+                ).first()
+                
+                if currency and currency.rate and currency.rate > 0:
+                    exchange_rate = Decimal(str(currency.rate))
+                    sell_usd = Decimal(str(obj.sell_price_amount)) / exchange_rate
+                    return float(sell_usd)
+            except Exception:
+                pass
+        
+        return None
+
+    def get_profitUsdAtOrder(self, obj):
+        """Calculate profit in USD"""
+        cost_usd = self.get_costUsdAtOrder(obj)
+        sell_usd = self.get_sellUsdAtOrder(obj)
+        
+        if cost_usd is not None and sell_usd is not None:
+            return sell_usd - cost_usd
+        
+        return None
+
+    def get_providerType(self, obj):
+        # Determine provider type based on provider_id and pin_code
+        if obj.external_status == 'completed' and obj.pin_code:
+            return 'internal_codes'
+        elif obj.provider_id:
+            return 'external'
+        else:
+            return 'manual'
 
 
 # ---- OpenAPI helper serializers ----

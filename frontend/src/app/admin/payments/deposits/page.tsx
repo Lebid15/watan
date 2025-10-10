@@ -290,29 +290,22 @@ export default function AdminDepositsPage() {
                       <td className="border border-border px-3 py-2">{rate}</td>
                       <td className="border border-border px-3 py-2">{converted}</td>
                       <td className="border border-border px-3 py-2">
-                        <span
-                          className={
-                            r.status === 'approved'
-                              ? 'inline-flex items-center justify-center text-[11px] font-medium'
-                              : `inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${r.status === 'rejected'
-                                  ? 'bg-danger text-text-inverse'
-                                  : r.status === 'pending'
-                                  ? 'bg-warning text-text-inverse'
-                                  : 'bg-success text-text-inverse'}`
-                          }
-                        >
-                          {r.status === 'approved' ? (
-                            <>
-                              <span className="sr-only">{t('payments.deposits.status.approved')}</span>
-                              <span
-                                aria-hidden
-                                className="inline-block w-4 h-4 rounded-full bg-green-400"
-                              />
-                            </>
-                          ) : (
-                            t(`payments.deposits.status.${r.status}`)
-                          )}
-                        </span>
+                        {r.status === 'approved' ? (
+                          <span className="inline-flex items-center justify-center">
+                            <span className="sr-only">{t('payments.deposits.status.approved')}</span>
+                            <span aria-hidden className="inline-block w-4 h-4 rounded-full bg-green-400" />
+                          </span>
+                        ) : r.status === 'rejected' ? (
+                          <span className="inline-flex items-center justify-center">
+                            <span className="sr-only">{t('payments.deposits.status.rejected')}</span>
+                            <span aria-hidden className="inline-block w-4 h-4 rounded-full bg-danger" />
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center">
+                            <span className="sr-only">{t('payments.deposits.status.pending')}</span>
+                            <span aria-hidden className="inline-block w-4 h-4 rounded-full bg-[rgb(245,181,39)]" />
+                          </span>
+                        )}
                       </td>
                       <td className="border border-border px-3 py-2">
                         {fmtDateStable(r.createdAt)}

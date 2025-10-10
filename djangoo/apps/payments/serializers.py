@@ -70,12 +70,31 @@ class DepositListItemSerializer(serializers.ModelSerializer):
     rateUsed = serializers.DecimalField(source='rate_used', max_digits=18, decimal_places=8)
     convertedAmount = serializers.DecimalField(source='converted_amount', max_digits=18, decimal_places=8)
     createdAt = serializers.DateTimeField(source='created_at')
+    approvedAt = serializers.DateTimeField(source='approved_at', allow_null=True)
+    source = serializers.CharField(required=False, allow_null=True)
+    user = serializers.SerializerMethodField()
+    method = serializers.SerializerMethodField()
 
     class Meta:
         model = Deposit
         fields = (
-            'id','status','originalAmount','originalCurrency','walletCurrency','rateUsed','convertedAmount','userId','methodId','note','createdAt'
+            'id','status','originalAmount','originalCurrency','walletCurrency','rateUsed','convertedAmount','userId','methodId','note','createdAt','approvedAt','source','user','method'
         )
+
+    def get_user(self, obj):
+        user_map = self.context.get('user_map') if isinstance(self.context, dict) else None
+        if not user_map:
+            return None
+        return user_map.get(str(obj.user_id))
+
+    def get_method(self, obj):
+        method_map = self.context.get('method_map') if isinstance(self.context, dict) else None
+        if not method_map:
+            return None
+        method_id = getattr(obj, 'method_id', None)
+        if not method_id:
+            return None
+        return method_map.get(str(method_id))
 
 
 class AdminDepositListItemSerializer(DepositListItemSerializer):
@@ -121,7 +140,7 @@ class AdminDepositNotesResponseSerializer(serializers.Serializer):
 
 
 class AdminDepositTopupRequestSerializer(serializers.Serializer):
-    userId = serializers.UUIDField()
+    userId = serializers.CharField()  # تغيير من UUIDField إلى CharField لقبول integer أو UUID
     amount = serializers.DecimalField(max_digits=18, decimal_places=6)
     methodId = serializers.UUIDField()
     note = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=1000)
@@ -148,3 +167,11 @@ class AdminDepositTopupResponseSerializer(serializers.Serializer):
     balance = serializers.DecimalField(max_digits=18, decimal_places=6)
     currency = serializers.JSONField(allow_null=True, required=False)
     deposit = AdminDepositTopupDepositSerializer()
+
+
+class DepositCreateRequestSerializer(serializers.Serializer):
+    methodId = serializers.UUIDField(required=False, allow_null=True)
+    originalAmount = serializers.DecimalField(max_digits=18, decimal_places=6)
+    originalCurrency = serializers.CharField(max_length=12)
+    walletCurrency = serializers.CharField(max_length=12)
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=1000)

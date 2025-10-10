@@ -74,6 +74,7 @@ export default function ProductDetailsPage() {
 
   const [product, setProduct] = useState<Product | null>(null);
   const [currencyCode, setCurrencyCode] = useState<string | undefined>(undefined);
+  const [productBaseCurrency, setProductBaseCurrency] = useState<string>('USD');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
@@ -90,7 +91,7 @@ export default function ProductDetailsPage() {
   const [unitGameIdError, setUnitGameIdError] = useState<string>('');
   // سعر الوحدة الأساس (يفترض أنه بالدولار من الباك) + معدل التحويل + نسخة محوّلة
   const [effectiveUnitPriceUSD, setEffectiveUnitPriceUSD] = useState<number | null>(null);
-  const [currencyRate, setCurrencyRate] = useState<number>(1); // معدل تحويل من USD -> عملة المستخدم
+  const [conversionRate, setConversionRate] = useState<number>(1); // معدل تحويل من USD -> عملة المستخدم
 
   const apiHost = useMemo(() => {
     const base = API_ROUTES.products.base;
@@ -114,8 +115,11 @@ export default function ProductDetailsPage() {
         const url = `${API_ROUTES.products.base}/user/${id}`;
         const res = await api.get<Product>(url);
         if (cancelled) return;
-        setProduct(res.data);
-        setCurrencyCode(res.data?.currencyCode || user?.currencyCode || 'USD');
+  setProduct(res.data);
+  setCurrencyCode(res.data?.currencyCode || user?.currencyCode || 'USD');
+  // الباك القديم يعيد الأسعار بالدولار ويحتفظ بعملة المستخدم منفصلة، لذلك نخزن عملة الأساس (USD) مع دعم أي حقل جديد مستقبلي يحددها صراحةً.
+  const baseCode = (res.data as any)?.baseCurrencyCode || (res.data as any)?.baseCurrency || (res.data as any)?.currencyBase || 'USD';
+  setProductBaseCurrency(baseCode || 'USD');
         // تهيئة معرف أول باقة وحدات إن لم يكن محدداً
         const firstUnit = res.data?.packages?.find(p => p.isActive && p.type === 'unit');
         setUnitSelectedPkgId(prev => prev || (firstUnit?.id || ''));
@@ -129,13 +133,29 @@ export default function ProductDetailsPage() {
     return () => { cancelled = true; };
   }, [id, user]);
 
-  const getPrice = (pkg: Package) => {
+  const getBasePrice = (pkg: Package) => {
     const gid = userPriceGroupId;
     if (gid && Array.isArray(pkg.prices) && pkg.prices.length) {
-      const match = pkg.prices.find(p => p.groupId === gid);
-      if (match && typeof match.price === 'number') return Number(match.price);
+      const match = pkg.prices.find(p => (p as any).groupId === gid || (p as any).priceGroupId === gid);
+      if (match && typeof (match as any).price === 'number') return Number((match as any).price);
     }
     return Number(pkg.basePrice ?? 0);
+  };
+
+  const convertPriceValue = (value: number) => {
+    if (Number.isNaN(value)) return 0;
+  const baseCode = productBaseCurrency || 'USD';
+    const targetCode = currencyCode || baseCode;
+    if (!targetCode || baseCode === targetCode) return value;
+    if (baseCode === 'USD' && targetCode !== 'USD') {
+      return value * conversionRate;
+    }
+    return value;
+  };
+
+  const getDisplayPrice = (pkg: Package) => {
+    const baseValue = getBasePrice(pkg);
+    return convertPriceValue(baseValue);
   };
 
   const openModal = (pkg: Package) => {
@@ -160,7 +180,7 @@ export default function ProductDetailsPage() {
 
   const confirmBuy = async () => {
     if (!selectedPackage || !product) return;
-    const price = getPrice(selectedPackage);
+  const price = getDisplayPrice(selectedPackage);
     if (!gameId.trim()) return alert('الرجاء إدخال معرف اللعبة');
 
     try {
@@ -176,7 +196,7 @@ export default function ProductDetailsPage() {
       
   await refreshProfile();
       router.push('/orders');
-      alert(`تم إنشاء الطلب: ${selectedPackage.name} بسعر ${formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: true, symbolBefore: true })}`);
+  alert(`تم إنشاء الطلب: ${selectedPackage.name} بسعر ${formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: true, symbolBefore: true })}`);
     } catch {
       alert('فشل في تنفيذ الطلب');
     } finally {
@@ -219,20 +239,8 @@ export default function ProductDetailsPage() {
     async function loadUnitCardPrices() {
       if (!activePkgs.length) return;
       const code = currencyCode || 'USD';
-      const baseCode = product?.currencyCode || 'USD';
-      // إذا كان الباك يعيد الأسعار بعملة ليست USD فلا نقوم بأي تحويل (لتجنب الضرب المزدوج)
-      let rate = 1;
-      if (baseCode === 'USD' && code !== 'USD') {
-        try {
-          const res = await api.get<any[]>(API_ROUTES.currencies.base);
-          const list = Array.isArray(res.data) ? res.data : [];
-          const row = list.find((c:any) => (c.code || c.currency || c.symbol) === code);
-          if (row) {
-            const r = Number(row.rate ?? row.factor ?? row.value ?? row.usdRate ?? 0);
-            if (r > 0) rate = r;
-          }
-        } catch { /* ignore */ }
-      }
+  const baseCode = productBaseCurrency || 'USD';
+      const shouldConvert = baseCode === 'USD' && code !== 'USD';
       const map: Record<string, number> = {};
       for (const p of unitPkgs) {
         let eff: number | null = null;
@@ -250,7 +258,7 @@ export default function ProductDetailsPage() {
         // eff هنا هو السعر بالدولار من الصف. نقوم بالتحويل مرة واحدة فقط.
         if (eff != null) {
           // إذا كانت العملة الأساس ليست USD نعتبر القيمة eff نهائية بالفعل.
-          const converted = (baseCode === 'USD' && code !== 'USD') ? eff * rate : eff;
+          const converted = shouldConvert ? eff * conversionRate : eff;
           map[p.id] = converted;
           // (debug cardPrice logging removed)
         }
@@ -259,7 +267,7 @@ export default function ProductDetailsPage() {
     }
     loadUnitCardPrices();
     return () => { cancelled = true; };
-  }, [activePkgs.length, currencyCode, userPriceGroupId, unitPricesSignature, product?.currencyCode]);
+  }, [activePkgs.length, currencyCode, userPriceGroupId, unitPricesSignature, productBaseCurrency, conversionRate]);
 
   // ====== منطق التسعير للوحدات داخل المودال ======
   const digits = getDecimalDigits();
@@ -293,26 +301,32 @@ export default function ProductDetailsPage() {
   // أعد التحميل عند تغير الصف أو المجموعة
   }, [unitModalOpen, userPriceGroupId, selectedUnitPackage?.id, unitPricesSignature]);
 
-  // جلب معدل التحويل للعملة الحالية إذا لم تكن USD
   useEffect(() => {
     let cancelled = false;
-    async function loadRate() {
-      if (!unitModalOpen) return;
-      const code = currencyCode || 'USD';
-      if (code === 'USD') { setCurrencyRate(1); return; }
+    async function loadConversionRate() {
+  const baseCode = productBaseCurrency || 'USD';
+      const targetCode = currencyCode || baseCode;
+      if (!targetCode || baseCode === targetCode) {
+        setConversionRate(1);
+        return;
+      }
+      if (baseCode !== 'USD') {
+        setConversionRate(1);
+        return;
+      }
       try {
         const res = await api.get<any[]>(API_ROUTES.currencies.base);
         const list = Array.isArray(res.data) ? res.data : [];
-        const row = list.find((c:any) => (c.code || c.currency || c.symbol) === code);
-        if (!cancelled && row) {
-          const r = Number(row.rate ?? row.factor ?? row.value ?? row.usdRate ?? 0);
-          if (r > 0) setCurrencyRate(r); else setCurrencyRate(1);
-        }
-      } catch { /* تجاهل */ }
+        const row = list.find((c:any) => (c.code || c.currency || c.symbol) === targetCode);
+        const rate = Number(row?.rate ?? row?.factor ?? row?.value ?? row?.usdRate ?? 0);
+        if (!cancelled) setConversionRate(rate > 0 ? rate : 1);
+      } catch {
+        if (!cancelled) setConversionRate(1);
+      }
     }
-    loadRate();
+    loadConversionRate();
     return () => { cancelled = true; };
-  }, [unitModalOpen, currencyCode]);
+  }, [productBaseCurrency, currencyCode]);
 
   const unitQtyNum = unitQuantity === '' ? null : Number(unitQuantity);
   const unitValidNumber = unitQtyNum != null && !isNaN(unitQtyNum);
@@ -345,14 +359,14 @@ export default function ProductDetailsPage() {
   // عرض الأسعار بعملة المستخدم (كما في عرض الباقات خارج المودال)
   const unitPriceDisplay = (() => {
     if (effectiveUnitPriceUSD == null) return '—';
-    const baseCode = product?.currencyCode || 'USD';
+  const baseCode = productBaseCurrency || 'USD';
     // إذا كان الباك ليس USD لا نضرب ثانيةً
     if (baseCode !== 'USD') {
       return formatMoney(effectiveUnitPriceUSD, currencyCode, { fractionDigits: 2, withSymbol: false });
     }
     // الأساس USD: لو واجهة تعرض بعملة أخرى نستعمل المعدل
     if (currencyCode !== 'USD') {
-      return formatMoney(effectiveUnitPriceUSD * currencyRate, currencyCode, { fractionDigits: 2, withSymbol: false });
+      return formatMoney(effectiveUnitPriceUSD * conversionRate, currencyCode, { fractionDigits: 2, withSymbol: false });
     }
     return formatMoney(effectiveUnitPriceUSD, currencyCode, { fractionDigits: 2, withSymbol: false });
   })();
@@ -361,7 +375,7 @@ export default function ProductDetailsPage() {
     const baseCode = product?.currencyCode || 'USD';
     let totalBase = effectiveUnitPriceUSD * (unitQtyNum || 0);
     if (baseCode === 'USD' && currencyCode !== 'USD') {
-      totalBase = totalBase * currencyRate;
+      totalBase = totalBase * conversionRate;
     }
     return formatMoney(totalBase, currencyCode, { fractionDigits: 2, withSymbol: false });
   })();
@@ -420,7 +434,7 @@ export default function ProductDetailsPage() {
               {activePkgs.map((pkg) => {
                 const price = pkg.type === 'unit'
                   ? (unitCardPrices[pkg.id] ?? null) // القيمة هنا أصبحت بالعملة النهائية (TRY مثلاً) بعد التحويل مرة واحدة.
-                  : getPrice(pkg);
+                  : getDisplayPrice(pkg);
                 return (
                   <div
                     key={pkg.id}
@@ -478,7 +492,7 @@ export default function ProductDetailsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="card w-80 p-6 text-center">
             <h2 className="text-base font-bold mb-2">
-              {selectedPackage.name} - {formatMoney(getPrice(selectedPackage), currencyCode, { fractionDigits: 2, withSymbol: true, symbolBefore: true })}
+              {selectedPackage.name} - {formatMoney(getDisplayPrice(selectedPackage), currencyCode, { fractionDigits: 2, withSymbol: true, symbolBefore: true })}
             </h2>
 
             <p className="mb-2 text-text-secondary">أدخل معرف اللعبة / التطبيق</p>

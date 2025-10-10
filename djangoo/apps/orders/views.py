@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import logging
+import uuid
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+
+from django.db import transaction
 from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -13,6 +18,7 @@ from django.utils import timezone
 from django.db import connection
 from datetime import datetime
 from .serializers import (
+    OrderCreateRequestSerializer,
     OrderListItemSerializer,
     AdminOrderListItemSerializer,
     OrdersListResponseSerializer,
@@ -26,6 +32,24 @@ from .serializers import (
 )
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from django.conf import settings
+from apps.users.models import User as DjangoUser
+from apps.users.legacy_models import LegacyUser
+from apps.products.models import (
+    Product as TenantProduct,
+    ProductPackage as TenantProductPackage,
+    PackagePrice,
+)
+from apps.currencies.models import Currency
+from .services import (
+    apply_order_status_change,
+    OrderStatusError,
+    OrderNotFoundError,
+    TenantMismatchError,
+    LegacyUserMissingError,
+    OverdraftExceededError,
+)
+
+logger = logging.getLogger(__name__)
 try:
     from apps.tenants.models import TenantDomain  # type: ignore
 except Exception:
@@ -55,6 +79,115 @@ def _resolve_tenant_id(request) -> str | None:
     return None
 
 
+def _resolve_legacy_user_for_request(request, user, tenant_id, *, required=True) -> LegacyUser | None:
+    if not getattr(user, 'is_authenticated', False):
+        if required:
+            raise PermissionDenied('AUTH_REQUIRED')
+        return None
+
+    legacy_user: LegacyUser | None = None
+    candidate_ids: set[uuid.UUID] = set()
+
+    def _collect_candidate(raw_value) -> None:
+        if not raw_value:
+            return
+        try:
+            candidate_ids.add(uuid.UUID(str(raw_value)))
+        except (ValueError, TypeError):
+            logger.debug('Ignoring non-UUID legacy user candidate', extra={'value': raw_value})
+
+    _collect_candidate(getattr(user, 'id', None))
+    header_override = request.META.get('HTTP_X_LEGACY_USER_ID')
+    if not header_override:
+        try:
+            header_override = request.headers.get('X-Legacy-User-Id')  # type: ignore[attr-defined]
+        except Exception:
+            header_override = None
+    _collect_candidate(header_override)
+    _collect_candidate(getattr(user, 'legacy_user_id', None))
+
+    for candidate_id in candidate_ids:
+        try:
+            legacy_user = LegacyUser.objects.get(id=candidate_id, tenant_id=tenant_id)
+            break
+        except LegacyUser.DoesNotExist:
+            continue
+
+    if legacy_user is None:
+        fallback_qs = LegacyUser.objects.filter(tenant_id=tenant_id)
+        user_email = getattr(user, 'email', None)
+        if user_email:
+            legacy_user = fallback_qs.filter(email__iexact=user_email).first()
+        if legacy_user is None:
+            username = getattr(user, 'username', None)
+            if username:
+                legacy_user = fallback_qs.filter(username__iexact=username).first()
+
+    if legacy_user is None and required:
+        raise NotFound('المستخدم غير موجود ضمن هذا المستأجر')
+
+    return legacy_user
+
+
+def _resolve_price_group_id(*, django_user, legacy_user) -> uuid.UUID | None:
+    for source in (getattr(django_user, 'price_group_id', None), getattr(legacy_user, 'price_group_id', None)):
+        if not source:
+            continue
+        try:
+            return uuid.UUID(str(source))
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def _get_effective_package_price_usd(pkg, tenant_id, price_group_id: uuid.UUID | None) -> Decimal:
+    qs = PackagePrice.objects.filter(tenant_id=tenant_id, package_id=pkg.id)
+    row = None
+    if price_group_id:
+        row = qs.filter(price_group_id=price_group_id).first()
+    if row is None:
+        row = qs.first()
+
+    candidate = None
+    if row is not None:
+        unit_val = getattr(row, 'unit_price', None)
+        if unit_val not in (None, ''):
+            candidate = unit_val
+        elif getattr(row, 'price', None) not in (None, ''):
+            candidate = row.price
+
+    if candidate is None:
+        candidate = pkg.base_price or pkg.capital or 0
+
+    try:
+        value = Decimal(candidate)
+    except (InvalidOperation, TypeError, ValueError):
+        value = Decimal('0')
+
+    return value
+
+
+def _resolve_currency_for_user(tenant_id, legacy_user: LegacyUser) -> tuple[str, Decimal]:
+    code = (getattr(legacy_user, 'preferred_currency_code', '') or '').strip().upper()
+    currency_row: Currency | None = None
+    if getattr(legacy_user, 'currency_id', None):
+        currency_row = Currency.objects.filter(tenant_id=tenant_id, id=legacy_user.currency_id).first()
+    if currency_row is None and code:
+        currency_row = Currency.objects.filter(tenant_id=tenant_id, code__iexact=code).first()
+    if currency_row:
+        code = (currency_row.code or code or 'USD').upper()
+        rate_raw = currency_row.rate or 1
+    else:
+        rate_raw = 1
+    try:
+        rate = Decimal(rate_raw)
+    except (InvalidOperation, TypeError, ValueError):
+        rate = Decimal('1')
+    if rate <= 0:
+        rate = Decimal('1')
+    return (code or 'USD', rate)
+
+
 class MyOrdersListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -68,18 +201,32 @@ class MyOrdersListView(APIView):
         examples=[OpenApiExample('Orders page', value={'items':[{'id':'9d3e...','status':'pending','createdAt':'2025-09-20T12:00:00Z','product':{'id':'a1','name':'Game X'},'package':{'id':'b1','name':'100 Gems','productId':'a1'},'quantity':1,'userIdentifier':'user#123','extraField':None,'orderNo':1001,'priceUSD':10.0,'unitPriceUSD':10.0,'display':{'currencyCode':'USD','totalPrice':10.0,'unitPrice':10.0}}],'pageInfo':{'nextCursor':None,'hasMore':False}})]
     )
     def get(self, request):
-        user = request.user
+        tenant_id_raw = _resolve_tenant_id(request)
+        if not tenant_id_raw:
+            raise ValidationError('TENANT_ID_REQUIRED')
+
+        try:
+            tenant_uuid = uuid.UUID(str(tenant_id_raw))
+        except (ValueError, TypeError):
+            raise ValidationError('TENANT_ID_INVALID')
+
         limit = int(request.query_params.get('limit') or 20)
         limit = max(1, min(limit, 100))
-        cursor = request.query_params.get('cursor') or None
+        cursor_raw = request.query_params.get('cursor') or None
 
-        qs = ProductOrder.objects.filter(user_id=getattr(user, 'id', None)).order_by('-created_at')
+        legacy_user = _resolve_legacy_user_for_request(request, request.user, tenant_uuid, required=False)
+        if legacy_user is None:
+            return Response({ 'items': [], 'pageInfo': { 'nextCursor': None, 'hasMore': False } })
 
-        # simple cursor by created_at ISO string
-        if cursor:
+        qs = ProductOrder.objects.filter(
+            tenant_id=tenant_uuid,
+            user_id=legacy_user.id,
+        ).order_by('-created_at')
+
+        if cursor_raw:
             try:
-                # Expect ISO datetime; retrieve items older than cursor
-                qs = qs.filter(created_at__lt=cursor)
+                cursor_dt = datetime.fromisoformat(cursor_raw)
+                qs = qs.filter(created_at__lt=cursor_dt)
             except Exception:
                 pass
 
@@ -90,6 +237,119 @@ class MyOrdersListView(APIView):
 
         data = OrderListItemSerializer(items, many=True).data
         return Response({ 'items': data, 'pageInfo': { 'nextCursor': next_cursor, 'hasMore': has_more } })
+
+
+class OrdersCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Orders"],
+        request=OrderCreateRequestSerializer,
+        responses={201: OrderListItemSerializer}
+    )
+    def post(self, request):
+        tenant_id = _resolve_tenant_id(request)
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+
+        serializer = OrderCreateRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+
+        quantity_raw = payload.get('quantity') or 1
+        try:
+            quantity = int(quantity_raw)
+        except (TypeError, ValueError):
+            raise ValidationError('الكمية غير صالحة')
+        if quantity <= 0:
+            raise ValidationError('الكمية يجب أن تكون أكبر من صفر')
+
+        try:
+            tenant_uuid = uuid.UUID(str(tenant_id))
+        except (ValueError, TypeError):
+            raise ValidationError('TENANT_ID_INVALID')
+
+        product_id = payload['productId']
+        package_id = payload['packageId']
+        user_identifier = (payload.get('userIdentifier') or '').strip() or None
+        extra_field = (payload.get('extraField') or '').strip() or None
+
+        request_user = request.user
+
+        with transaction.atomic():
+            legacy_user = _resolve_legacy_user_for_request(request, request_user, tenant_uuid, required=True)
+            if legacy_user is None:
+                raise NotFound('المستخدم غير موجود ضمن هذا المستأجر')
+
+            product = TenantProduct.objects.filter(id=product_id, tenant_id=tenant_uuid).first()
+            if not product:
+                raise NotFound('المنتج غير موجود')
+
+            package = TenantProductPackage.objects.filter(id=package_id, tenant_id=tenant_uuid).first()
+            if not package:
+                raise NotFound('الباقة غير موجودة')
+
+            if str(package.product_id) != str(product.id):
+                raise ValidationError('الباقة لا تنتمي إلى هذا المنتج')
+
+            price_group_id = _resolve_price_group_id(django_user=request_user, legacy_user=legacy_user)
+            unit_price_usd = _get_effective_package_price_usd(package, tenant_uuid, price_group_id)
+            if unit_price_usd <= 0:
+                raise ValidationError('السعر غير متاح لهذه الباقة')
+
+            price_quant = Decimal('0.0001')
+            try:
+                unit_price_usd = unit_price_usd.quantize(price_quant, ROUND_HALF_UP)
+            except (InvalidOperation, AttributeError):
+                unit_price_usd = Decimal('0')
+            if unit_price_usd <= 0:
+                raise ValidationError('السعر غير متاح لهذه الباقة')
+
+            quantity_dec = Decimal(quantity)
+            total_usd = (unit_price_usd * quantity_dec).quantize(price_quant, ROUND_HALF_UP)
+
+            currency_code, currency_rate = _resolve_currency_for_user(tenant_uuid, legacy_user)
+            total_user = (total_usd * currency_rate).quantize(Decimal('0.01'), ROUND_HALF_UP)
+
+            legacy_user_locked = LegacyUser.objects.select_for_update().get(id=legacy_user.id, tenant_id=tenant_uuid)
+            available_user_balance = Decimal(legacy_user_locked.balance or 0) + Decimal(legacy_user_locked.overdraft_limit or 0)
+            if total_user > available_user_balance:
+                raise ValidationError('الرصيد غير كافٍ لتنفيذ الطلب')
+
+            new_legacy_balance = (Decimal(legacy_user_locked.balance or 0) - total_user).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            legacy_user_locked.balance = new_legacy_balance
+            legacy_user_locked.save(update_fields=['balance'])
+
+            django_user_locked = DjangoUser.objects.select_for_update().get(id=request_user.id)
+            django_balance = Decimal(django_user_locked.balance or 0)
+            new_django_balance = (django_balance - total_user).quantize(Decimal('0.000001'), ROUND_HALF_UP)
+            django_user_locked.balance = new_django_balance
+            django_user_locked.save(update_fields=['balance'])
+            try:
+                request_user.balance = new_django_balance
+            except Exception:
+                pass
+
+            order = ProductOrder.objects.create(
+                id=uuid.uuid4(),
+                tenant_id=tenant_uuid,
+                user_id=legacy_user_locked.id,
+                product_id=product.id,
+                package_id=package.id,
+                quantity=quantity,
+                status='pending',
+                price=total_usd,
+                sell_price_currency=currency_code or 'USD',
+                sell_price_amount=total_user,
+                created_at=timezone.now(),
+                user_identifier=user_identifier,
+                extra_field=extra_field,
+                notes=[],
+                notes_count=0,
+            )
+
+        created = ProductOrder.objects.select_related('product', 'package').get(id=order.id)
+        return Response(OrderListItemSerializer(created).data, status=201)
 
 
 class AdminPendingOrdersCountView(APIView):
@@ -165,7 +425,7 @@ class AdminOrdersListView(APIView):
             except Exception:
                 pass
 
-        items = list(qs.select_related('product', 'package')[: limit + 1])
+        items = list(qs.select_related('product', 'package', 'user')[: limit + 1])
         has_more = len(items) > limit
         items = items[:limit]
         next_cursor = items[-1].created_at.isoformat() if has_more and items else None
@@ -288,33 +548,32 @@ class AdminOrderDetailsView(APIView):
         if action not in ('approved', 'rejected'):
             raise ValidationError('الحالة غير صحيحة')
 
+        tenant_id = _resolve_tenant_id(request)
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+
         try:
-            o = ProductOrder.objects.select_related('user').get(id=id)
-        except ProductOrder.DoesNotExist:
+            result = apply_order_status_change(
+                order_id=id,
+                next_status=action,
+                expected_tenant_id=tenant_id,
+                note=note or None,
+            )
+        except OrderNotFoundError:
             raise NotFound('الطلب غير موجود')
-        self._assert_tenant(request, o)
+        except TenantMismatchError as exc:
+            raise PermissionDenied(str(exc) or 'لا تملك صلاحية على هذا الطلب')
+        except LegacyUserMissingError:
+            raise ValidationError('المستخدم المرتبط بالطلب غير موجود')
+        except OverdraftExceededError:
+            raise ValidationError('الرصيد غير كافٍ لإعادة خصم الطلب (تجاوز حد السالب المسموح)')
+        except OrderStatusError as exc:
+            raise ValidationError(str(exc) or 'تعذر تحديث حالة الطلب')
+        except Exception as exc:  # noqa: BLE001 - surface unexpected issues gracefully
+            logger.exception('Unexpected error while changing order status', extra={'order_id': id})
+            raise ValidationError('تعذر تحديث حالة الطلب') from exc
 
-        # Soft update
-        o.status = action
-        if note:
-            o.manual_note = (note or '')[:500]
-            # surface to requester similar to Nest behavior
-            o.provider_message = (note or '')[:250]
-            o.last_message = f"Manual {action}: {note[:200]}"
-            # append a note entry
-            import datetime
-            n = { 'by': 'admin', 'text': f"Manual {action}: {note}", 'at': datetime.datetime.utcnow().isoformat() }
-            notes = list(o.notes or [])
-            notes.append(n)
-            o.notes = notes
-            if o.notes_count is not None:
-                try:
-                    o.notes_count = int(o.notes_count) + 1
-                except Exception:
-                    pass
-        o.save()
-
-        return Response({ 'ok': True, 'id': str(o.id), 'status': o.status })
+        return Response({ 'ok': True, 'id': str(result.order.id), 'status': result.order.status })
 
 
 class AdminOrderSyncExternalView(APIView):
@@ -498,20 +757,34 @@ class AdminOrdersBulkApproveView(_AdminOrdersBulkBaseView):
         note = str(request.data.get('note') or '').strip()
         tid = self._tenant(request)
         updated = 0
+        errors: list[dict[str, str]] = []
         for oid in ids:
             try:
-                o = ProductOrder.objects.get(id=oid, tenant_id=tid)
-            except ProductOrder.DoesNotExist:
+                apply_order_status_change(
+                    order_id=oid,
+                    next_status='approved',
+                    expected_tenant_id=tid,
+                    note=note or None,
+                )
+                updated += 1
+            except OrderNotFoundError:
                 continue
-            o.status = 'approved'
-            if note:
-                o.manual_note = (note or '')[:500]
-            try:
-                o.save(update_fields=['status','manual_note'])
-            except Exception:
-                o.save()
-            updated += 1
-        return Response({ 'ok': True, 'count': updated })
+            except TenantMismatchError as exc:
+                errors.append({'id': oid, 'error': str(exc) or 'TENANT_MISMATCH'})
+            except LegacyUserMissingError:
+                errors.append({'id': oid, 'error': 'LEGACY_USER_MISSING'})
+            except OverdraftExceededError:
+                errors.append({'id': oid, 'error': 'OVERDRAFT_EXCEEDED'})
+            except OrderStatusError as exc:
+                errors.append({'id': oid, 'error': str(exc) or 'STATUS_ERROR'})
+            except Exception as exc:  # noqa: BLE001
+                logger.exception('Unexpected error during bulk approve', extra={'order_id': oid})
+                errors.append({'id': oid, 'error': 'UNEXPECTED_ERROR'})
+
+        payload = { 'ok': True, 'count': updated }
+        if errors:
+            payload['errors'] = errors
+        return Response(payload)
 
 
 class AdminOrdersBulkRejectView(_AdminOrdersBulkBaseView):
@@ -521,20 +794,34 @@ class AdminOrdersBulkRejectView(_AdminOrdersBulkBaseView):
         note = str(request.data.get('note') or '').strip()
         tid = self._tenant(request)
         updated = 0
+        errors: list[dict[str, str]] = []
         for oid in ids:
             try:
-                o = ProductOrder.objects.get(id=oid, tenant_id=tid)
-            except ProductOrder.DoesNotExist:
+                apply_order_status_change(
+                    order_id=oid,
+                    next_status='rejected',
+                    expected_tenant_id=tid,
+                    note=note or None,
+                )
+                updated += 1
+            except OrderNotFoundError:
                 continue
-            o.status = 'rejected'
-            if note:
-                o.manual_note = (note or '')[:500]
-            try:
-                o.save(update_fields=['status','manual_note'])
-            except Exception:
-                o.save()
-            updated += 1
-        return Response({ 'ok': True, 'count': updated })
+            except TenantMismatchError as exc:
+                errors.append({'id': oid, 'error': str(exc) or 'TENANT_MISMATCH'})
+            except LegacyUserMissingError:
+                errors.append({'id': oid, 'error': 'LEGACY_USER_MISSING'})
+            except OverdraftExceededError:
+                errors.append({'id': oid, 'error': 'OVERDRAFT_EXCEEDED'})
+            except OrderStatusError as exc:
+                errors.append({'id': oid, 'error': str(exc) or 'STATUS_ERROR'})
+            except Exception as exc:  # noqa: BLE001
+                logger.exception('Unexpected error during bulk reject', extra={'order_id': oid})
+                errors.append({'id': oid, 'error': 'UNEXPECTED_ERROR'})
+
+        payload = { 'ok': True, 'count': updated }
+        if errors:
+            payload['errors'] = errors
+        return Response(payload)
 
 
 class AdminOrdersBulkManualView(_AdminOrdersBulkBaseView):

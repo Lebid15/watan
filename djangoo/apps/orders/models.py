@@ -96,6 +96,7 @@ class ProductOrder(models.Model):
     sent_at = models.DateTimeField(null=True, db_column='sentAt')
     completed_at = models.DateTimeField(null=True, db_column='completedAt')
     duration_ms = models.IntegerField(null=True, db_column='durationMs')
+    last_sync_at = models.DateTimeField(null=True, db_column='lastSyncAt')
     fx_locked = models.BooleanField(default=False, db_column='fxLocked')
     approved_local_date = models.DateField(null=True, db_column='approvedLocalDate')
     notes_count = models.IntegerField(default=0, db_column='notesCount')

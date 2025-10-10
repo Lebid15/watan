@@ -121,21 +121,28 @@ export default function AdminUsersPage() {
       alert(t('users.topup.errors.methodRequired'));
       return;
     }
+    
+    const payload = {
+      userId: topupUser.id,
+      amount,
+      methodId: selectedMethodId,
+      note: topupNote?.trim() ? topupNote.trim() : undefined,
+    };
+    
+    console.log('[TOPUP] Sending payload:', payload);
+    
     try {
-      await api.post(API_ROUTES.admin.deposits.topup, {
-        userId: topupUser.id,
-        amount,
-        methodId: selectedMethodId,
-        note: topupNote?.trim() ? topupNote.trim() : undefined,
-      });
+      const response = await api.post(API_ROUTES.admin.deposits.topup, payload);
+      console.log('[TOPUP] Success:', response.data);
       setTopupOpen(false);
       setTopupUser(null);
       setTopupAmount('');
       setSelectedMethodId('');
       setTopupNote('');
       await loadUsers();
-    } catch {
-      alert(t('users.topup.errors.fail'));
+    } catch (error: any) {
+      console.error('[TOPUP] Error:', error.response?.data || error.message);
+      alert(t('users.topup.errors.fail') + ': ' + (error.response?.data?.error || error.response?.data?.message || error.message));
     }
   };
 
