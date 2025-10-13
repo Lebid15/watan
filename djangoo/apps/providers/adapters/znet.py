@@ -165,7 +165,10 @@ class ZnetAdapter:
         path = self._path('servis/pin_listesi.php', 'DJ_ZNET_CATALOG_PATH')
         url = f"{self._base(creds)}/{path}"
         params = self._auth_params(creds)
+        print(f"🔍 [ZNET list_products] Calling: {url}")
+        print(f"   - Auth params: kod={params.get('kod', 'MISSING')[:10]}..., sifre={params.get('sifre', 'MISSING')[:10]}...")
         resp = requests.get(url, headers=self._headers(creds), params=params, timeout=DEFAULT_TIMEOUT)
+        print(f"   - HTTP Status: {resp.status_code}")
         data = self._handle(resp)
 
         if not isinstance(data, dict) or data.get('success') is not True or not isinstance(data.get('result'), list):
@@ -257,20 +260,49 @@ class ZnetAdapter:
         path = self._path('servis/pin_ekle.php', 'DJ_ZNET_ORDERS_PATH')
         url = f"{self._base(creds)}/{path}"
         params = self._auth_params(creds)
-        referans = payload.get('referans') or payload.get('orderId')
-        if not referans:
+        
+        # Generate numeric referans like backend does (timestamp + random)
+        # Provider may not accept UUID format
+        import time
+        import random
+        referans = str(int(time.time() * 1000)) + str(random.randint(100, 999))
+        
+        # Store original orderId for tracking
+        original_order_id = payload.get('referans') or payload.get('orderId')
+        
+        if not original_order_id:
             raise ZnetError('Missing referans/orderId for Znet place_order')
         # Build query params
+        # Extract oyun and kupur from payload.params (prepared by services.py)
+        params_dict = payload.get('params', {})
+        oyun = params_dict.get('oyun') or provider_package_id
+        kupur = params_dict.get('kupur')
+        
         q: Dict[str, Any] = {
-            'oyun': provider_package_id,  # oyun_bilgi_id
+            'oyun': oyun,  # oyun_bilgi_id from metadata
             'referans': referans,
         }
-        if payload.get('kupur') is not None:
-            q['kupur'] = payload.get('kupur')
+        if kupur is not None:
+            q['kupur'] = kupur
         if payload.get('userIdentifier'):
             q['musteri_tel'] = payload.get('userIdentifier')
-        if payload.get('extraField'):
-            q['oyuncu_bilgi'] = payload.get('extraField')
+        # Use oyuncu_bilgi from params if available, otherwise from extraField
+        oyuncu_bilgi = params_dict.get('oyuncu_bilgi') or payload.get('extraField')
+        if oyuncu_bilgi:
+            q['oyuncu_bilgi'] = oyuncu_bilgi
+        
+        print(f"🌐 [ZNET] Final request URL params:")
+        print(f"   - oyun: {q.get('oyun')}")
+        print(f"   - kupur: {q.get('kupur')}")
+        print(f"   - oyuncu_bilgi: {q.get('oyuncu_bilgi')}")
+        print(f"   - referans: {q.get('referans')} (numeric, generated)")
+        print(f"   - original_order_id: {original_order_id} (UUID, for tracking)")
+        print(f"   - musteri_tel: {q.get('musteri_tel')}")
+        print(f"🔐 [ZNET] Auth params:")
+        print(f"   - kod: {params.get('kod', 'MISSING')[:10]}... (length: {len(params.get('kod', ''))})")
+        print(f"   - sifre: {params.get('sifre', 'MISSING')[:10]}... (length: {len(params.get('sifre', ''))})")
+        print(f"📍 [ZNET] Request URL: {url}")
+        
         # Prefer GET to match provider doc
         r = requests.get(url, headers=self._headers(creds), params={**params, **q}, timeout=DEFAULT_TIMEOUT)
         text = self._handle(r)
@@ -303,7 +335,16 @@ class ZnetAdapter:
             # Provider may return code|message (e.g., 3|Açıklama)
             note = raw
             status = 'failed'
-        return { 'externalOrderId': ext_id, 'status': status, 'note': note, 'balance': balance, 'cost': cost }
+        
+        # Return original_order_id for tracking in our system
+        return { 
+            'externalOrderId': original_order_id,  # Use original UUID for tracking
+            'providerReferans': referans,  # Store provider's numeric referans
+            'status': status, 
+            'note': note, 
+            'balance': balance, 
+            'cost': cost 
+        }
 
     def fetch_status(self, creds: ZnetCredentials, referans: str):
         if self._sim():

@@ -246,16 +246,31 @@ export class ReportsAdminController {
       }
     };
 
-    // 5) العدّادات (createdAt) — مع tenant
-    const countsQb = this.ordersRepo.createQueryBuilder('o')
-      .select('COUNT(*)', 'total')
-      .addSelect(`SUM(CASE WHEN "o"."status" = 'approved' THEN 1 ELSE 0 END)`, 'approved')
-      .addSelect(`SUM(CASE WHEN "o"."status" = 'rejected' THEN 1 ELSE 0 END)`, 'rejected')
-      .where(`"o"."tenantId" = :tenantId`, { tenantId })      // ✅ scope
+    // 5) العدّادات - نستخدم نفس المعيار: approvedLocalDate للمقبولة فقط
+    // المقبولة: حسب approvedLocalDate
+    const approvedCountQb = this.ordersRepo.createQueryBuilder('o')
+      .select('COUNT(*)', 'approved')
+      .where(`"o"."tenantId" = :tenantId`, { tenantId })
+      .andWhere(`"o"."status" = 'approved'`)
+      .andWhere(`"o"."approvedLocalDate" BETWEEN :start AND :end`, { start: startAt, end: endAt });
+    if (userUUID) approvedCountQb.andWhere(`"o"."userId" = :userId`, { userId: userUUID });
+    providerFilter(approvedCountQb);
+    const approvedCountRow = await approvedCountQb.getRawOne<{ approved: string }>();
+
+    // المرفوضة: نفس النطاق الزمني (يمكن استخدام createdAt أو تاريخ الرفض إذا كان موجود)
+    const rejectedCountQb = this.ordersRepo.createQueryBuilder('o')
+      .select('COUNT(*)', 'rejected')
+      .where(`"o"."tenantId" = :tenantId`, { tenantId })
+      .andWhere(`"o"."status" = 'rejected'`)
       .andWhere(`"o"."createdAt" BETWEEN :start AND :end`, { start: startAt, end: endAt });
-    if (userUUID) countsQb.andWhere(`"o"."userId" = :userId`, { userId: userUUID });
-    providerFilter(countsQb);
-    const countsRow = await countsQb.getRawOne<{ total: string; approved: string; rejected: string }>();
+    if (userUUID) rejectedCountQb.andWhere(`"o"."userId" = :userId`, { userId: userUUID });
+    providerFilter(rejectedCountQb);
+    const rejectedCountRow = await rejectedCountQb.getRawOne<{ rejected: string }>();
+
+    // المجموع = المقبولة + المرفوضة
+    const approvedCount = Number(approvedCountRow?.approved ?? 0);
+    const rejectedCount = Number(rejectedCountRow?.rejected ?? 0);
+    const totalCount = approvedCount + rejectedCount;
 
     // 6) الإجماليات — من القيم المجمّدة + approvedLocalDate (مع tenant)
     const approvedQb = this.ordersRepo.createQueryBuilder('o')
@@ -303,9 +318,9 @@ export class ReportsAdminController {
           view: 'usd_only',
         },
         counts: {
-          total: Number(countsRow?.total ?? 0),
-          approved: Number(countsRow?.approved ?? 0),
-          rejected: Number(countsRow?.rejected ?? 0),
+          total: totalCount,
+          approved: approvedCount,
+          rejected: rejectedCount,
         },
         totalsUSD: {
           cost: Number.isFinite(costUsd) ? +costUsd.toFixed(2) : 0,
@@ -327,9 +342,9 @@ export class ReportsAdminController {
           view: 'default',
         },
         counts: {
-          total: Number(countsRow?.total ?? 0),
-          approved: Number(countsRow?.approved ?? 0),
-          rejected: Number(countsRow?.rejected ?? 0),
+          total: totalCount,
+          approved: approvedCount,
+          rejected: rejectedCount,
         },
         totalsTRY: {
           cost: Number.isFinite(totalCostTRY) ? +totalCostTRY.toFixed(2) : 0,

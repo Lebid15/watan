@@ -33,6 +33,8 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
     "drf_spectacular",
+    "django_celery_results",
+    "django_celery_beat",
     "apps.core",
     "apps.tenancy",
     "apps.users",
@@ -213,4 +215,25 @@ DEFAULT_FROM_EMAIL = os.getenv("DJANGO_DEFAULT_FROM_EMAIL", "noreply@watan.local
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
 
 # Password reset token TTL in minutes
+PASSWORD_RESET_TOKEN_TTL = int(os.getenv("DJANGO_PASSWORD_RESET_TOKEN_TTL", "60"))
+
+# ============================================================================
+# CELERY CONFIGURATION
+# ============================================================================
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_CACHE_BACKEND = 'default'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Damascus'
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes
+CELERY_TASK_ALWAYS_EAGER = False  # Set to True for testing without worker
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# Celery Beat (Periodic Tasks)
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
 PASSWORD_RESET_TOKEN_TTL_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_MINUTES", "60"))

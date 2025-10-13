@@ -117,41 +117,71 @@ class AdminReportsProfitsView(APIView):
         provider = (request.query_params.get('provider') or '').strip()
         view = (request.query_params.get('view') or '').strip()
 
-        qs = ProductOrder.objects.filter(
-            tenant_id=tenant_id,
+        # ✅ إصلاح: استخدام approved_local_date للطلبات المقبولة بدلاً من created_at
+        # هذا يضمن تطابق العدادات مع الإجماليات المالية
+        
+        # بناء الاستعلام الأساسي (فقط للفلترة المشتركة)
+        base_filters = {'tenant_id': tenant_id}
+        if user_id:
+            base_filters['user_id'] = user_id
+        
+        # فلترة المزود: يدوي = null/فارغ، وإلا نستخدم ID المزود
+        provider_q_approved = Q()
+        provider_q_rejected = Q()
+        if provider:
+            if provider.lower() == 'manual':
+                # الطلبات اليدوية: provider_id فارغ أو null
+                provider_q_approved = Q(provider_id__isnull=True) | Q(provider_id='')
+                provider_q_rejected = Q(provider_id__isnull=True) | Q(provider_id='')
+            else:
+                # مزود محدد
+                provider_q_approved = Q(provider_id=provider)
+                provider_q_rejected = Q(provider_id=provider)
+
+        # الطلبات المقبولة: نستخدم approved_local_date (تاريخ الموافقة)
+        approved_qs = ProductOrder.objects.filter(
+            **base_filters,
+            status='approved',
+            approved_local_date__gte=dfrom,
+            approved_local_date__lte=dto,
+        ).filter(provider_q_approved)
+
+        # الطلبات المرفوضة: نستخدم created_at (ليس لها تاريخ موافقة)
+        rejected_qs = ProductOrder.objects.filter(
+            **base_filters,
+            status='rejected',
             created_at__date__gte=dfrom,
             created_at__date__lte=dto,
-        )
-        if user_id:
-            qs = qs.filter(user_id=user_id)
-        if provider:
-            qs = qs.filter(provider_id=provider)
+        ).filter(provider_q_rejected)
 
-        # We have sell_price_currency & sell_price_amount; cost may be unknown—use price as cost fallback.
-        # Aggregate USD totals only for now (frontend requests usd_only).
+        # حساب الإجماليات من القيم المجمّدة عند الموافقة
         total_cost_usd = 0.0
         total_sales_usd = 0.0
 
-        # Simple FX shim: treat non-USD as USD using 1:1, or you can extend later.
-        for o in qs.only('sell_price_currency','sell_price_amount','price'):
+        # استخدام القيم المجمّدة من approved orders فقط
+        for o in approved_qs.only('sell_try_at_approval', 'cost_try_at_approval', 'fx_usd_try_at_approval'):
             try:
-                sales_amt = float(o.sell_price_amount or 0)
+                # القيم محفوظة بالليرة التركية عند الموافقة
+                sell_try = float(o.sell_try_at_approval or 0)
+                cost_try = float(o.cost_try_at_approval or 0)
+                fx_rate = float(o.fx_usd_try_at_approval or 35.0)  # سعر الصرف المجمّد
+                
+                # تحويل إلى دولار
+                if fx_rate > 0:
+                    total_sales_usd += (sell_try / fx_rate)
+                    total_cost_usd += (cost_try / fx_rate)
             except Exception:
-                sales_amt = 0.0
-            try:
-                cost_amt = float(o.price or 0)
-            except Exception:
-                cost_amt = 0.0
-            # If currency not USD, assume same numeric value (extend later if needed)
-            total_sales_usd += sales_amt
-            total_cost_usd += cost_amt
+                pass
 
-        profit_usd = round(total_sales_usd - total_cost_usd, 6)
-        counts_total = qs.count()
-        counts_approved = qs.filter(status='approved').count()
-        counts_rejected = qs.filter(status='rejected').count()
+        profit_usd = round(total_sales_usd - total_cost_usd, 2)
+        
+        # العدادات
+        counts_approved = approved_qs.count()
+        counts_rejected = rejected_qs.count()
+        counts_total = counts_approved + counts_rejected
 
         # Stub TRY rate for UI display; if you have a table for FX, plug it here.
+        # يمكن جلبها من جدول العملات لاحقاً
         rate_try = 35.0
 
         if view == 'usd_only':
@@ -163,16 +193,24 @@ class AdminReportsProfitsView(APIView):
                     'userId': user_id or None,
                     'provider': provider or None,
                     'view': 'usd_only',
+                    'basis': 'approvedLocalDate',  # ✅ توضيح المعيار المستخدم
                 },
                 'counts': { 'total': counts_total, 'approved': counts_approved, 'rejected': counts_rejected },
-                'totalsUSD': { 'cost': round(total_cost_usd, 6), 'sales': round(total_sales_usd, 6) },
+                'totalsUSD': { 'cost': round(total_cost_usd, 2), 'sales': round(total_sales_usd, 2) },
                 'profitUSD': profit_usd,
                 'rateTRY': rate_try,
             })
 
         # Default dual display (TRY+USD) - here we only provide USD while keeping shape
         return Response({
-            'filters': { 'range': preset, 'start': dfrom.isoformat(), 'end': dto.isoformat(), 'userId': user_id or None, 'provider': provider or None },
+            'filters': { 
+                'range': preset, 
+                'start': dfrom.isoformat(), 
+                'end': dto.isoformat(), 
+                'userId': user_id or None, 
+                'provider': provider or None,
+                'basis': 'approvedLocalDate',  # ✅ توضيح المعيار المستخدم
+            },
             'counts': { 'total': counts_total, 'approved': counts_approved, 'rejected': counts_rejected },
             'totalsTRY': { 'cost': round(total_cost_usd * rate_try, 2), 'sales': round(total_sales_usd * rate_try, 2) },
             'profit': { 'try': round(profit_usd * rate_try, 2), 'usd': profit_usd, 'rateTRY': rate_try },
@@ -184,17 +222,30 @@ class AdminReportsUsersView(APIView):
 
     @extend_schema(tags=["Admin Reports"], parameters=[OpenApiParameter(name='q', required=False, type=str), OpenApiParameter(name='limit', required=False, type=int)])
     def get(self, request):
+        tenant_id = _resolve_tenant_id(request)
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+        
         from apps.orders.models import LegacyUser
         q = (request.query_params.get('q') or '').strip()
         limit = int(request.query_params.get('limit') or 20)
         limit = max(1, min(limit, 100))
-        qs = LegacyUser.objects.all()
+        
+        # ✅ فلترة المستخدمين حسب tenant_id
+        qs = LegacyUser.objects.filter(tenant_id=tenant_id)
+        
         if q:
             qs = qs.filter(Q(email__icontains=q) | Q(username__icontains=q))
-        items = list(qs.only('id','email','username')[:limit])
+        
+        # ترتيب حسب الأحدث
+        items = list(qs.only('id','email','username').order_by('-id')[:limit])
+        
         def label(u):
-            parts = [getattr(u, 'email', None), getattr(u, 'username', None)]
-            return ' - '.join([p for p in parts if p]) or str(u.id)
+            # عرض اسم المستخدم فقط، أو الإيميل كبديل إذا لم يكن لديه اسم مستخدم
+            username = getattr(u, 'username', None)
+            email = getattr(u, 'email', None)
+            return username or email or str(u.id)
+        
         return Response([{ 'id': str(u.id), 'label': label(u) } for u in items])
 
 
@@ -203,9 +254,33 @@ class AdminReportsProvidersView(APIView):
 
     @extend_schema(tags=["Admin Reports"], responses={200: None})
     def get(self, request):
-        # Providers are referenced from orders.provider_id; derive distinct list
-        qs = ProductOrder.objects.exclude(provider_id=None).exclude(provider_id='').values_list('provider_id', flat=True).distinct()[:200]
-        return Response([{ 'id': p, 'label': p } for p in qs])
+        tenant_id = _resolve_tenant_id(request)
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+        
+        # جلب المزودين من جدول integrations
+        from apps.providers.models import Integration
+        
+        providers = []
+        
+        # إضافة "يدوي" كخيار أول
+        providers.append({ 'id': 'manual', 'label': 'يدوي' })
+        
+        # جلب المزودين من جدول integrations
+        integrations = Integration.objects.filter(
+            tenant_id=tenant_id,
+            enabled=True
+        ).only('id', 'name', 'provider').order_by('name')
+        
+        for integration in integrations:
+            # استخدام الاسم إن وُجد، وإلا نوع المزود
+            label = integration.name or integration.provider or str(integration.id)
+            providers.append({ 
+                'id': str(integration.id), 
+                'label': label
+            })
+        
+        return Response(providers)
 
 
 class AdminReportsOverviewView(APIView):

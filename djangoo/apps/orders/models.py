@@ -108,3 +108,5 @@ class ProductOrder(models.Model):
     approved_local_date = models.DateField(null=True, db_column='approvedLocalDate')
     approved_local_month = models.CharField(max_length=7, null=True, db_column='approvedLocalMonth')
     notes_count = models.IntegerField(default=0, db_column='notesCount')
+    # provider_referans = models.CharField(max_length=255, null=True, db_column='provider_referans')  # Reference ID sent to provider - DISABLED until column is added to DB
+

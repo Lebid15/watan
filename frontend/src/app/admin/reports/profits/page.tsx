@@ -228,12 +228,6 @@ export default function AdminReportsProfitsPage() {
   const profitDisplay = isUsdOnly
     ? fmtNum((data as ProfitsResponseUsdOnly).profitUSD)
     : fmtNum((data as ProfitsResponseDefault|any)?.profit?.try);
-  const rateTRY = isUsdOnly
-    ? (data as ProfitsResponseUsdOnly).rateTRY
-    : (data as ProfitsResponseDefault|any)?.profit?.rateTRY;
-  const profitUsdExplicit = isUsdOnly
-    ? fmtNum((data as ProfitsResponseUsdOnly).profitUSD)
-    : fmtNum((data as ProfitsResponseDefault|any)?.profit?.usd);
 
   return (
     <div className="space-y-4 text-text-primary bg-bg-base p-2">
@@ -346,10 +340,6 @@ export default function AdminReportsProfitsPage() {
 
           <div className="text-text-primary">الربح النهائي (USD)</div>
           <div className="text-left" dir="ltr"><span className="block text-xl font-bold">{profitDisplay} USD</span></div>
-
-          <div className="col-span-2 text-left text-xs text-text-secondary" dir="ltr">
-            (سعر الصرف الحالي: 1 USD = {rateTRY ?? '—'} TRY)
-          </div>
         </div>
 
       </section>

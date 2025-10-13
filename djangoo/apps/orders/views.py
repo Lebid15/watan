@@ -348,6 +348,21 @@ class OrdersCreateView(APIView):
                 notes_count=0,
             )
 
+        # محاولة التوجيه التلقائي للمزود الخارجي
+        from apps.orders.services import try_auto_dispatch
+        print(f"\n🔄 Attempting auto-dispatch for order: {order.id}")
+        try:
+            try_auto_dispatch(str(order.id), str(tenant_uuid))
+        except Exception as e:
+            # لا نفشل الطلب إذا فشل التوجيه التلقائي
+            import logging
+            logger = logging.getLogger(__name__)
+            print(f"⚠️ Auto-dispatch exception caught in view: {type(e).__name__}: {str(e)}")
+            logger.warning("Auto-dispatch failed for order", extra={
+                "order_id": str(order.id),
+                "error": str(e)
+            })
+
         created = ProductOrder.objects.select_related('product', 'package').get(id=order.id)
         return Response(OrderListItemSerializer(created).data, status=201)
 
