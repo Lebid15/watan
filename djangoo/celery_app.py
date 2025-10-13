@@ -16,7 +16,10 @@ app = Celery('djangoo')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 
 # Auto-discover tasks from all installed apps
-app.autodiscover_tasks()
+# By default, autodiscover looks for 'tasks.py' in each app
+# We need to also discover 'tasks_dispatch.py'
+app.autodiscover_tasks(lambda: ['apps.orders'], related_name='tasks')
+app.autodiscover_tasks(lambda: ['apps.orders'], related_name='tasks_dispatch')
 
 
 @app.task(bind=True, ignore_result=True)

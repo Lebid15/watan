@@ -138,9 +138,9 @@ Future suggestions (not yet created in code):
 | "رفض" | `orders.bulk.reject.button` |
 | "لم يتم تحديد أي طلبات" | `orders.bulk.needSelection` |
 | "يرجى اختيار الجهة الخارجية أولاً" | `orders.bulk.needProvider` |
-| "تمت الموافقة على {count} طلب(ات) بنجاح" | `orders.bulk.approve.success` |
+| "تمت الموافقة" | `orders.bulk.approve.success` |
 | "تعذر الموافقة" | `orders.bulk.approve.fail` |
-| "تم رفض {count} طلب(ات)" | `orders.bulk.reject.success` |
+| "تم الإبطال" | `orders.bulk.reject.success` |
 | "تعذر الرفض" | `orders.bulk.reject.fail` |
 | "تم إرسال {count} طلب(ات) بنجاح" | `orders.bulk.dispatch.partialSuccess` |
 | "فشل توجيه بعض الطلبات" | `orders.bulk.dispatch.partialFail` |

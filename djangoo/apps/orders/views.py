@@ -348,11 +348,15 @@ class OrdersCreateView(APIView):
                 notes_count=0,
             )
 
-        # محاولة التوجيه التلقائي للمزود الخارجي
-        from apps.orders.services import try_auto_dispatch
-        print(f"\n🔄 Attempting auto-dispatch for order: {order.id}")
+        # محاولة التوجيه التلقائي للمزود الخارجي (الآن بشكل غير متزامن - سريع!)
+        from apps.orders.services import try_auto_dispatch_async
+        print(f"\n� Attempting ASYNC auto-dispatch for order: {order.id}")
         try:
-            try_auto_dispatch(str(order.id), str(tenant_uuid))
+            dispatch_result = try_auto_dispatch_async(str(order.id), str(tenant_uuid))
+            if dispatch_result.get('dispatched'):
+                print(f"✅ Order dispatched in background - Task ID: {dispatch_result.get('task_id')}")
+            else:
+                print(f"⚠️ Order not dispatched: {dispatch_result.get('reason')}")
         except Exception as e:
             # لا نفشل الطلب إذا فشل التوجيه التلقائي
             import logging

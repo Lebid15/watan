@@ -284,10 +284,14 @@ class ZnetAdapter:
         }
         if kupur is not None:
             q['kupur'] = kupur
-        if payload.get('userIdentifier'):
-            q['musteri_tel'] = payload.get('userIdentifier')
-        # Use oyuncu_bilgi from params if available, otherwise from extraField
-        oyuncu_bilgi = params_dict.get('oyuncu_bilgi') or payload.get('extraField')
+        
+        # musteri_tel = userIdentifier (الحقل الأول - يذهب لـ musteri_tel)
+        musteri_tel = params_dict.get('oyuncu_bilgi') or payload.get('userIdentifier')
+        if musteri_tel:
+            q['musteri_tel'] = musteri_tel
+        
+        # oyuncu_bilgi = extraField (الحقل الثاني - يذهب لـ oyuncu_bilgi)
+        oyuncu_bilgi = params_dict.get('extra') or payload.get('extraField')
         if oyuncu_bilgi:
             q['oyuncu_bilgi'] = oyuncu_bilgi
         

@@ -40,11 +40,11 @@ class BarakatAdapter:
 
     def _map_status(self, value: Any) -> str:
         v = str(value or '').strip().lower()
-        if v in {'success', 'ok', 'done', 'complete', 'completed'}:
+        if v in {'success', 'ok', 'done', 'complete', 'completed', 'accept'}:
             return 'success'
         if v in {'reject', 'rejected', 'failed', 'fail', 'error', 'cancelled', 'canceled'}:
             return 'failed'
-        if v in {'wait', 'pending', 'processing', 'inprogress', 'queued', 'queue', 'accepted'}:
+        if v in {'wait', 'pending', 'processing', 'inprogress', 'queued', 'queue'}:
             return 'pending'
         return 'pending'
 
@@ -294,13 +294,16 @@ class BarakatAdapter:
         except (TypeError, ValueError):
             price_num = 0.0
 
+        order_id_from_provider = str(
+            payload_data.get('order_id')
+            if isinstance(payload_data, dict) and payload_data.get('order_id') is not None
+            else client_order_uuid or ''
+        )
+        
         response: Dict[str, Any] = {
             'success': True,
-            'externalOrderId': str(
-                payload_data.get('order_id')
-                if isinstance(payload_data, dict) and payload_data.get('order_id') is not None
-                else client_order_uuid or ''
-            ),
+            'externalOrderId': order_id_from_provider,
+            'providerReferans': order_id_from_provider,  # نفس القيمة للفحص لاحقاً
             'providerStatus': provider_status,
             'mappedStatus': mapped_status,
             'price': price_num,
@@ -322,11 +325,27 @@ class BarakatAdapter:
             return []
         encoded = '[' + ','.join(clean_ids) + ']'
         url = f"{base}/client/api/check"
+        
+        # Check if IDs are UUIDs (contain hyphens and are 36 chars) - if so, add uuid=1
+        params = {'orders': encoded}
+        first_id = clean_ids[0]
+        is_uuid = len(first_id) == 36 and first_id.count('-') == 4
+        if is_uuid:
+            params['uuid'] = '1'
+            print(f"\n🌐 [Barakat] Calling check API (UUID mode):")
+        else:
+            print(f"\n🌐 [Barakat] Calling check API (Order ID mode):")
+        
+        print(f"   URL: {url}")
+        print(f"   Orders param: {encoded}")
+        print(f"   UUID mode: {is_uuid}")
         try:
-            resp = requests.get(url, headers=headers, params={'orders': encoded}, timeout=DEFAULT_TIMEOUT)
+            resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
             resp.raise_for_status()
             data = self._try_json(resp)
+            print(f"   ✅ Response received: {data}")
         except Exception as exc:
+            print(f"   ❌ Error calling API: {exc}")
             raise BarakatError(f'Failed to check orders: {str(exc)[:200]}') from exc
 
         raw_list = data.get('data') if isinstance(data, dict) else []
@@ -352,11 +371,17 @@ class BarakatAdapter:
         return mapped
 
     def fetch_status(self, creds: BarakatCredentials, external_order_id: str) -> Dict[str, Any]:
+        print(f"\n🔍 [Barakat] Checking order status for: {external_order_id}")
         entries = self.check_orders(creds, [external_order_id])
+        print(f"   📋 Entries returned: {len(entries)}")
+        if entries:
+            print(f"   📦 First entry: {entries[0]}")
         if not entries:
+            print(f"   ⚠️ No entries found - returning 'unknown'")
             return {'status': 'unknown', 'raw': None}
         entry = entries[0]
         status = entry.get('mappedStatus')
+        print(f"   📊 Mapped status from entry: {status}")
         if status == 'success':
             mapped = 'completed'
         elif status == 'failed':
@@ -365,6 +390,7 @@ class BarakatAdapter:
             mapped = 'processing'
         else:
             mapped = status or 'unknown'
+        print(f"   ✅ Final mapped status: {mapped}")
         result: Dict[str, Any] = {
             'status': mapped,
             'raw': entry.get('raw'),

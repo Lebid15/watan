@@ -29,6 +29,7 @@ class Product(models.Model):
     class Meta:
         db_table = 'product'
         managed = False
+        app_label = 'orders'
 
     id = models.UUIDField(primary_key=True)
     name = models.CharField(max_length=255, null=True)
@@ -39,6 +40,7 @@ class ProductPackage(models.Model):
     class Meta:
         db_table = 'product_packages'
         managed = False
+        app_label = 'orders'
 
     id = models.UUIDField(primary_key=True)
     name = models.CharField(max_length=255, null=True)
@@ -53,6 +55,7 @@ class LegacyUser(models.Model):
     class Meta:
         db_table = 'users'
         managed = False
+        app_label = 'orders'
         verbose_name = 'Legacy User (Old Backend)'
         verbose_name_plural = 'Legacy Users (Old Backend - DO NOT USE)'
 
@@ -67,6 +70,7 @@ class ProductOrder(models.Model):
     class Meta:
         db_table = 'product_orders'
         managed = False
+        app_label = 'orders'
         verbose_name = 'Legacy Product Order (Old Backend)'
         verbose_name_plural = 'Legacy Product Orders (Old Backend - DO NOT USE)'
 
@@ -108,5 +112,5 @@ class ProductOrder(models.Model):
     approved_local_date = models.DateField(null=True, db_column='approvedLocalDate')
     approved_local_month = models.CharField(max_length=7, null=True, db_column='approvedLocalMonth')
     notes_count = models.IntegerField(default=0, db_column='notesCount')
-    # provider_referans = models.CharField(max_length=255, null=True, db_column='provider_referans')  # Reference ID sent to provider - DISABLED until column is added to DB
+    provider_referans = models.CharField(max_length=255, null=True, db_column='provider_referans')  # Reference ID sent to provider
 

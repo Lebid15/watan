@@ -11,9 +11,11 @@ type OrderStatus = 'pending' | 'approved' | 'rejected';
 type FilterMethod = '' | 'manual' | string;
 
 /* ============== صور موحّدة (من منتجات) ============== */
-const apiHost = API_ROUTES.products.base.replace(/\/api\/products\/?$/, '');
-// For images, always use the NestJS backend (port 3001) since images are stored there
-const imageHost = 'http://localhost:3001';
+const apiOriginFromBase = API_BASE_URL.replace(/\/api(?:-dj)?\/?$/, '');
+const fallbackApiOrigin = API_ROUTES.products.base.replace(/\/(?:api(?:-dj)?\/)?products\/?$/, '');
+const apiHost = apiOriginFromBase || fallbackApiOrigin;
+// Resolve images via the same origin as the API so logos work with both NestJS and Django backends
+const imageHost = apiOriginFromBase || fallbackApiOrigin || apiHost;
 
 // توحيد منطق بناء رابط الصورة (يحاكي صفحة تفاصيل المنتج)
 function resolveImage(raw?: string | null): string {
@@ -60,7 +62,7 @@ type OrdersPageResponse = {
 };
 
 /* ============== صور المنتجات ============== */
-const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+const API_ORIGIN = API_BASE_URL.replace(/\/api(?:-dj)?\/?$/, '');
 const FALLBACK_IMG =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(

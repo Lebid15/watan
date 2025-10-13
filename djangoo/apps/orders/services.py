@@ -486,9 +486,86 @@ def unfreeze_fx_on_unapproval(order_id: str) -> None:
         logger.exception("Failed to unfreeze FX", extra={"order_id": str(order_id)})
 
 
+def try_auto_dispatch_async(order_id: str, tenant_id: Optional[str] = None) -> dict:
+    """
+    محاولة إرسال الطلب تلقائياً للمزود الخارجي (ASYNC - سريع جداً!).
+    
+    هذه الدالة تجدول إرسال الطلب في الخلفية عبر Celery، مما يجعل الاستجابة
+    فورية للمستخدم (0.5 ثانية بدلاً من 5 ثواني).
+    
+    المنطق:
+    1. التحقق السريع من الطلب والإعدادات
+    2. إذا auto-dispatch مفعّل، نجدول Task في الخلفية
+    3. نرجع فوراً للمستخدم
+    4. Celery يرسل الطلب في الخلفية
+    
+    Args:
+        order_id: معرّف الطلب
+        tenant_id: معرّف المستأجر (اختياري للتحقق)
+        
+    Returns:
+        dict: {'dispatched': bool, 'async': bool, 'task_id': str}
+    """
+    from apps.providers.models import PackageRouting
+    from .tasks_dispatch import send_order_to_provider_async
+    
+    print(f"\n{'='*80}")
+    print(f"🚀 AUTO-DISPATCH (ASYNC): Order ID = {order_id}")
+    print(f"{'='*80}\n")
+    
+    try:
+        # 1. فحص سريع: هل الطلب قابل للإرسال؟
+        order = ProductOrder.objects.select_related('package').get(id=order_id)
+        
+        if order.provider_id or order.external_order_id or order.status != 'pending':
+            print(f"   ⏭️ Order already dispatched or not pending, skipping")
+            return {'dispatched': False, 'async': False, 'reason': 'already_dispatched'}
+        
+        # 2. فحص سريع: هل التوجيه مفعّل؟
+        try:
+            routing = PackageRouting.objects.get(
+                package_id=order.package_id,
+                tenant_id=order.tenant_id
+            )
+        except PackageRouting.DoesNotExist:
+            print(f"   ⏭️ No routing config, skipping")
+            return {'dispatched': False, 'async': False, 'reason': 'no_routing'}
+        
+        if routing.mode != 'auto' or routing.provider_type != 'external':
+            print(f"   ⏭️ Routing not configured for auto-dispatch")
+            return {'dispatched': False, 'async': False, 'reason': 'not_auto'}
+        
+        # 3. جدولة الإرسال في الخلفية (فوري!)
+        print(f"   🎯 Scheduling async dispatch...")
+        task = send_order_to_provider_async.apply_async(
+            args=[str(order_id), str(tenant_id or order.tenant_id)],
+            countdown=0  # فوري
+        )
+        
+        print(f"   ✅ Task scheduled!")
+        print(f"   - Task ID: {task.id}")
+        print(f"   - الطلب سيُرسل في الخلفية")
+        print(f"{'='*80}\n")
+        
+        return {
+            'dispatched': True,
+            'async': True,
+            'task_id': str(task.id),
+            'message': 'Order dispatch scheduled in background'
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Error scheduling async dispatch: {e}")
+        print(f"{'='*80}\n")
+        return {'dispatched': False, 'async': False, 'error': str(e)}
+
+
 def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
     """
     محاولة إرسال الطلب تلقائياً للمزود الخارجي حسب إعدادات التوجيه (package_routing).
+    
+    ⚠️ هذه الدالة SYNC (بطيئة - 5 ثواني).
+    للأداء الأفضل، استخدم try_auto_dispatch_async() بدلاً منها.
     
     المنطق:
     1. التحقق من أن الطلب في حالة pending ولم يتم إرساله بعد
@@ -505,7 +582,7 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
     from apps.providers.adapters import resolve_adapter_credentials
     
     print(f"\n{'='*80}")
-    print(f"🚀 AUTO-DISPATCH START: Order ID = {order_id}")
+    print(f"🚀 AUTO-DISPATCH START (SYNC): Order ID = {order_id}")
     print(f"{'='*80}\n")
     
     try:
