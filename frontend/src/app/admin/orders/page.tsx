@@ -1165,35 +1165,35 @@ export default function AdminOrdersPage() {
                     </div>
                   </td>
 
-                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
                     {(() => { const f = normalizeFinancial(o); return (
                       <>
-                        <div className="text-[12px] font-medium text-text-secondary">
+                        <div className="text-sm font-medium text-text-secondary">
                           {f.costUSD != null ? `$${f.costUSD.toFixed(2)}` : (f.costTRY != null ? '$-' : '-')}
                         </div>
-                        <div className="text-accent font-semibold">{f.costTRY != null ? money(f.costTRY, o.currencyTRY || 'TRY') : '—'}</div>
+                        <div className="text-base text-accent font-semibold">{f.costTRY != null ? money(f.costTRY, o.currencyTRY || 'TRY') : '—'}</div>
                       </>
                     ); })()}
                   </td>
 
-                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
                     {(() => { const f = normalizeFinancial(o); return (
                       <>
-                        <div className="text-[12px] font-medium text-text-secondary">
+                        <div className="text-sm font-medium text-text-secondary">
                           {f.sellUSD != null ? `$${f.sellUSD.toFixed(2)}` : (f.sellTRY != null ? '$-' : '-')}
                         </div>
-                        <div className="font-semibold">{f.sellTRY != null ? money(f.sellTRY, o.currencyTRY || o.sellPriceCurrency || 'TRY') : '—'}</div>
+                        <div className="text-base font-semibold">{f.sellTRY != null ? money(f.sellTRY, o.currencyTRY || o.sellPriceCurrency || 'TRY') : '—'}</div>
                       </>
                     ); })()}
                   </td>
 
-                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight text-[11px]">
+                  <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
                     {(() => { const f = normalizeFinancial(o); const color = f.profitTRY != null ? (f.profitTRY > 0 ? 'text-success' : f.profitTRY < 0 ? 'text-danger' : 'text-text-secondary') : 'text-text-secondary'; return (
                       <>
-                        <div className={`text-[12px] font-medium ${f.profitUSD != null && f.profitUSD < 0 ? 'text-danger' : 'text-text-secondary'}`}>
+                        <div className={`text-sm font-medium ${f.profitUSD != null && f.profitUSD < 0 ? 'text-danger' : 'text-text-secondary'}`}>
                           {f.profitUSD != null ? `${f.profitUSD < 0 ? '-' : ''}${Math.abs(f.profitUSD).toFixed(2)} $` : (f.profitTRY != null ? '$-' : '-')}
                         </div>
-                        <div className={`font-semibold ${color}`}>{f.profitTRY != null ? money(f.profitTRY, o.currencyTRY || 'TRY') : '—'}</div>
+                        <div className={`text-base font-semibold ${color}`}>{f.profitTRY != null ? money(f.profitTRY, o.currencyTRY || 'TRY') : '—'}</div>
                       </>
                     ); })()}
                   </td>

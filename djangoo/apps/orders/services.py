@@ -389,17 +389,94 @@ def freeze_fx_on_approval(order_id: str) -> None:
     price_usd = Decimal(str(order.price or 0))
     sell_try_at_approval = _quantize(price_usd * fx_usd_try, Decimal('0.01'))
     
-    # Calculate costTryAtApproval from package capital/base_price
-    base_usd = Decimal('0')
-    if order.package:
-        try:
-            pkg = ProductPackage.objects.get(id=order.package_id)
-            base_usd = Decimal(str(pkg.base_price or pkg.capital or 0))
-        except ProductPackage.DoesNotExist:
-            pass
-    
+    # Calculate costTryAtApproval - المنطق الصحيح حسب نوع التنفيذ
     qty = Decimal(str(order.quantity or 1))
+    base_usd = Decimal('0')
+    
+    # ✅ الحالة 1: مزود خارجي (external provider)
+    if order.provider_id and order.external_order_id:
+        print(f"💰 [Cost Logic] Order {str(order.id)[:8]}... - External Provider")
+        print(f"   Provider ID: {order.provider_id}")
+        print(f"   Package ID: {order.package_id}")
+        
+        # خذ التكلفة من PackageCost المرتبط بهذا المزود
+        from apps.providers.models import PackageCost
+        try:
+            package_cost = PackageCost.objects.get(
+                tenant_id=tenant_id,
+                package_id=order.package_id,
+                provider_id=order.provider_id
+            )
+            cost_currency = package_cost.cost_currency or 'USD'
+            cost_amount_original = Decimal(str(package_cost.cost_amount or 0))
+            
+            print(f"   ✅ Found PackageCost:")
+            print(f"      Amount: {cost_amount_original}")
+            print(f"      Currency: {cost_currency}")
+            
+            # 🔄 تحويل العملة إلى USD إذا لزم الأمر
+            if cost_currency.upper() == 'USD':
+                base_usd = cost_amount_original
+                print(f"      ✅ Already in USD: ${base_usd}")
+            else:
+                # التكلفة بعملة أخرى (مثل TRY) - يجب التحويل
+                print(f"      🔄 Converting {cost_currency} to USD...")
+                from apps.currencies.models import Currency
+                
+                try:
+                    currency_row = Currency.objects.filter(
+                        code=cost_currency.upper(),
+                        tenant_id=tenant_id,
+                        is_active=True
+                    ).first()
+                    
+                    if currency_row and currency_row.rate and Decimal(str(currency_row.rate)) > 0:
+                        exchange_rate = Decimal(str(currency_row.rate))
+                        # إذا كان rate = 41.50 (يعني 1 USD = 41.50 TRY)
+                        # فإن USD = TRY / rate
+                        base_usd = cost_amount_original / exchange_rate
+                        print(f"         Exchange rate: 1 USD = {exchange_rate} {cost_currency}")
+                        print(f"         Calculation: {cost_amount_original} / {exchange_rate} = ${base_usd:.4f} USD")
+                    else:
+                        print(f"         ⚠️ Exchange rate not found, using cost as-is")
+                        base_usd = cost_amount_original
+                except Exception as e:
+                    print(f"         ❌ Error converting currency: {e}")
+                    base_usd = cost_amount_original
+                    
+        except PackageCost.DoesNotExist:
+            print(f"   ⚠️ PackageCost not found - falling back to package base_price")
+            # Fallback: استخدم base_price من الباقة
+            if order.package:
+                try:
+                    pkg = ProductPackage.objects.get(id=order.package_id)
+                    base_usd = Decimal(str(pkg.base_price or pkg.capital or 0))
+                    print(f"   📦 Using package base_price: ${base_usd}")
+                except ProductPackage.DoesNotExist:
+                    print(f"   ❌ Package not found")
+                    pass
+    
+    # ✅ الحالة 2: تنفيذ داخلي (internal/manual)
+    elif order.status == 'approved' and not order.provider_id:
+        print(f"💰 [Cost Logic] Order {str(order.id)[:8]}... - Internal/Manual Execution")
+        base_usd = Decimal('0')  # التكلفة = 0 للتنفيذ الداخلي
+        print(f"   ✅ Cost = $0 (internal execution)")
+    
+    # ✅ الحالة 3: pending أو من مجموعة الأسعار (price group)
+    else:
+        print(f"💰 [Cost Logic] Order {str(order.id)[:8]}... - Pending/Price Group")
+        # خذ التكلفة من base_price (تقديرية من price_group)
+        if order.package:
+            try:
+                pkg = ProductPackage.objects.get(id=order.package_id)
+                base_usd = Decimal(str(pkg.base_price or pkg.capital or 0))
+                print(f"   📦 Using package base_price: ${base_usd} (estimated)")
+            except ProductPackage.DoesNotExist:
+                print(f"   ❌ Package not found")
+                pass
+    
     cost_try_at_approval = _quantize(base_usd * qty * fx_usd_try, Decimal('0.01'))
+    print(f"   💵 Final cost calculation: ${base_usd} × {qty} × {fx_usd_try} = {cost_try_at_approval} TRY")
     
     # Calculate profits
     profit_try_at_approval = _quantize(sell_try_at_approval - cost_try_at_approval, Decimal('0.01'))
@@ -927,11 +1004,83 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
         
         print(f"   - External Status (mapped): {external_status}")
         
-        # الحصول على التكلفة والرصيد من النتيجة إذا توفرت
+        # 🔥 حساب التكلفة الفعلية من PackageCost (المنطق الصحيح!)
+        print(f"\n💰 Calculating actual cost from PackageCost...")
+        actual_cost_usd = Decimal('0')
+        cost_source = 'unknown'
+        final_cost_currency = 'USD'
+        final_cost_amount_in_original_currency = Decimal('0')
+        
+        # أولاً: محاولة الحصول على التكلفة من PackageCost
+        try:
+            package_cost = PackageCost.objects.get(
+                tenant_id=effective_tenant_id,
+                package_id=order.package_id,
+                provider_id=provider_id
+            )
+            final_cost_currency = package_cost.cost_currency or 'USD'
+            final_cost_amount_in_original_currency = Decimal(str(package_cost.cost_amount or 0))
+            cost_source = 'PackageCost'
+            
+            print(f"   ✅ Found PackageCost:")
+            print(f"      Amount: {final_cost_amount_in_original_currency}")
+            print(f"      Currency: {final_cost_currency}")
+            
+            # 🔄 تحويل العملة إلى USD إذا لزم الأمر (نفس منطق Backend القديم)
+            if final_cost_currency.upper() == 'USD':
+                actual_cost_usd = final_cost_amount_in_original_currency
+                print(f"      ✅ Already in USD: ${actual_cost_usd}")
+            else:
+                # التكلفة بعملة أخرى (مثل TRY) - يجب التحويل
+                print(f"      🔄 Converting {final_cost_currency} to USD...")
+                from apps.currencies.models import Currency
+                
+                try:
+                    currency_row = Currency.objects.filter(
+                        code=final_cost_currency.upper(),
+                        tenant_id=effective_tenant_id,
+                        is_active=True
+                    ).first()
+                    
+                    if currency_row and currency_row.rate and Decimal(str(currency_row.rate)) > 0:
+                        exchange_rate = Decimal(str(currency_row.rate))
+                        # إذا كان rate = 41.50 (يعني 1 USD = 41.50 TRY)
+                        # فإن USD = TRY / rate
+                        actual_cost_usd = final_cost_amount_in_original_currency / exchange_rate
+                        print(f"         Exchange rate: 1 USD = {exchange_rate} {final_cost_currency}")
+                        print(f"         Calculation: {final_cost_amount_in_original_currency} / {exchange_rate} = ${actual_cost_usd:.2f} USD")
+                    else:
+                        print(f"         ⚠️ Exchange rate not found, using cost as-is")
+                        actual_cost_usd = final_cost_amount_in_original_currency
+                except Exception as e:
+                    print(f"         ❌ Error converting currency: {e}")
+                    actual_cost_usd = final_cost_amount_in_original_currency
+                    
+        except PackageCost.DoesNotExist:
+            print(f"   ⚠️ PackageCost not found for provider {provider_id}")
+            
+            # Fallback: استخدم package.base_price
+            if order.package:
+                try:
+                    pkg = ProductPackage.objects.get(id=order.package_id)
+                    actual_cost_usd = Decimal(str(pkg.base_price or pkg.capital or 0))
+                    cost_source = 'package.base_price'
+                    print(f"   📦 Using package.base_price: ${actual_cost_usd}")
+                except ProductPackage.DoesNotExist:
+                    print(f"   ❌ Package not found")
+                    pass
+        
+        # حساب التكلفة الإجمالية (التكلفة × الكمية)
+        qty = int(order.quantity or 1)
+        total_cost_usd = actual_cost_usd * qty
+        cost_amount = final_cost_amount_in_original_currency * qty  # التكلفة بالعملة الأصلية
+        print(f"   💵 Total cost: ${actual_cost_usd:.4f} × {qty} = ${total_cost_usd:.2f} USD (from {cost_source})")
+        
+        # إذا كان المزود أرسل تكلفة في الرد، نطبعها للمقارنة (لكن لا نستخدمها)
         if result.get('cost') is not None:
             try:
-                cost_amount = Decimal(str(result['cost']))
-                print(f"   - Cost from provider: {cost_amount}")
+                provider_cost = Decimal(str(result['cost']))
+                print(f"   ℹ️ Provider returned cost: ${provider_cost} (ignored, using PackageCost instead)")
             except Exception:
                 pass
         
@@ -939,6 +1088,41 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
             print(f"   - Provider balance: {result.get('balance')}")
             # يمكن تحديث رصيد المزود هنا إذا أردنا
             pass
+        
+        # حساب USD snapshots (cost_usd_at_order, sell_usd_at_order, profit_usd_at_order)
+        sell_usd_at_order = Decimal(str(order.price or 0))
+        cost_usd_at_order = total_cost_usd
+        profit_usd_at_order = sell_usd_at_order - cost_usd_at_order
+        
+        print(f"\n💵 USD Snapshots:")
+        print(f"   - Sell USD: ${sell_usd_at_order}")
+        print(f"   - Cost USD: ${cost_usd_at_order} (from {cost_source})")
+        print(f"   - Profit USD: ${profit_usd_at_order}")
+        
+        # 🔒 حساب TRY snapshots (مُجمّدة - لن تتغير أبداً حتى لو تغير سعر الصرف!)
+        from apps.currencies.models import Currency
+        fx_usd_try = Decimal('1')
+        try:
+            currency_try = Currency.objects.filter(
+                tenant_id=effective_tenant_id,
+                code__iexact='TRY',
+                is_active=True
+            ).first()
+            if currency_try and currency_try.rate:
+                fx_usd_try = Decimal(str(currency_try.rate))
+        except Exception as e:
+            print(f"   ⚠️ Could not fetch TRY exchange rate: {e}")
+        
+        # Convert USD to TRY using CURRENT exchange rate (will be frozen forever)
+        cost_try_at_order = cost_usd_at_order * fx_usd_try
+        sell_try_at_order = sell_usd_at_order * fx_usd_try
+        profit_try_at_order = profit_usd_at_order * fx_usd_try
+        
+        print(f"\n💰 TRY Snapshots (FROZEN - will never change!):")
+        print(f"   - Exchange Rate: 1 USD = {fx_usd_try} TRY")
+        print(f"   - Sell TRY: {sell_try_at_order:.2f}")
+        print(f"   - Cost TRY: {cost_try_at_order:.2f}")
+        print(f"   - Profit TRY: {profit_try_at_order:.2f}")
         
         # تحديث الطلب
         print(f"\n💾 Step 13: Updating order in database...")
@@ -959,7 +1143,14 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
                         "providerMessage" = %s,
                         "costCurrency" = %s,
                         "costAmount" = %s,
-                        provider_referans = %s
+                        provider_referans = %s,
+                        cost_usd_at_order = %s,
+                        sell_usd_at_order = %s,
+                        profit_usd_at_order = %s,
+                        cost_try_at_order = %s,
+                        sell_try_at_order = %s,
+                        profit_try_at_order = %s,
+                        fx_usd_try_at_order = %s
                     WHERE id = %s
                 """, [
                     provider_id,
@@ -972,6 +1163,13 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
                     cost_currency,
                     float(cost_amount),
                     provider_referans,
+                    float(cost_usd_at_order),
+                    float(sell_usd_at_order),
+                    float(profit_usd_at_order),
+                    float(cost_try_at_order),
+                    float(sell_try_at_order),
+                    float(profit_try_at_order),
+                    float(fx_usd_try),
                     str(order.id)
                 ])
         except Exception as e:
@@ -990,7 +1188,10 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
                         "lastMessage" = %s,
                         "providerMessage" = %s,
                         "costCurrency" = %s,
-                        "costAmount" = %s
+                        "costAmount" = %s,
+                        cost_usd_at_order = %s,
+                        sell_usd_at_order = %s,
+                        profit_usd_at_order = %s
                     WHERE id = %s
                 """, [
                     provider_id,
@@ -1002,6 +1203,9 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
                     str(note)[:250],
                     cost_currency,
                     float(cost_amount),
+                    float(cost_usd_at_order),
+                    float(sell_usd_at_order),
+                    float(profit_usd_at_order),
                     str(order.id)
                 ])
         

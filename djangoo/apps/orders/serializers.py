@@ -210,12 +210,42 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_costTRY(self, obj):
-        """Get cost in TRY - use frozen value if available, otherwise calculate from current rates"""
-        # If FX is locked, use frozen cost
+        """Get cost in TRY - use FROZEN snapshot, never recalculate!"""
+        # ✅ PRIORITY 1: Use frozen cost_try_at_order (set at order creation time)
+        if hasattr(obj, 'cost_try_at_order') and obj.cost_try_at_order is not None:
+            return float(obj.cost_try_at_order)
+        
+        # ✅ PRIORITY 2: If FX is locked (approved orders), use cost_try_at_approval
         if getattr(obj, 'fx_locked', False) and getattr(obj, 'cost_try_at_approval', None) is not None:
             return float(obj.cost_try_at_approval)
         
-        # Otherwise calculate from current exchange rates
+        # ❌ FALLBACK (only for old orders): Calculate from cost_usd_at_order
+        if hasattr(obj, 'cost_usd_at_order') and obj.cost_usd_at_order is not None:
+            from apps.currencies.models import Currency
+            from decimal import Decimal
+            
+            try:
+                # Get exchange rate from currencies table
+                currency = Currency.objects.filter(
+                    tenant_id=obj.tenant_id,
+                    code__iexact='TRY',
+                    is_active=True
+                ).first()
+                
+                exchange_rate = Decimal('1')
+                if currency and currency.rate:
+                    exchange_rate = Decimal(str(currency.rate))
+                
+                # Convert USD to TRY
+                cost_usd = Decimal(str(obj.cost_usd_at_order))
+                total_cost_try = cost_usd * exchange_rate
+                
+                return float(total_cost_try)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Error converting cost USD to TRY for order {obj.id}: {e}")
+        
+        # ❌ OLD FALLBACK: Calculate from package capital (less accurate)
         if not obj.package_id:
             return None
         
@@ -260,12 +290,39 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_sellTRY(self, obj):
-        """Get sell price in TRY - use frozen value if available, otherwise calculate from current rates"""
-        # If FX is locked, use frozen sell price
+        """Get sell price in TRY - use FROZEN snapshot, never recalculate!"""
+        # ✅ PRIORITY 1: Use frozen sell_try_at_order (set at order creation time)
+        if hasattr(obj, 'sell_try_at_order') and obj.sell_try_at_order is not None:
+            return float(obj.sell_try_at_order)
+        
+        # ✅ PRIORITY 2: If FX is locked (approved orders), use sell_try_at_approval
         if getattr(obj, 'fx_locked', False) and getattr(obj, 'sell_try_at_approval', None) is not None:
             return float(obj.sell_try_at_approval)
         
-        # Otherwise calculate from current exchange rates
+        # ❌ FALLBACK (only for old orders): Calculate from sell_usd_at_order
+        if hasattr(obj, 'sell_usd_at_order') and obj.sell_usd_at_order is not None:
+            from apps.currencies.models import Currency
+            from decimal import Decimal
+            
+            try:
+                currency = Currency.objects.filter(
+                    tenant_id=obj.tenant_id,
+                    code__iexact='TRY',
+                    is_active=True
+                ).first()
+                
+                exchange_rate = Decimal('1')
+                if currency and currency.rate:
+                    exchange_rate = Decimal(str(currency.rate))
+                
+                sell_usd = Decimal(str(obj.sell_usd_at_order))
+                sell_try = sell_usd * exchange_rate
+                return float(sell_try)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Error converting sell USD to TRY for order {obj.id}: {e}")
+        
+        # ❌ OLD FALLBACK: Calculate from current exchange rates
         from apps.currencies.models import Currency
         from decimal import Decimal
         
@@ -294,12 +351,39 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_profitTRY(self, obj):
-        """Get profit in TRY - use frozen value if available, otherwise calculate from cost and sell"""
-        # If FX is locked, use frozen profit
+        """Get profit in TRY - use FROZEN snapshot, never recalculate!"""
+        # ✅ PRIORITY 1: Use frozen profit_try_at_order (set at order creation time)
+        if hasattr(obj, 'profit_try_at_order') and obj.profit_try_at_order is not None:
+            return float(obj.profit_try_at_order)
+        
+        # ✅ PRIORITY 2: If FX is locked (approved orders), use profit_try_at_approval
         if getattr(obj, 'fx_locked', False) and getattr(obj, 'profit_try_at_approval', None) is not None:
             return float(obj.profit_try_at_approval)
         
-        # Otherwise calculate from current cost and sell
+        # ❌ FALLBACK (only for old orders): Calculate from profit_usd_at_order
+        if hasattr(obj, 'profit_usd_at_order') and obj.profit_usd_at_order is not None:
+            from apps.currencies.models import Currency
+            from decimal import Decimal
+            
+            try:
+                currency = Currency.objects.filter(
+                    tenant_id=obj.tenant_id,
+                    code__iexact='TRY',
+                    is_active=True
+                ).first()
+                
+                exchange_rate = Decimal('1')
+                if currency and currency.rate:
+                    exchange_rate = Decimal(str(currency.rate))
+                
+                profit_usd = Decimal(str(obj.profit_usd_at_order))
+                profit_try = profit_usd * exchange_rate
+                return float(profit_try)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Error converting profit USD to TRY for order {obj.id}: {e}")
+        
+        # ❌ OLD FALLBACK: Calculate from current cost and sell
         cost = self.get_costTRY(obj)
         sell = self.get_sellTRY(obj)
         if cost is not None and sell is not None:
@@ -313,7 +397,13 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_costUsdAtOrder(self, obj):
-        """Get cost in USD from package capital/base_price"""
+        """Get cost in USD - use pre-calculated value from database (with currency conversion)"""
+        # ✅ NEW: Read from cost_usd_at_order column (calculated immediately after dispatch)
+        if hasattr(obj, 'cost_usd_at_order') and obj.cost_usd_at_order is not None:
+            return float(obj.cost_usd_at_order)
+        
+        # ❌ OLD FALLBACK: Calculate from package capital (not accurate for external providers!)
+        # This is only used for old orders before the column was added
         if not obj.package_id:
             return None
         
@@ -338,7 +428,12 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
             return None
 
     def get_sellUsdAtOrder(self, obj):
-        """Get sell price in USD - use original price field which is always in USD"""
+        """Get sell price in USD - use pre-calculated snapshot"""
+        # ✅ NEW: Read from sell_usd_at_order column (calculated immediately after dispatch)
+        if hasattr(obj, 'sell_usd_at_order') and obj.sell_usd_at_order is not None:
+            return float(obj.sell_usd_at_order)
+        
+        # ❌ OLD FALLBACK: Use price field
         # The 'price' field is always stored in USD at order creation time
         # Do NOT convert from TRY as that would use current exchange rate
         if obj.price:
@@ -351,7 +446,12 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_profitUsdAtOrder(self, obj):
-        """Calculate profit in USD"""
+        """Calculate profit in USD - use pre-calculated snapshot"""
+        # ✅ NEW: Read from profit_usd_at_order column (calculated immediately after dispatch)
+        if hasattr(obj, 'profit_usd_at_order') and obj.profit_usd_at_order is not None:
+            return float(obj.profit_usd_at_order)
+        
+        # ❌ OLD FALLBACK: Calculate on the fly
         cost_usd = self.get_costUsdAtOrder(obj)
         sell_usd = self.get_sellUsdAtOrder(obj)
         

@@ -113,4 +113,15 @@ class ProductOrder(models.Model):
     approved_local_month = models.CharField(max_length=7, null=True, db_column='approvedLocalMonth')
     notes_count = models.IntegerField(default=0, db_column='notesCount')
     provider_referans = models.CharField(max_length=255, null=True, db_column='provider_referans')  # Reference ID sent to provider
+    
+    # 💰 USD Snapshot fields (calculated immediately after dispatch)
+    cost_usd_at_order = models.DecimalField(max_digits=12, decimal_places=4, null=True, db_column='cost_usd_at_order')
+    sell_usd_at_order = models.DecimalField(max_digits=12, decimal_places=4, null=True, db_column='sell_usd_at_order')
+    profit_usd_at_order = models.DecimalField(max_digits=12, decimal_places=4, null=True, db_column='profit_usd_at_order')
+    
+    # 💰 TRY Snapshot fields (calculated immediately after dispatch - FROZEN, never recalculated!)
+    cost_try_at_order = models.DecimalField(max_digits=12, decimal_places=2, null=True, db_column='cost_try_at_order')
+    sell_try_at_order = models.DecimalField(max_digits=12, decimal_places=2, null=True, db_column='sell_try_at_order')
+    profit_try_at_order = models.DecimalField(max_digits=12, decimal_places=2, null=True, db_column='profit_try_at_order')
+    fx_usd_try_at_order = models.DecimalField(max_digits=12, decimal_places=6, null=True, db_column='fx_usd_try_at_order')
 
