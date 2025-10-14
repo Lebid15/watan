@@ -152,10 +152,16 @@ class TenantAdmin(admin.ModelAdmin):
                     )
                 else:
                     try:
+                        from apps.orders.models import LegacyUser
+                        from django.utils import timezone
+                        
                         # استخدام tenant_uuid إذا كان موجوداً، وإلا حاول الحصول عليه من obj.id
                         user_tenant_id = tenant_uuid if tenant_uuid else (obj.id if isinstance(obj.id, uuid.UUID) else None)
                         
-                        # إنشاء المستخدم
+                        # إنشاء UUID للمستخدم
+                        user_uuid = uuid.uuid4()
+                        
+                        # 1. إنشاء المستخدم في dj_users (Django الجديد)
                         user = User.objects.create(
                             username=owner_username,
                             email=owner_email or f"{owner_username}@{obj.host}",
@@ -169,10 +175,24 @@ class TenantAdmin(admin.ModelAdmin):
                             is_superuser=False,
                         )
                         
-                        messages.success(
-                            request,
-                            f'✅ تم إنشاء المستأجر "{obj.host}" والمستخدم المالك "{user.username}" بنجاح!'
-                        )
+                        # 2. إنشاء نسخة في جدول users القديم (Legacy)
+                        try:
+                            LegacyUser.objects.create(
+                                id=user_uuid,
+                                tenant_id=user_tenant_id,
+                                email=user.email,
+                                username=user.username
+                            )
+                            messages.success(
+                                request,
+                                f'✅ تم إنشاء المستأجر "{obj.host}" والمستخدم المالك "{user.username}" بنجاح (في كلا النظامين)!'
+                            )
+                        except Exception as legacy_error:
+                            # إذا فشل إنشاء Legacy user، المستخدم Django موجود على الأقل
+                            messages.warning(
+                                request,
+                                f'✅ تم إنشاء المستأجر والمستخدم، لكن فشل إنشاء Legacy User: {str(legacy_error)}'
+                            )
                         
                         if not owner_password:
                             messages.warning(

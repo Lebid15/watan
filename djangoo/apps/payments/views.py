@@ -570,6 +570,53 @@ class MyDepositsListView(APIView):
         )
 
 
+class MyDepositDetailsView(APIView):
+    """Get details of a single deposit for the authenticated user"""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Payments"], responses={200: DepositDetailsSerializer})
+    def get(self, request, id: str):
+        tenant_id = _resolve_tenant_id(request)
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+        
+        user = request.user
+        legacy_user = _resolve_legacy_user_for_request(request, user, tenant_id, required=True)
+        
+        try:
+            d = Deposit.objects.get(id=id)
+        except Deposit.DoesNotExist:
+            raise NotFound('الإيداع غير موجود')
+        
+        # تحقق من أن الإيداع يخص المستخدم الحالي
+        if str(d.user_id) != str(legacy_user.id):
+            raise PermissionDenied('لا تملك صلاحية على هذا الإيداع')
+        
+        # تحقق من أن الإيداع يخص نفس الـ tenant
+        if str(d.tenant_id or '') != str(tenant_id):
+            raise PermissionDenied('لا تملك صلاحية على هذا الإيداع')
+
+        user_map = {str(legacy_user.id): _build_legacy_user_payload(legacy_user)}
+        method_map = {}
+        
+        if getattr(d, 'method_id', None):
+            try:
+                method = PaymentMethod.objects.get(id=d.method_id)
+                method_map[str(method.id)] = _build_method_payload(method)
+            except PaymentMethod.DoesNotExist:
+                pass
+
+        return Response(
+            DepositDetailsSerializer(
+                d,
+                context={
+                    'user_map': user_map,
+                    'method_map': method_map,
+                },
+            ).data
+        )
+
+
 class AdminDepositsListView(APIView):
     permission_classes = [IsAuthenticated, RequireAdminRole]
 

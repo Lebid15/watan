@@ -4,6 +4,7 @@ from .views import (
     AdminPaymentMethodsListCreateView,
     AdminPaymentMethodByIdView,
     MyDepositsListView,
+    MyDepositDetailsView,
     AdminDepositsListView,
     AdminDepositTopupView,
     AdminDepositDetailsView,
@@ -16,12 +17,17 @@ urlpatterns = [
     path('payment-methods/', PaymentMethodsListView.as_view(), name='payment-methods-slash'),
     path('payment-methods/active', PaymentMethodsListView.as_view(), name='payment-methods-active'),
     path('payment-methods/active/', PaymentMethodsListView.as_view(), name='payment-methods-active-slash'),
-    path('deposits', MyDepositsListView.as_view(), name='deposits'),
-    path('deposits/', MyDepositsListView.as_view(), name='deposits-slash'),
+    # Specific routes MUST come before dynamic ones
     path('deposits/me', MyDepositsListView.as_view(), name='deposits-me'),
     path('deposits/me/', MyDepositsListView.as_view(), name='deposits-me-slash'),
     path('deposits/mine', MyDepositsListView.as_view(), name='deposits-mine'),
     path('deposits/mine/', MyDepositsListView.as_view(), name='deposits-mine-slash'),
+    # Generic deposit routes
+    path('deposits', MyDepositsListView.as_view(), name='deposits'),
+    path('deposits/', MyDepositsListView.as_view(), name='deposits-slash'),
+    # Dynamic ID route comes LAST
+    path('deposits/<uuid:id>', MyDepositDetailsView.as_view(), name='deposit-details'),
+    path('deposits/<uuid:id>/', MyDepositDetailsView.as_view(), name='deposit-details-slash'),
 ]
 
 # Admin routes
