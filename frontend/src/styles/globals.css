@@ -7,25 +7,28 @@
 /* الوضع الفاتح الافتراضي + عند وجود data-theme="light" */
 :root,
 :root[data-theme="light"] {
-  --color-bg-base: 255 255 255;
-  --color-bg-surface: 255 255 255;
-  --color-bg-surface-alt: 248 249 250;
+  /* خلفيات دافئة برتقالية/بيج */
+  --color-bg-base: 255 249 244;        /* لون الشات الخلفي */
+  --color-bg-surface: 255 255 255;     /* البانل الأبيض */
+  --color-bg-surface-alt: 255 236 220; /* فقاعة الرسائل المستلمة */
 
-  --color-text-primary: 17 24 39;
-  --color-text-secondary: 107 114 128;
+  /* النصوص */
+  --color-text-primary: 45 36 26;      /* #2d241a */
+  --color-text-secondary: 107 96 87;   /* #6b6057 */
 
-  --color-border: 229 231 235;
+  /* الحدود */
+  --color-border: 248 221 200;         /* لون الفاصل */
 
-  --color-primary: 230 175 46;
-  --color-primary-hover: 209 158 41;
-  --color-primary-active: 187 142 38;
-  --color-primary-contrast: 255 255 255;
+  /* الألوان الرئيسية */
+  --color-primary: 255 188 120;        /* فقاعة الرسائل المرسلة */
+  --color-primary-hover: 255 176 102;
+  --color-primary-active: 255 164 84;
+  --color-primary-contrast: 45 36 26;  /* نص داكن على خلفية فاتحة */
 
   --color-success: 34 197 94;
-  --color-warning: 245 158 11;
+  --color-warning: 181 83 9;           /* #b45309 */
   --color-danger: 239 68 68;
 
-  /* ✅ تم تعديلها لتناسب المود الأبيض */
   --color-bg-input: 255 255 255;
 }
 
@@ -98,42 +101,74 @@
   --color-bg-input: 34 37 46;
 }
 
-/* Teal (تركيواز) */
-:root[data-theme="teal"] {
-  /* الخلفيات */
-  --color-bg-base: 52 94 85;           /* #345E55 */
-  --color-bg-surface: 62 122 106;      /* #3E7A6A (أفتح من base) */
-  --color-bg-surface-alt: 74 142 124;  /* #4A8E7C (أفتح أكثر للتمييز) */
+/* Dark 4 - WhatsApp Dark Mode */
+:root[data-theme="dark4"] {
+  /* خلفيات WhatsApp الداكنة */
+  --color-bg-base: 11 20 26;           /* خلفية الشات الرئيسية */
+  --color-bg-surface: 17 27 33;        /* البانل/الكارد */
+  --color-bg-surface-alt: 32 44 51;    /* فقاعة الرسائل المستلمة */
 
   /* النصوص */
-  --color-text-primary: 245 252 252;   /* #F5FCFC (أبيض مائل للأزرق) */
-  --color-text-secondary: 200 220 220; /* #C8DCDC (رمادي فاتح) */
+  --color-text-primary: 226 232 240;   /* #e2e8f0 */
+  --color-text-secondary: 158 148 141; /* #9e948d */
 
   /* الحدود */
-  --color-border: 42 84 74;            /* #2A544A (أغمق قليلًا من base) */
+  --color-border: 35 49 56;            /* لون الفاصل */
 
-  /* الألوان الرئيسية (واضحة ومميزة) */
-  --color-primary: 255 140 0;          /* #FF8C00 (برتقالي ساطع) */
-  --color-primary-hover: 230 120 0;    /* أغمق قليلًا */
-  --color-primary-active: 200 100 0;   /* أغمق أكثر */
-  --color-primary-contrast: 255 255 255; /* أبيض */
+  /* الألوان الرئيسية */
+  --color-primary: 0 92 75;            /* فقاعة الرسائل المرسلة - WhatsApp green */
+  --color-primary-hover: 0 106 86;
+  --color-primary-active: 0 120 97;
+  --color-primary-contrast: 226 232 240; /* نص فاتح */
 
   /* نجاح/تحذير/خطر */
-  --color-success: 34 197 94;          /* #22C55E (أخضر واضح) */
-  --color-warning: 255 193 7;          /* #FFC107 (أصفر برّاق) */
-  --color-danger: 220 38 38;           /* #DC2626 (أحمر قوي) */
+  --color-success: 34 197 94;
+  --color-warning: 245 158 11;
+  --color-danger: 239 68 68;
 
   /* حقول الإدخال */
-  --color-bg-input: 44 104 94;         /* #2C685E (أغمق قليلًا من base لراحة العين) */
+  --color-bg-input: 32 44 51;
 }
 
 /* ================== ألوان Tailwind مخصصة ================== */
 @layer base {
   body {
-    @apply bg-[rgb(var(--color-bg-base))] text-[rgb(var(--color-text-primary))];
+    @apply text-[rgb(var(--color-text-primary))];
     margin: 0;
     font-family: Arial, sans-serif;
   }
+  
+  /* Gradient للثيم الفاتح - تدرج برتقالي دافئ */
+  :root body,
+  :root[data-theme="light"] body {
+    background: linear-gradient(135deg, #ffe8d6 0%, #fff2e6 50%, #fff9f4 100%);
+    background-attachment: fixed;
+  }
+  
+  /* Gradient للثيم الداكن 1 - تدرج رمادي غامق */
+  :root[data-theme="dark1"] body {
+    background: linear-gradient(135deg, #242e3a 0%, #1a2532 50%, #111827 100%);
+    background-attachment: fixed;
+  }
+  
+  /* Gradient للثيم الداكن 2 - تدرج أزرق داكن */
+  :root[data-theme="dark2"] body {
+    background: linear-gradient(135deg, #1e293b 0%, #172033 50%, #0f172a 100%);
+    background-attachment: fixed;
+  }
+  
+  /* Gradient للثيم الداكن 3 - تدرج أسود نقي */
+  :root[data-theme="dark3"] body {
+    background: linear-gradient(135deg, #1a1a1d 0%, #0f0f10 50%, #000000 100%);
+    background-attachment: fixed;
+  }
+  
+  /* Gradient للثيم dark4 - WhatsApp Dark مع تدرج أخضر */
+  :root[data-theme="dark4"] body {
+    background: linear-gradient(135deg, #0d1f1a 0%, #0c1a17 50%, #0b141a 100%);
+    background-attachment: fixed;
+  }
+  
   /* عند تفعيل عرض نسخة الديسكتوب مصغرة على الموبايل */
   body.desktop-fixed-no-scroll {
     overflow: hidden; /* منع أي سكرول خارجي */

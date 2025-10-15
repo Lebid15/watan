@@ -35,6 +35,14 @@
   "billing.markPaid.success": "تم تحديث حالة الفاتورة",
   "billing.feature.disabled": "ميزة الفوترة غير مفعّلة",
   "billing.loading": "تحميل...",
+  "orders": {
+    "modal": {
+      "title": "تفاصيل الطلب",
+  "titleWithNumber": "تفاصيل الطلب #{{number}}",
+      "orderNumber": "رقم الطلب",
+      "manualNoteTitle": "ملاحظة"
+    }
+  },
   "common.error": "خطأ",
   "pagination.next": "التالي",
   "pagination.prev": "السابق"

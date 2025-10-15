@@ -134,7 +134,8 @@ export default function MainHeader() {
   }, []);
 
   const balanceNum = Number(user?.balance ?? 0);
-  const balanceStr = isNaN(balanceNum) ? '0.00' : balanceNum.toFixed(2);
+  const safeBalance = Number.isFinite(balanceNum) ? balanceNum : 0;
+  const balanceDisplay = formatGroupsDots(safeBalance, 2);
 
   // في UserContext النوع هو "currency" (وليس currencyCode)
   const curr = (user?.currency || 'USD').toUpperCase();
@@ -180,7 +181,7 @@ export default function MainHeader() {
             ].join(' ')}
             title={t('wallet.balance')}
           >
-            {formatGroupsDots(Number(balanceStr))} {sym}
+            {balanceDisplay} {sym}
           </span>
           <LanguageSwitcher className="ml-2" />
 

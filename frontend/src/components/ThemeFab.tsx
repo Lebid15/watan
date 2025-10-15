@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-const THEMES = ['dark1', 'dark2', 'dark3', 'light', 'teal'] as const;
+const THEMES = ['dark1', 'dark2', 'dark3', 'dark4', 'light'] as const;
 type Theme = typeof THEMES[number];
 
 function getSavedTheme(): Theme {
@@ -80,7 +80,7 @@ export default function ThemeFab({ className = '' }: { className?: string }) {
                     t === 'dark1' ? '#111827' :
                     t === 'dark2' ? '#0F172A' :
                     t === 'dark3' ? '#18181B' :
-                    t === 'teal'  ? '#309898' : // ✅ لون الثيم الجديد
+                    t === 'dark4' ? '#309898' :
                     '#ffffff',
                 }}
               />

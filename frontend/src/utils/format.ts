@@ -1,9 +1,12 @@
 // src/utils/format.ts
 import { useEffect, useState } from 'react';
 
-// ✅ تبقى كما هي
-export const formatGroupsDots = (n: number) =>
-  new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+// ✅ تبقى كما هي مع خيار تحديد المنازل العشرية
+export const formatGroupsDots = (n: number, fractionDigits = 0) =>
+  new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })
     .format(n)
     .replace(/,/g, '.');
 

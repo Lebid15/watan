@@ -18,13 +18,13 @@ type ServerProfile = {
 };
 
 // نفس تعريفات الثيم لديك
-type ThemeKey = 'light' | 'dark1' | 'dark2' | 'dark3' | 'teal';
+type ThemeKey = 'light' | 'dark1' | 'dark2' | 'dark3' | 'dark4';
 const THEME_ITEMS: { key: ThemeKey; name: string; hintBg: string; hintText: string; hintBorder: string }[] = [
   { key: 'light', name: 'الافتراضي (فاتح)', hintBg: '#ffffff', hintText: '#111827', hintBorder: '#e5e7eb' },
   { key: 'dark1', name: 'Dark 1',            hintBg: '#1f2937', hintText: '#ffffff', hintBorder: '#4b5563' },
   { key: 'dark2', name: 'Dark 2',            hintBg: '#1e293b', hintText: '#ffffff', hintBorder: '#475569' },
   { key: 'dark3', name: 'Dark 3',            hintBg: '#18181b', hintText: '#ffffff', hintBorder: '#3f3f46' },
-  { key: 'teal',  name: 'Teal',              hintBg: '#309898', hintText: '#ffffff', hintBorder: '#1f6d6d' },
+  { key: 'dark4', name: 'Dark 4',            hintBg: '#309898', hintText: '#ffffff', hintBorder: '#1f6d6d' },
 ];
 
 export default function UserProfilePage() {
@@ -93,7 +93,7 @@ export default function UserProfilePage() {
       const fromAttrRaw = (el.getAttribute('data-theme') || '') as string;
       const fromStorageRaw = (localStorage.getItem('theme') || '') as string;
 
-      const allowed = new Set<ThemeKey>(['light', 'dark1', 'dark2', 'dark3', 'teal']);
+      const allowed = new Set<ThemeKey>(['light', 'dark1', 'dark2', 'dark3', 'dark4']);
       const norm = (v: string): ThemeKey => (v === '' ? 'light' : (allowed.has(v as ThemeKey) ? (v as ThemeKey) : 'light'));
 
       const initial: ThemeKey = norm(fromStorageRaw || fromAttrRaw || 'light');

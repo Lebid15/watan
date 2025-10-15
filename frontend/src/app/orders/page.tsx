@@ -24,7 +24,7 @@ interface Order {
   unitPriceUSD?: number;
   display?: OrderDisplay;
 }
-interface OrderNote { by: 'admin' | 'system' | 'user'; text: string; at: string; }
+interface OrderNote { by?: string | null; text?: string | null; at?: string | null; }
 interface OrderDetails extends Order {
   manualNote?: string | null;
   notes?: OrderNote[] | null;
@@ -41,7 +41,7 @@ type OrdersPageResponse = Order[] | CursorResponse;
 const PAGE_LIMIT = 20;
 
 function currencySymbol(code?: string) {
-  switch (code) {
+  switch ((code || '').toUpperCase()) {
     case 'USD': return '$'; case 'EUR': return '€'; case 'TRY': return '₺';
     case 'EGP': return '£'; case 'SAR': return '﷼'; case 'AED': return 'د.إ';
     case 'SYP': return 'ل.س'; default: return code || '';
@@ -50,15 +50,34 @@ function currencySymbol(code?: string) {
 
 function extractProviderNote(raw?: string | null): string | null {
   if (!raw) return null;
-  const s = String(raw).trim(); if (!s) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
   if (s.includes('|')) {
-    const parts = s.split('|').map(x => x.trim()).filter(Boolean);
+    const parts = s.split('|').map((x) => x.trim()).filter(Boolean);
     if (!parts.length) return null;
     const last = parts[parts.length - 1];
     if (/^(OK|ERR|ERROR|\d+)$/.test(last.toUpperCase())) return null;
     return last;
   }
-  return s || null;
+  return s;
+}
+
+function resolveOrderNote(details: OrderDetails): string | null {
+  const manual = typeof details.manualNote === 'string' ? details.manualNote.trim() : '';
+  if (manual) return manual;
+
+  const providerMsg = extractProviderNote(details.providerMessage ?? details.lastMessage);
+  if (providerMsg) return providerMsg.trim();
+
+  const notesList = Array.isArray(details.notes) ? details.notes : [];
+  for (let i = notesList.length - 1; i >= 0; i -= 1) {
+    const note = notesList[i];
+    if (!note) continue;
+    const text = typeof note.text === 'string' ? note.text.trim() : '';
+    if (text) return text;
+  }
+
+  return null;
 }
 
 function resolvePriceView(
@@ -66,25 +85,53 @@ function resolvePriceView(
   userCurrency: string,
   conversionRate: number
 ): { currencyCode: string; total: number; unit?: number } {
-  // إذا كان الباك إند بالفعل يرسل display نستخدمه كما هو
-  if (order.display && typeof order.display.totalPrice === 'number') {
+  const normalizedCurrency = (userCurrency || '').toUpperCase();
+  const display = order.display;
+  const displayCurrency = (display?.currencyCode || '').toUpperCase();
+  const hasDisplay = Boolean(display && typeof display.totalPrice === 'number');
+
+  const buildFromDisplay = () => ({
+    currencyCode: displayCurrency || normalizedCurrency || 'USD',
+    total: Number(display?.totalPrice ?? 0) || 0,
+    unit: typeof display?.unitPrice === 'number' ? Number(display.unitPrice) : undefined,
+  });
+
+  if (hasDisplay) {
+    if (!normalizedCurrency || !displayCurrency || displayCurrency === normalizedCurrency) {
+      return buildFromDisplay();
+    }
+  }
+
+  const totalUSDRaw = order.priceUSD;
+  const unitUSDRaw = order.unitPriceUSD;
+  const totalUSD = totalUSDRaw != null ? Number(totalUSDRaw) : NaN;
+  const unitUSD = unitUSDRaw != null ? Number(unitUSDRaw) : undefined;
+  const hasUsdPrice = !Number.isNaN(totalUSD);
+
+  if (hasUsdPrice) {
+    if (normalizedCurrency && normalizedCurrency !== 'USD' && conversionRate > 0) {
+      return {
+        currencyCode: normalizedCurrency,
+        total: totalUSD * conversionRate,
+        unit: unitUSD == null ? undefined : unitUSD * conversionRate,
+      };
+    }
     return {
-      currencyCode: order.display.currencyCode,
-      total: Number(order.display.totalPrice) || 0,
-      unit: typeof order.display.unitPrice === 'number' ? Number(order.display.unitPrice) : undefined,
+      currencyCode: 'USD',
+      total: totalUSD,
+      unit: unitUSD,
     };
   }
-  // fallback: قيم بالدولار
-  const totalUSD = Number(order.priceUSD ?? 0);
-  const unitUSD = order.unitPriceUSD != null ? Number(order.unitPriceUSD) : undefined;
-  if (userCurrency && userCurrency !== 'USD' && conversionRate > 0) {
-    return {
-      currencyCode: userCurrency,
-      total: totalUSD * conversionRate,
-      unit: unitUSD == null ? undefined : unitUSD * conversionRate,
-    };
+
+  if (hasDisplay) {
+    return buildFromDisplay();
   }
-  return { currencyCode: 'USD', total: totalUSD, unit: unitUSD };
+
+  return {
+    currencyCode: normalizedCurrency || 'USD',
+    total: 0,
+    unit: undefined,
+  };
 }
 
 // === أدوات التاريخ ===
@@ -442,6 +489,7 @@ export default function OrdersPage() {
               const base = details || (selectedOrder as OrderDetails);
               const view = resolvePriceView(base, userCurrency, conversionRate);
               const totalNum = Number(view.total) || 0;
+              const noteText = resolveOrderNote(base) || '';
               return (
                 <div className="space-y-3">
                   <p><span className="text-text-secondary">رقم الطلب:</span> {displayOrderNumber(base)}</p>
@@ -449,7 +497,7 @@ export default function OrdersPage() {
                   <p><span className="text-text-secondary">الباقة:</span> {base.package.name} {base.quantity && base.quantity > 1 ? (<span className="text-text-secondary">(الكمية: {base.quantity})</span>) : null}</p>
                   <p><span className="text-text-secondary">المعرف:</span> {base.userIdentifier || '—'}</p>
                   {base.extraField ? (<p><span className="text-text-secondary">معلومة إضافية:</span> {base.extraField}</p>) : null}
-                  <p><span className="text-text-secondary">السعر:</span> <span className="text-text-primary">{currencySymbol(view.currencyCode)} {formatGroupsDots(totalNum)}</span></p>
+                  <p><span className="text-text-secondary">السعر:</span> <span className="text-text-primary">{currencySymbol(view.currencyCode)} {formatGroupsDots(totalNum, 2)}</span></p>
                   <p><span className="text-text-secondary">الحالة:</span> <span className={getStatusColor(base.status)}>{getStatusText(base.status)}</span></p>
                   <p><span className="text-text-secondary">التاريخ:</span> {new Date(base.createdAt).toLocaleString('en-US')}</p>
                   
@@ -462,25 +510,11 @@ export default function OrdersPage() {
                   )}
                   
                   {/* رسالة المزود */}
-                  {(() => {
-                    const provMsg = base.providerMessage;
-                    // نعرضها فقط إذا كانت مختلفة عن manualNote
-                    if (provMsg && provMsg !== base.manualNote) {
-                      return (
-                        <div className="mt-3 p-3 rounded bg-orange-50 border border-orange-300">
-                          <div className="font-medium mb-2 text-orange-900">� رسالة المزود</div>
-                          <div className="text-orange-900 break-words whitespace-pre-wrap">{provMsg}</div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-
                   {/* ملاحظة */}
-                  {base.manualNote && (
+                  {noteText && (
                     <div className="mt-3 p-3 rounded bg-yellow-50 border border-yellow-300">
                       <div className="font-medium mb-2 text-yellow-900">� ملاحظة</div>
-                      <div className="text-yellow-900 break-words whitespace-pre-wrap">{base.manualNote}</div>
+                      <div className="text-yellow-900 break-words whitespace-pre-wrap">{noteText}</div>
                     </div>
                   )}
                 </div>

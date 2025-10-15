@@ -156,6 +156,11 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         from apps.providers.models import Integration
         integration = Integration.objects.get(id=routing.primary_provider_id)
         
+        # For internal provider, use order.id as reference (it's stored as providerReferans in target tenant)
+        # For other providers, use external_order_id or provider_referans
+        if integration.provider == 'internal':
+            referans = str(order.id)
+        
         # 6. Get provider binding and credentials
         binding, creds = resolve_adapter_credentials(
             integration.provider,
@@ -342,6 +347,11 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             new_message = (order.last_message or '') + f" | {message}"
             update_fields.append('"lastMessage" = %s')
             update_values.append(new_message[:250])
+            # ✅ تحديث manual_note لعرضها للجميع
+            update_fields.append('"manualNote" = %s')
+            update_values.append(message[:500])
+            update_fields.append('"providerMessage" = %s')
+            update_values.append(message[:250])
             print(f"💬 تحديث الرسالة: {message[:50]}...")
         
         # Always update lastSyncAt

@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 
-type ThemeKey = 'light' | 'dark1' | 'dark2' | 'dark3' | 'teal';
+type ThemeKey = 'light' | 'dark1' | 'dark2' | 'dark3' | 'dark4';
 
 const THEME_ITEMS: {
   key: ThemeKey;
@@ -16,7 +16,7 @@ const THEME_ITEMS: {
   { key: 'dark1', name: 'Dark 1',            hintBg: '#1f2937', hintText: '#ffffff', hintBorder: '#4b5563' },
   { key: 'dark2', name: 'Dark 2',            hintBg: '#1e293b', hintText: '#ffffff', hintBorder: '#475569' },
   { key: 'dark3', name: 'Dark 3',            hintBg: '#18181b', hintText: '#ffffff', hintBorder: '#3f3f46' },
-  { key: 'teal',  name: 'Teal',              hintBg: '#309898', hintText: '#ffffff', hintBorder: '#1f6d6d' }, // جديد
+  { key: 'dark4', name: 'Dark 4',            hintBg: '#309898', hintText: '#ffffff', hintBorder: '#1f6d6d' },
 ];
 
 export default function AdminThemePage() {
@@ -42,7 +42,7 @@ export default function AdminThemePage() {
 
   const normalize = (v: string | null | undefined): ThemeKey => {
     if (!v || v === '') return 'light';
-    return (['light','dark1','dark2','dark3','teal'].includes(v) ? (v as ThemeKey) : 'light');
+    return (['light','dark1','dark2','dark3','dark4'].includes(v) ? (v as ThemeKey) : 'light');
   };
 
   // --- mount: اقرأ المخزَّن وطبّق ---

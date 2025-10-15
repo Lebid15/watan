@@ -55,6 +55,20 @@ function getImageSrc(p?: any): string {
   return buildImageSrc(pickImageField(p));
 }
 
+function extractProviderNote(raw?: string | null): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (s.includes('|')) {
+    const parts = s.split('|').map((x) => x.trim()).filter(Boolean);
+    if (!parts.length) return null;
+    const last = parts[parts.length - 1];
+    if (/^(OK|ERR|ERROR|\d+)$/.test(last.toUpperCase())) return null;
+    return last;
+  }
+  return s;
+}
+
 type OrdersPageResponse = {
   items: any[];
   pageInfo: { nextCursor: string | null; hasMore: boolean };
@@ -99,6 +113,7 @@ interface Order {
   providerType?: 'manual' | 'external' | 'internal_codes'
 
   // ✅ الحقول التي نعرضها في المودال
+  manualNote?: string | null;
   providerMessage?: string | null;
   pinCode?: string | null;
   notesCount?: number;
@@ -551,7 +566,17 @@ export default function AdminOrdersPage() {
       firstOf<string>(userObj, 'email', 'mail', 'emailAddress') ??
       undefined;
 
-    // ✅ إضافات: ملاحظة المزود / PIN / عدد الملاحظات
+    // ✅ إضافات: ملاحظات + PIN / عدد الملاحظات
+    const manualNote =
+      deepFirst<string>(
+        x,
+        'manualNote',
+        'manual_note',
+        'note_admin',
+        'note_manual',
+        'note'
+      ) ?? null;
+
     const providerMessage =
       deepFirst<string>(
         x,
@@ -559,7 +584,6 @@ export default function AdminOrdersPage() {
         'lastMessage',
         'last_message',
         'provider_note',
-        'note',
         'message'
       ) ?? null;
 
@@ -659,7 +683,8 @@ export default function AdminOrdersPage() {
       productId: firstOf<string>(x, 'productId') ?? undefined,
       quantity: firstOf<number>(x, 'quantity') ?? undefined,
 
-      // ✅ حقول التفاصيل
+    // ✅ حقول التفاصيل
+    manualNote,
       providerMessage,
       pinCode,
       notesCount,
@@ -918,11 +943,17 @@ export default function AdminOrdersPage() {
   const openDetails = (o: Order) => {
     setDetailOrder(o);
     setDetailOpen(true);
-    // ✅ جلب داخلي فقط، ولن يستدعي أي مزود خارجي
-    if (!o.providerMessage || !o.pinCode || o.notesCount == null) {
-      // fetchOrderDetails(o.id);
-    }
+    fetchOrderDetails(o.id);
   };
+
+  const detailNote = detailOrder
+    ? (() => {
+        const manual = typeof detailOrder.manualNote === 'string' ? detailOrder.manualNote.trim() : '';
+        if (manual) return manual;
+        const provider = extractProviderNote(detailOrder.providerMessage);
+        return provider ? provider.trim() : '';
+      })()
+    : '';
 
   const { t } = useTranslation();
   if (loading) return <div className="p-4 text-text-primary">{t('orders.loading')}</div>;
@@ -1251,7 +1282,7 @@ export default function AdminOrdersPage() {
       <Modal
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
-  title={detailOrder ? t('orders.modal.titleWithNumber',{number:displayOrderNumber(detailOrder)}) : t('orders.modal.title')}
+        title={detailOrder ? t('orders.modal.titleWithNumber', { number: displayOrderNumber(detailOrder) }) : t('orders.modal.title')}
         className="flex items-center justify-center p-4"                // وسط الشاشة
         contentClassName="w-full max-w-2xl max-h-[85vh] rounded-lg"
         lockScroll={false}
@@ -1259,14 +1290,6 @@ export default function AdminOrdersPage() {
         {detailOrder && (
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* <div>
-                <div className="text-text-secondary">المعرف</div>
-                <div className="font-mono break-all">{detailOrder.id}</div>
-              </div>
-              <div>
-                <div className="text-text-secondary">رقم الطلب</div>
-                <div className="font-medium">{displayOrderNumber(detailOrder)}</div>
-              </div> */}
 
               {/* <div>
                 <div className="text-text-secondary">المستخدم</div>
@@ -1351,12 +1374,12 @@ export default function AdminOrdersPage() {
                 </div>
               )} */}
 
-              {/* ✅ ملاحظة المزوّد */}
-              {detailOrder.providerMessage && (
+              {/* ✅ ملاحظة المستأجر (من تنفيذ المزود أو يدوياً) */}
+              {detailNote && (
                 <div className="sm:col-span-2">
                   <div className="p-3 rounded-md border bg-yellow-50 border-yellow-300 text-yellow-900 whitespace-pre-line break-words">
-                    <div className="font-medium mb-1">{t('orders.modal.providerNote.title')}</div>
-                    <div>{detailOrder.providerMessage}</div>
+                    <div className="font-medium mb-1">{t('orders.modal.manualNoteTitle')}</div>
+                    <div>{detailNote}</div>
                   </div>
                 </div>
               )}
