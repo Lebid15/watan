@@ -306,6 +306,8 @@ class InternalAdapter:
             order_id = data.get('orderId') or data.get('id')
             status = str(data.get('status', 'pending') or 'pending')
             message = data.get('message') or data.get('note') or 'Order placed successfully'
+            price_value = data.get('sellPriceAmount') or data.get('price') or data.get('priceUSD')
+            price_currency = data.get('sellPriceCurrency') or data.get('priceCurrency') or 'USD'
             
             logger.info(f'   📋 Order ID from response: {order_id}')
             logger.info(f'   📋 Status from response: {status}')
@@ -318,6 +320,8 @@ class InternalAdapter:
                 'message': message,
                 'note': data.get('note') or message,
                 'pin': data.get('pin') or data.get('pinCode'),
+                'cost': price_value,
+                'costCurrency': price_currency,
                 'data': data,
             }
             

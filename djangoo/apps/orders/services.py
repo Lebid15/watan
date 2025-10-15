@@ -1005,79 +1005,119 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
         print(f"   - External Status (mapped): {external_status}")
         
         # 🔥 حساب التكلفة الفعلية من PackageCost (المنطق الصحيح!)
-        print(f"\n💰 Calculating actual cost from PackageCost...")
+        print(f"\n💰 Calculating actual cost from provider response / PackageCost...")
         actual_cost_usd = Decimal('0')
         cost_source = 'unknown'
         final_cost_currency = 'USD'
         final_cost_amount_in_original_currency = Decimal('0')
-        
-        # أولاً: محاولة الحصول على التكلفة من PackageCost
-        try:
-            package_cost = PackageCost.objects.get(
-                tenant_id=effective_tenant_id,
-                package_id=order.package_id,
-                provider_id=provider_id
-            )
-            final_cost_currency = package_cost.cost_currency or 'USD'
-            final_cost_amount_in_original_currency = Decimal(str(package_cost.cost_amount or 0))
-            cost_source = 'PackageCost'
-            
-            print(f"   ✅ Found PackageCost:")
-            print(f"      Amount: {final_cost_amount_in_original_currency}")
-            print(f"      Currency: {final_cost_currency}")
-            
-            # 🔄 تحويل العملة إلى USD إذا لزم الأمر (نفس منطق Backend القديم)
-            if final_cost_currency.upper() == 'USD':
-                actual_cost_usd = final_cost_amount_in_original_currency
-                print(f"      ✅ Already in USD: ${actual_cost_usd}")
-            else:
-                # التكلفة بعملة أخرى (مثل TRY) - يجب التحويل
-                print(f"      🔄 Converting {final_cost_currency} to USD...")
-                from apps.currencies.models import Currency
-                
-                try:
+
+        provider_cost_raw = result.get('cost')
+        provider_cost_currency = result.get('costCurrency') or 'USD'
+        if provider_cost_raw is not None:
+            try:
+                final_cost_amount_in_original_currency = Decimal(str(provider_cost_raw))
+                final_cost_currency = provider_cost_currency or 'USD'
+                cost_source = 'provider_response'
+                print(f"   ✅ Provider supplied cost: {final_cost_amount_in_original_currency} {final_cost_currency}")
+
+                if final_cost_currency.upper() == 'USD':
+                    actual_cost_usd = final_cost_amount_in_original_currency
+                    print(f"      ✅ Already in USD: ${actual_cost_usd}")
+                else:
+                    print(f"      🔄 Converting {final_cost_currency} to USD (provider response)...")
+                    from apps.currencies.models import Currency
+
                     currency_row = Currency.objects.filter(
                         code=final_cost_currency.upper(),
                         tenant_id=effective_tenant_id,
                         is_active=True
                     ).first()
-                    
-                    if currency_row and currency_row.rate and Decimal(str(currency_row.rate)) > 0:
-                        exchange_rate = Decimal(str(currency_row.rate))
-                        # إذا كان rate = 41.50 (يعني 1 USD = 41.50 TRY)
-                        # فإن USD = TRY / rate
-                        actual_cost_usd = final_cost_amount_in_original_currency / exchange_rate
-                        print(f"         Exchange rate: 1 USD = {exchange_rate} {final_cost_currency}")
-                        print(f"         Calculation: {final_cost_amount_in_original_currency} / {exchange_rate} = ${actual_cost_usd:.2f} USD")
+
+                    if currency_row and currency_row.rate:
+                        rate = Decimal(str(currency_row.rate))
+                        if rate > 0:
+                            actual_cost_usd = final_cost_amount_in_original_currency / rate
+                            print(f"         Exchange rate: 1 USD = {rate} {final_cost_currency}")
+                            print(f"         Calculation: {final_cost_amount_in_original_currency} / {rate} = ${actual_cost_usd:.2f} USD")
+                        else:
+                            actual_cost_usd = final_cost_amount_in_original_currency
+                            print(f"         ⚠️ Invalid rate value {rate}, using original amount")
                     else:
-                        print(f"         ⚠️ Exchange rate not found, using cost as-is")
                         actual_cost_usd = final_cost_amount_in_original_currency
-                except Exception as e:
-                    print(f"         ❌ Error converting currency: {e}")
+                        print(f"         ⚠️ Exchange rate not found, using original amount")
+            except Exception as exc:
+                print(f"   ⚠️ Failed to parse provider cost: {exc}")
+                final_cost_amount_in_original_currency = Decimal('0')
+                final_cost_currency = 'USD'
+                cost_source = 'unknown'
+
+        if cost_source != 'provider_response':
+            # أولاً: محاولة الحصول على التكلفة من PackageCost
+            try:
+                package_cost = PackageCost.objects.get(
+                    tenant_id=effective_tenant_id,
+                    package_id=order.package_id,
+                    provider_id=provider_id
+                )
+                final_cost_currency = package_cost.cost_currency or 'USD'
+                final_cost_amount_in_original_currency = Decimal(str(package_cost.cost_amount or 0))
+                cost_source = 'PackageCost'
+
+                print(f"   ✅ Found PackageCost:")
+                print(f"      Amount: {final_cost_amount_in_original_currency}")
+                print(f"      Currency: {final_cost_currency}")
+
+                if final_cost_currency.upper() == 'USD':
                     actual_cost_usd = final_cost_amount_in_original_currency
-                    
-        except PackageCost.DoesNotExist:
-            print(f"   ⚠️ PackageCost not found for provider {provider_id}")
-            
-            # Fallback: استخدم package.base_price
-            if order.package:
-                try:
-                    pkg = ProductPackage.objects.get(id=order.package_id)
-                    actual_cost_usd = Decimal(str(pkg.base_price or pkg.capital or 0))
-                    cost_source = 'package.base_price'
-                    print(f"   📦 Using package.base_price: ${actual_cost_usd}")
-                except ProductPackage.DoesNotExist:
-                    print(f"   ❌ Package not found")
-                    pass
+                    print(f"      ✅ Already in USD: ${actual_cost_usd}")
+                else:
+                    print(f"      🔄 Converting {final_cost_currency} to USD...")
+                    from apps.currencies.models import Currency
+
+                    try:
+                        currency_row = Currency.objects.filter(
+                            code=final_cost_currency.upper(),
+                            tenant_id=effective_tenant_id,
+                            is_active=True
+                        ).first()
+
+                        if currency_row and currency_row.rate and Decimal(str(currency_row.rate)) > 0:
+                            exchange_rate = Decimal(str(currency_row.rate))
+                            actual_cost_usd = final_cost_amount_in_original_currency / exchange_rate
+                            print(f"         Exchange rate: 1 USD = {exchange_rate} {final_cost_currency}")
+                            print(f"         Calculation: {final_cost_amount_in_original_currency} / {exchange_rate} = ${actual_cost_usd:.2f} USD")
+                        else:
+                            print(f"         ⚠️ Exchange rate not found, using cost as-is")
+                            actual_cost_usd = final_cost_amount_in_original_currency
+                    except Exception as e:
+                        print(f"         ❌ Error converting currency: {e}")
+                        actual_cost_usd = final_cost_amount_in_original_currency
+
+            except PackageCost.DoesNotExist:
+                print(f"   ⚠️ PackageCost not found for provider {provider_id}")
+
+                # Fallback: استخدم package.base_price
+                if order.package:
+                    try:
+                        pkg = ProductPackage.objects.get(id=order.package_id)
+                        actual_cost_usd = Decimal(str(pkg.base_price or pkg.capital or 0))
+                        final_cost_amount_in_original_currency = actual_cost_usd
+                        final_cost_currency = 'USD'
+                        cost_source = 'package.base_price'
+                        print(f"   📦 Using package.base_price: ${actual_cost_usd}")
+                    except ProductPackage.DoesNotExist:
+                        print(f"   ❌ Package not found")
+                        pass
         
         # حساب التكلفة الإجمالية (التكلفة × الكمية)
         qty = int(order.quantity or 1)
         total_cost_usd = actual_cost_usd * qty
         cost_amount = final_cost_amount_in_original_currency * qty  # التكلفة بالعملة الأصلية
+        cost_currency = final_cost_currency
         print(f"   💵 Total cost: ${actual_cost_usd:.4f} × {qty} = ${total_cost_usd:.2f} USD (from {cost_source})")
         
         # إذا كان المزود أرسل تكلفة في الرد، نطبعها للمقارنة (لكن لا نستخدمها)
-        if result.get('cost') is not None:
+        if result.get('cost') is not None and cost_source != 'provider_response':
             try:
                 provider_cost = Decimal(str(result['cost']))
                 print(f"   ℹ️ Provider returned cost: ${provider_cost} (ignored, using PackageCost instead)")

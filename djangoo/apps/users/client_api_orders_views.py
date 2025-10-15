@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from decimal import Decimal
 from typing import Optional
 from apps.users.models import User
-from apps.products.models import ProductPackage
+from apps.products.models import ProductPackage, PackagePrice
 from apps.orders.models import ProductOrder, LegacyUser
 import logging
 
@@ -129,17 +129,40 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
+        legacy_user = self.get_legacy_user(tenant.id, user)
+
         # Create order
         try:
             from django.utils import timezone
             import uuid
             
             with transaction.atomic():
-                # Calculate prices
+                # Determine sell price (default to package base price)
                 sell_price = Decimal(package.base_price or 0)
-                
-                # Create order - use create() which works even with managed=False
-                legacy_user = self.get_legacy_user(tenant.id, user)
+                price_currency = 'USD'
+                price_group_id = None
+
+                if legacy_user and getattr(legacy_user, 'price_group_id', None):
+                    price_group_id = legacy_user.price_group_id
+                elif getattr(user, 'price_group_id', None):
+                    price_group_id = user.price_group_id
+
+                if price_group_id:
+                    custom_price = PackagePrice.objects.filter(
+                        tenant_id=tenant.id,
+                        package_id=package.id,
+                        price_group_id=price_group_id,
+                    ).values_list('price', flat=True).first()
+
+                    if custom_price is not None:
+                        try:
+                            sell_price = Decimal(custom_price)
+                        except Exception:
+                            logger.warning(
+                                'Invalid custom price for package %s price_group %s',
+                                package.id,
+                                price_group_id,
+                            )
 
                 if not legacy_user:
                     logger.error(
@@ -162,10 +185,10 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                     user_identifier=user_identifier or '',
                     extra_field=extra_field or '',
                     status='pending',
-                    sell_price_currency='USD',
                     sell_price_amount=sell_price,
                     price=sell_price * Decimal(quantity),
                     external_status='not_sent',
+                    sell_price_currency=price_currency,
                     external_order_id=order_uuid or None,
                     provider_referans=order_uuid or None,
                     created_at=timezone.now(),
@@ -178,6 +201,9 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                     'orderId': str(order.id),
                     'status': order.status,
                     'createdAt': order.created_at.isoformat() if order.created_at else None,
+                    'sellPriceAmount': str(sell_price),
+                    'sellPriceCurrency': price_currency,
+                    'priceGroupId': str(price_group_id) if price_group_id else None,
                 }, status=status.HTTP_201_CREATED)
                 
         except Exception as e:
