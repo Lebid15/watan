@@ -8,11 +8,13 @@ from rest_framework import status
 from django.db import transaction
 from django.utils.module_loading import import_string
 from types import SimpleNamespace
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import Optional
 from apps.users.models import User
+from apps.users.legacy_models import LegacyUser
 from apps.products.models import ProductPackage, PackagePrice
-from apps.orders.models import ProductOrder, LegacyUser
+from apps.orders.models import ProductOrder
+from apps.currencies.models import Currency
 import logging
 
 logger = logging.getLogger(__name__)
@@ -116,6 +118,12 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
             quantity = int(qty)
         except (ValueError, TypeError):
             quantity = 1
+
+        if quantity <= 0:
+            return Response(
+                {'error': 'INVALID_QUANTITY', 'message': 'الكمية يجب أن تكون أكبر من صفر'},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         
         # Find package
         try:
@@ -137,33 +145,6 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
             import uuid
             
             with transaction.atomic():
-                # Determine sell price (default to package base price)
-                sell_price = Decimal(package.base_price or 0)
-                price_currency = 'USD'
-                price_group_id = None
-
-                if legacy_user and getattr(legacy_user, 'price_group_id', None):
-                    price_group_id = legacy_user.price_group_id
-                elif getattr(user, 'price_group_id', None):
-                    price_group_id = user.price_group_id
-
-                if price_group_id:
-                    custom_price = PackagePrice.objects.filter(
-                        tenant_id=tenant.id,
-                        package_id=package.id,
-                        price_group_id=price_group_id,
-                    ).values_list('price', flat=True).first()
-
-                    if custom_price is not None:
-                        try:
-                            sell_price = Decimal(custom_price)
-                        except Exception:
-                            logger.warning(
-                                'Invalid custom price for package %s price_group %s',
-                                package.id,
-                                price_group_id,
-                            )
-
                 if not legacy_user:
                     logger.error(
                         'Client API order creation failed: no LegacyUser for tenant=%s user=%s',
@@ -175,24 +156,142 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                         status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     )
 
+                legacy_user_locked = LegacyUser.objects.select_for_update().get(
+                    id=legacy_user.id,
+                    tenant_id=tenant.id,
+                )
+
+                try:
+                    django_user_locked = User.objects.select_for_update().get(id=user.id)
+                except User.DoesNotExist:
+                    django_user_locked = None
+
+                price_group_id = None
+                if getattr(legacy_user_locked, 'price_group_id', None):
+                    price_group_id = legacy_user_locked.price_group_id
+                elif getattr(user, 'price_group_id', None):
+                    price_group_id = user.price_group_id
+
+                # Pull effective unit price in USD (fallback to base price)
+                price_qs = PackagePrice.objects.filter(
+                    tenant_id=tenant.id,
+                    package_id=package.id,
+                )
+                price_row = None
+                if price_group_id:
+                    price_row = price_qs.filter(price_group_id=price_group_id).first()
+                if price_row is None:
+                    price_row = price_qs.first()
+
+                unit_price_candidate = None
+                if price_row is not None:
+                    unit_price_candidate = getattr(price_row, 'price', None)
+
+                if unit_price_candidate is None:
+                    unit_price_candidate = package.base_price or package.capital or 0
+
+                try:
+                    unit_price_usd = Decimal(unit_price_candidate)
+                except (TypeError, ValueError, InvalidOperation):
+                    unit_price_usd = Decimal('0')
+
+                price_quant = Decimal('0.0001')
+                try:
+                    unit_price_usd = unit_price_usd.quantize(price_quant, ROUND_HALF_UP)
+                except (InvalidOperation, AttributeError):
+                    unit_price_usd = Decimal('0')
+
+                if unit_price_usd <= 0:
+                    return Response(
+                        {'error': 'PRICE_UNAVAILABLE', 'message': 'السعر غير متاح لهذه الباقة'},
+                        status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    )
+
+                quantity_dec = Decimal(quantity)
+                total_usd = (unit_price_usd * quantity_dec).quantize(price_quant, ROUND_HALF_UP)
+
+                # Resolve wallet currency and rate
+                currency_code = (getattr(legacy_user_locked, 'preferred_currency_code', '') or '').strip().upper()
+                currency_row = None
+                if getattr(legacy_user_locked, 'currency_id', None):
+                    currency_row = Currency.objects.filter(
+                        tenant_id=tenant.id,
+                        id=legacy_user_locked.currency_id,
+                    ).first()
+                if currency_row is None and currency_code:
+                    currency_row = Currency.objects.filter(
+                        tenant_id=tenant.id,
+                        code__iexact=currency_code,
+                    ).first()
+                if currency_row:
+                    currency_code = (currency_row.code or currency_code or 'USD').upper()
+                    rate_raw = currency_row.rate or 1
+                else:
+                    rate_raw = 1
+
+                try:
+                    currency_rate = Decimal(rate_raw)
+                except (TypeError, ValueError, InvalidOperation):
+                    currency_rate = Decimal('1')
+                if currency_rate <= 0:
+                    currency_rate = Decimal('1')
+
+                total_user = (total_usd * currency_rate).quantize(Decimal('0.01'), ROUND_HALF_UP)
+                unit_price_user = (total_user / quantity_dec).quantize(Decimal('0.01'), ROUND_HALF_UP)
+
+                legacy_balance = Decimal(legacy_user_locked.balance or 0)
+                overdraft_legacy = Decimal(getattr(legacy_user_locked, 'overdraft_limit', 0) or 0)
+                proposed_legacy_balance = (legacy_balance - total_user).quantize(Decimal('0.01'), ROUND_HALF_UP)
+                if proposed_legacy_balance < -overdraft_legacy:
+                    return Response(
+                        {'error': 'INSUFFICIENT_FUNDS', 'message': 'الرصيد غير كافٍ لدى المستخدم'},
+                        status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    )
+
+                if django_user_locked is not None:
+                    django_balance = Decimal(django_user_locked.balance or 0)
+                    overdraft_django = Decimal(getattr(django_user_locked, 'overdraft', 0) or 0)
+                    total_user_dj = total_user.quantize(Decimal('0.000001'), ROUND_HALF_UP)
+                    proposed_django_balance = (django_balance - total_user_dj).quantize(Decimal('0.000001'), ROUND_HALF_UP)
+                    if proposed_django_balance < -overdraft_django:
+                        return Response(
+                            {'error': 'INSUFFICIENT_FUNDS', 'message': 'الرصيد غير كافٍ لدى الحساب'},
+                            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        )
+                else:
+                    proposed_django_balance = None
+
+                # Apply balance deductions
+                legacy_user_locked.balance = proposed_legacy_balance
+                legacy_user_locked.save(update_fields=['balance'])
+
+                if django_user_locked is not None:
+                    django_user_locked.balance = proposed_django_balance
+                    django_user_locked.save(update_fields=['balance'])
+                    try:
+                        user.balance = django_user_locked.balance
+                    except Exception:
+                        pass
+
                 order = ProductOrder.objects.create(
                     id=uuid.uuid4(),
                     tenant_id=tenant.id,
-                    user_id=legacy_user.id,
+                    user_id=legacy_user_locked.id,
                     product_id=package.product_id,
                     package_id=package.id,
                     quantity=quantity,
                     user_identifier=user_identifier or '',
                     extra_field=extra_field or '',
                     status='pending',
-                    sell_price_amount=sell_price,
-                    price=sell_price * Decimal(quantity),
+                    sell_price_amount=total_user,
+                    price=total_usd,
                     external_status='not_sent',
-                    sell_price_currency=price_currency,
+                    sell_price_currency=currency_code or 'USD',
                     external_order_id=order_uuid or None,
                     provider_referans=order_uuid or None,
                     created_at=timezone.now(),
-                    notes={},  # legacy column is NOT NULL
+                    notes=[],
+                    notes_count=0,
                 )
                 
                 logger.info(f'✅ Client API order created: {order.id} for tenant {tenant.slug}')
@@ -201,9 +300,15 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                     'orderId': str(order.id),
                     'status': order.status,
                     'createdAt': order.created_at.isoformat() if order.created_at else None,
-                    'sellPriceAmount': str(sell_price),
-                    'sellPriceCurrency': price_currency,
+                    'priceUSD': str(unit_price_usd),
+                    'totalPriceUSD': str(total_usd),
+                    'sellPriceAmount': str(total_user),
+                    'sellPriceCurrency': currency_code or 'USD',
+                    'priceCurrency': currency_code or 'USD',
                     'priceGroupId': str(price_group_id) if price_group_id else None,
+                    'walletBalance': str(proposed_legacy_balance),
+                    'walletCurrency': currency_code or 'USD',
+                    'unitPriceWallet': str(unit_price_user),
                 }, status=status.HTTP_201_CREATED)
                 
         except Exception as e:
