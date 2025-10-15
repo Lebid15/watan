@@ -39,6 +39,10 @@ urlpatterns = [
     path(f"{API_PREFIX}/auth/refresh", TokenRefreshView.as_view(), name="token_refresh"),
     path(f"{API_PREFIX}/auth/totp/", include("apps.users.totp_urls")),
     path(f"{API_PREFIX}/users/", include("apps.users.urls")),
+    # Client API Token Management
+    path(f"{API_PREFIX}/tenant/client-api/", include("apps.users.client_api_urls")),
+    # Client API Orders (for inter-tenant communication)
+    path("client/api/", include((__import__('apps.users.client_api_urls', fromlist=['client_api_orders_urlpatterns']).client_api_orders_urlpatterns, 'client_api_orders'))),
     path(f"{API_PREFIX}/products/", include("apps.products.urls")),
     path(f"{API_PREFIX}/currencies/", include("apps.currencies.urls")),
     path(f"{API_PREFIX}/", include("apps.notifications.urls")),

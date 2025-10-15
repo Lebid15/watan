@@ -34,6 +34,19 @@ class User(AbstractUser):
     price_group_id = models.UUIDField(null=True, blank=True)
     preferred_currency_code = models.CharField(max_length=10, blank=True)
     legacy_password_hash = models.CharField(max_length=255, blank=True)
+    
+    # Client API fields (Phase1: matching NestJS backend)
+    api_enabled = models.BooleanField(default=False, null=True, blank=True)
+    api_token_revoked = models.BooleanField(default=False, null=True, blank=True)
+    api_allow_all_ips = models.BooleanField(default=True, null=True, blank=True)
+    api_allow_ips = models.JSONField(default=list, null=True, blank=True)
+    api_webhook_url = models.CharField(max_length=300, null=True, blank=True)
+    api_last_used_at = models.DateTimeField(null=True, blank=True)
+    api_rate_limit_per_min = models.IntegerField(null=True, blank=True)
+    api_webhook_enabled = models.BooleanField(default=False, null=True, blank=True)
+    api_webhook_secret = models.CharField(max_length=64, null=True, blank=True)
+    api_webhook_sig_version = models.CharField(max_length=10, default='v1', null=True, blank=True)
+    api_webhook_last_rotated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'dj_users'

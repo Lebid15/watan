@@ -253,7 +253,7 @@ def set_user_price_group(request, id: str):
     return Response({'ok': True})
 
 
-@api_view(["GET", "PUT"])
+@api_view(["GET", "PUT", "DELETE"])  # ✅ أضفنا DELETE
 @permission_classes([IsAuthenticated])
 def legacy_user_detail(request, id: str):
     tenant_raw = _resolve_tenant_id(request)
@@ -264,6 +264,28 @@ def legacy_user_detail(request, id: str):
 
     if request.method == "GET":
         return Response(_user_detail_payload(user))
+
+    if request.method == "DELETE":
+        # حذف المستخدم من كلا الجدولين
+        username = user.username
+        user_id = user.id
+        
+        # حذف من LegacyUser (users table) أولاً
+        try:
+            from apps.orders.models import LegacyUser
+            LegacyUser.objects.filter(
+                tenant_id=tenant_id,
+                username__iexact=username
+            ).delete()
+            logger.info(f'✅ Deleted LegacyUser username={username}, tenant_id={tenant_id}')
+        except Exception as e:
+            logger.warning(f'⚠️ Failed to delete LegacyUser: {str(e)}')
+        
+        # حذف من User (dj_users table)
+        user.delete()
+        logger.info(f'✅ Deleted User id={user_id}, username={username}, tenant_id={tenant_id}')
+        
+        return Response({'message': 'تم حذف المستخدم بنجاح'}, status=status.HTTP_200_OK)
 
     payload = request.data or {}
     username = (payload.get('username') or '').strip() or None
@@ -654,12 +676,7 @@ class RegisterView(APIView):
         if UserModel.objects.filter(tenant_id=tenant_id, username__iexact=username).exists():
             return Response({'message': 'اسم المستخدم مستخدم مسبقًا'}, status=status.HTTP_409_CONFLICT)
 
-        user = UserModel.objects.create_user(
-            username=username,
-            email=email,
-            password=password,
-        )
-
+        # تحضير البيانات قبل الإنشاء
         first_name = (payload.get('firstName') or '').strip()
         last_name = (payload.get('lastName') or '').strip()
         if not first_name and not last_name and full_name:
@@ -668,24 +685,21 @@ class RegisterView(APIView):
                 first_name = parts[0]
                 last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
 
-        user.first_name = first_name
-        user.last_name = last_name
-        user.full_name = full_name or f"{first_name} {last_name}".strip()
-        user.phone_number = phone_number or ''
-        user.country_code = country_code or ''
-        user.tenant_id = tenant_id
-        user.currency = currency.code
-        user.preferred_currency_code = currency.code
-
-        update_fields = [
-            'first_name', 'last_name', 'full_name', 'phone_number', 'country_code',
-            'tenant_id', 'currency', 'preferred_currency_code'
-        ]
-        if hasattr(user, 'role'):
-            user.role = getattr(UserModel.Roles, 'END_USER', 'end_user')
-            update_fields.append('role')
-
-        user.save(update_fields=update_fields)
+        # إنشاء User مع tenant_id مباشرة حتى يعمل Signal بشكل صحيح
+        user = UserModel.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            tenant_id=tenant_id,  # ✅ تعيين tenant_id عند الإنشاء
+            first_name=first_name,
+            last_name=last_name,
+            full_name=full_name or f"{first_name} {last_name}".strip(),
+            phone_number=phone_number or '',
+            country_code=country_code or '',
+            currency=currency.code,
+            preferred_currency_code=currency.code,
+            role=getattr(UserModel.Roles, 'END_USER', 'end_user') if hasattr(UserModel, 'Roles') else 'end_user',
+        )
 
         return Response(
             {

@@ -19,8 +19,24 @@ class ApiTokenAuthentication(BaseAuthentication):
             user = User.objects.get(api_token=token)
         except User.DoesNotExist:
             raise AuthenticationFailed('Invalid API token')
+        
+        # Check if user is active
         if getattr(user, 'status', 'active') != 'active':
             raise AuthenticationFailed('User inactive or deleted')
+        
+        # Check if API access is enabled
+        if not getattr(user, 'api_enabled', False):
+            raise AuthenticationFailed('API access is not enabled for this user')
+        
+        # Check if token is revoked
+        if getattr(user, 'api_token_revoked', False):
+            raise AuthenticationFailed('API token has been revoked')
+        
+        # Update last used timestamp
+        from django.utils import timezone
+        user.api_last_used_at = timezone.now()
+        user.save(update_fields=['api_last_used_at'])
+        
         return (user, None)
 
 

@@ -63,6 +63,7 @@ class LegacyUser(models.Model):
     tenant_id = models.UUIDField(db_column='tenantId', null=True, db_index=True)
     email = models.CharField(max_length=255)
     username = models.CharField(max_length=255, null=True)
+    password = models.CharField(max_length=255, null=True)
 
 
 class ProductOrder(models.Model):

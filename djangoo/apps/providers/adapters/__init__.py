@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Optional
 
 from .barakat import BarakatAdapter, BarakatCredentials
 from .znet import ZnetAdapter, ZnetCredentials
+from .internal import InternalAdapter, InternalCredentials
 
 
 @dataclass(frozen=True)
@@ -32,13 +33,21 @@ def _barakat_builder(values: Dict[str, Any]) -> BarakatCredentials:
     )
 
 
+def _internal_builder(values: Dict[str, Any]) -> InternalCredentials:
+    return InternalCredentials(
+        base_url=values.get('base_url'),
+        api_token=values.get('api_token'),
+    )
+
+
 def get_adapter(provider: str) -> Optional[AdapterBinding]:
     key = (provider or '').strip().lower()
     if key == 'znet':
         return AdapterBinding(provider='znet', adapter=ZnetAdapter(), _builder=_znet_builder)
     if key in ('barakat', 'apstore'):
         return AdapterBinding(provider=key, adapter=BarakatAdapter(), _builder=_barakat_builder)
-    # Future: add other adapters (internal, ...)
+    if key == 'internal':
+        return AdapterBinding(provider='internal', adapter=InternalAdapter(), _builder=_internal_builder)
     return None
 
 
@@ -96,4 +105,6 @@ __all__ = [
     'ZnetCredentials',
     'BarakatAdapter',
     'BarakatCredentials',
+    'InternalAdapter',
+    'InternalCredentials',
 ]

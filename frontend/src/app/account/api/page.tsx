@@ -75,16 +75,16 @@ export default function AccountApiPage(){
         <div className="text-xs">الحالة: {settings.revoked? 'مُبطَل': settings.enabled? 'فعال': 'غير مفعل'}</div>
         <div className="text-xs">آخر استخدام: {settings.lastUsedAt? new Date(settings.lastUsedAt).toLocaleString(): '—'}</div>
         {token && <div className="p-2 bg-amber-100 rounded text-xs break-all relative">
-          <div className="mb-1 font-medium">التوكن الجديد (لن يظهر مرة أخرى):</div>
-          <code className="block">{token}</code>
-          <button onClick={copyToken} className="btn btn-xs absolute left-2 top-2">نسخ</button>
+          <div className="mb-1 font-medium text-amber-900">التوكن الجديد (لن يظهر مرة أخرى):</div>
+          <code className="block text-blue-700 font-mono bg-white p-2 rounded border border-amber-300">{token}</code>
+          <button onClick={copyToken} className="btn btn-xs absolute left-2 top-2 bg-blue-600 text-white hover:bg-blue-700">نسخ</button>
         </div>}
         <div className="flex flex-wrap gap-2 text-sm">
           <button disabled={loading} onClick={()=>action('generate')} className="btn btn-xs">Generate</button>
           <button disabled={loading||!settings.enabled||settings.revoked} onClick={()=>action('rotate')} className="btn btn-xs">Rotate</button>
             <button disabled={loading||!settings.enabled||settings.revoked} onClick={()=>action('revoke')} className="btn btn-xs">Revoke</button>
         </div>
-        <div className="text-[11px] leading-relaxed text-gray-600 mt-2">
+        <div className="text-[11px] leading-relaxed text-yellow-600 mt-2">
           أرسل الهيدر في كل طلب: <code className="bg-gray-200 px-1 rounded">api-token: YOUR_TOKEN</code><br/>
           استخدم <code>order_uuid</code> (UUIDv4) مع إنشاء الطلب لمنع التكرار.
         </div>

@@ -803,7 +803,7 @@ class AdminIntegrationPackagesView(APIView):
             )
             if product_filter:
                 qs = qs.filter(product__name__icontains=product_filter)
-            our_packages = list(qs.order_by('product__name', 'name'))
+            our_packages = list(qs.order_by('product__name', 'base_price', 'name'))
         else:
             our_packages = []
 
@@ -846,6 +846,9 @@ class AdminIntegrationPackagesView(APIView):
                 'price': price_value,
                 'currency': currency,
             })
+
+        # Sort provider packages by price (cheapest first)
+        provider_options.sort(key=lambda x: x.get('price', 0))
 
         try:
             mapping_qs = PackageMapping.objects.filter(provider_api_id=integration_id, tenant_id=tenant_id)

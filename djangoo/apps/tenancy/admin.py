@@ -99,11 +99,24 @@ class TenantAdmin(admin.ModelAdmin):
                 # إنشاء UUID للمستأجر
                 tenant_uuid = uuid.uuid4()
                 
+                # استخراج code من host (أول جزء قبل النقطة)
+                tenant_code = obj.host.split('.')[0]
+                
+                # حذف أي سجلات قديمة بنفس الـ code أو domain (تنظيف)
+                try:
+                    from apps.orders.models import LegacyUser
+                    TenantDomain.objects.filter(domain=obj.host).delete()
+                    LegacyTenant.objects.filter(code=tenant_code).delete()
+                    # حذف Legacy Users القديمة لهذا الـ tenant
+                    LegacyUser.objects.filter(tenant_id=tenant_uuid).delete()
+                except Exception:
+                    pass
+                
                 # 1. إنشاء سجل في جدول tenant القديم (لتجنب foreign key constraint)
                 LegacyTenant.objects.create(
                     id=tenant_uuid,
                     name=obj.name or obj.host,
-                    code=obj.host.split('.')[0],  # أول جزء من الدومين
+                    code=tenant_code,
                     is_active=obj.is_active,
                     created_at=timezone.now(),
                     updated_at=timezone.now()
@@ -158,10 +171,11 @@ class TenantAdmin(admin.ModelAdmin):
                         # استخدام tenant_uuid إذا كان موجوداً، وإلا حاول الحصول عليه من obj.id
                         user_tenant_id = tenant_uuid if tenant_uuid else (obj.id if isinstance(obj.id, uuid.UUID) else None)
                         
-                        # إنشاء UUID للمستخدم
+                        # إنشاء UUID موحد للمستخدم (سيُستخدم في كلا النظامين)
                         user_uuid = uuid.uuid4()
                         
                         # 1. إنشاء المستخدم في dj_users (Django الجديد)
+                        # ⚠️ مهم: يجب أن نحفظ user.id لاستخدامه في LegacyUser
                         user = User.objects.create(
                             username=owner_username,
                             email=owner_email or f"{owner_username}@{obj.host}",
@@ -176,12 +190,20 @@ class TenantAdmin(admin.ModelAdmin):
                         )
                         
                         # 2. إنشاء نسخة في جدول users القديم (Legacy)
+                        # ⚠️ استخدام ID المستخدم من Django (إن كان UUID) أو user_uuid
                         try:
+                            # استخدام نفس كلمة السر المشفرة
+                            hashed_password = user.password  # نستخدم الـ password المشفر من Django User
+                            
+                            # تحديد ID للمستخدم القديم
+                            legacy_user_id = user.id if isinstance(user.id, uuid.UUID) else user_uuid
+                            
                             LegacyUser.objects.create(
-                                id=user_uuid,
+                                id=legacy_user_id,
                                 tenant_id=user_tenant_id,
                                 email=user.email,
-                                username=user.username
+                                username=user.username,
+                                password=hashed_password  # إضافة كلمة السر المشفرة
                             )
                             messages.success(
                                 request,

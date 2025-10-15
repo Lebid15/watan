@@ -314,7 +314,7 @@ export default function IntegrationMappingPage() {
   const [msg, setMsg] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
 
-  const [product, setProduct] = useState<string>(searchParams.get('product') || '');
+  const [product, setProduct] = useState<string>(searchParams.get('product') || 'الكل');
   const [productOptions, setProductOptions] = useState<string[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const skipNextAutoLoad = useRef(false);
@@ -346,7 +346,7 @@ export default function IntegrationMappingPage() {
         .map((p) => p.name)
         .filter(Boolean);
       setProductOptions(Array.from(new Set(names)));
-      if (!product && names.length) setProduct(names[0]);
+      // لا نغير القيمة الافتراضية - تبقى "الكل"
     } catch {
       // تجاهل
     } finally {
@@ -360,9 +360,12 @@ export default function IntegrationMappingPage() {
 
   // fallback محلي لو فشل جلب المنتجات
   const productSuggestions = useMemo(() => {
-    if (productOptions.length) return productOptions;
-    const names = rows.map((r) => r.our_package_name?.split(' ')?.[0] || '').filter(Boolean);
-    return Array.from(new Set(names));
+    const baseOptions = productOptions.length
+      ? productOptions
+      : Array.from(new Set(rows.map((r) => r.our_package_name?.split(' ')?.[0] || '').filter(Boolean)));
+    
+    // إضافة خيار "الكل" في البداية
+    return ['الكل', ...baseOptions];
   }, [productOptions, rows]);
 
   type LoadOptions = {
@@ -377,10 +380,13 @@ export default function IntegrationMappingPage() {
     setError('');
     if (!options?.preserveMsg) setMsg('');
     try {
+      // إذا كان "الكل" لا نرسل query parameter
+      const productParam = targetProduct && targetProduct !== 'الكل' 
+        ? `?product=${encodeURIComponent(targetProduct)}` 
+        : '';
+      
       const { data } = await api.get<{ api: ApiInfo; packages: Row[] }>(
-        `${API_ROUTES.admin.integrations.packages(String(id))}${
-          targetProduct ? `?product=${encodeURIComponent(targetProduct)}` : ''
-        }`
+        `${API_ROUTES.admin.integrations.packages(String(id))}${productParam}`
       );
       setApiInfo(data.api);
       setRows(data.packages || []);
@@ -408,7 +414,12 @@ export default function IntegrationMappingPage() {
 
   const applyFilter = (nextProduct: string) => {
     const qp = new URLSearchParams(searchParams.toString());
-    if (nextProduct) qp.set('product', nextProduct); else qp.delete('product');
+    // إذا كان "الكل" لا نرسل فلتر للـ backend
+    if (nextProduct && nextProduct !== 'الكل') {
+      qp.set('product', nextProduct);
+    } else {
+      qp.delete('product');
+    }
     const qs = qp.toString();
     const url = qs ? `/admin/products/integrations/${id}?${qs}` : `/admin/products/integrations/${id}`;
     router.replace(url);
@@ -605,7 +616,6 @@ export default function IntegrationMappingPage() {
                 <tr key={r.our_package_id} className="hover:bg-primary/5">
                   <td className="px-3 py-2">
                     <div className="font-medium">{r.our_package_name}</div>
-                    <div className="text-xs text-text-secondary">{r.our_package_id}</div>
                   </td>
                   {/* رأس المال USD فقط */}
                   <td className="px-3 py-2">
@@ -621,7 +631,7 @@ export default function IntegrationMappingPage() {
                   </td>
                   {/* الفرق USD */}
                   <td className={`px-3 py-2 ${diffClass}`}>
-                    {diffUSD == null ? '—' : `${diffUSD.toFixed(3)} USD`}
+                    {diffUSD == null ? '—' : `${diffUSD.toFixed(2)} USD`}
                   </td>
 
                   <td className="px-3 py-2">
