@@ -114,7 +114,7 @@ export const API_ROUTES = {
     profileWithCurrency: `${EFFECTIVE_API_BASE_URL}/users/profile-with-currency`,
     byId: (id: string) => `${EFFECTIVE_API_BASE_URL}/users/${id}`,
     withPriceGroup: `${EFFECTIVE_API_BASE_URL}/users/with-price-group`,
-    toggleActive: (id: string) => `${EFFECTIVE_API_BASE_URL}/users/${id}/active`,
+  toggleActive: (id: string) => `${EFFECTIVE_API_BASE_URL}/users/${id}`,
     addFunds: (id: string) => `${EFFECTIVE_API_BASE_URL}/users/${id}/balance/add`,
     setPassword: (id: string) => `${EFFECTIVE_API_BASE_URL}/users/${id}/password`,
     setOverdraft: (id: string) => `${EFFECTIVE_API_BASE_URL}/users/${id}/overdraft`,
@@ -224,6 +224,11 @@ export const API_ROUTES = {
       profits: `${EFFECTIVE_API_BASE_URL}/admin/reports/profits`,
       users: `${EFFECTIVE_API_BASE_URL}/admin/reports/users`,
       providers: `${EFFECTIVE_API_BASE_URL}/admin/reports/providers`,
+      capital: `${EFFECTIVE_API_BASE_URL}/admin/reports/capital`,
+      capitalAdjustments: {
+        base: `${EFFECTIVE_API_BASE_URL}/admin/reports/capital/adjustments`,
+        byId: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/reports/capital/adjustments/${id}`,
+      },
     },
 
     tenants: {

@@ -409,6 +409,7 @@ export default function AdminOrdersPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const [filters, setFilters] = useState<Filters>({
     q: '',
@@ -735,6 +736,7 @@ export default function AdminOrdersPage() {
       setNextCursor(null);
     } finally {
       setLoading(false);
+      setHasLoadedOnce(true);
     }
   };
 
@@ -956,8 +958,9 @@ export default function AdminOrdersPage() {
     : '';
 
   const { t } = useTranslation();
-  if (loading) return <div className="p-4 text-text-primary">{t('orders.loading')}</div>;
-  if (err) return <div className="p-4 text-danger">{err}</div>;
+  if (!hasLoadedOnce && loading) {
+    return <div className="p-4 text-text-primary">{t('orders.loading')}</div>;
+  }
 
   return (
     <div className="text-text-primary bg-bg-base p-4 min-h-screen">
@@ -969,6 +972,12 @@ export default function AdminOrdersPage() {
           border-color: #F7C15A;
         }
       `}</style>
+
+      {err && (
+        <div className="mb-3 rounded border border-border px-3 py-2 bg-bg-surface-alt text-danger">
+          {err}
+        </div>
+      )}
 
   <h1 className="font-bold mb-4">{t('orders.pageTitle')}</h1>
 

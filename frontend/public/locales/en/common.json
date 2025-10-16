@@ -203,6 +203,8 @@
   "users.delete.fail": "Failed to delete user",
   "users.status.toggle.fail": "Failed to change status",
   "users.empty.filtered": "No matching results",
+  "users.toggle.showDisabled": "Show disabled users",
+  "users.toggle.showActive": "Show active users",
   "users.topup.title": "Add Balance to User",
   "users.topup.user": "User",
   "users.topup.currency": "User Currency",

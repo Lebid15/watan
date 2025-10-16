@@ -19,6 +19,16 @@ type IntegrationRow = {
   enabled?: boolean;
 };
 
+type BalanceInfo = {
+  balance: number | null;
+  debt?: number | null;
+  currency?: string | null | Record<string, any>;
+  updatedAt?: string | null;
+  error?: string | null;
+  message?: string | null;
+  debtError?: string | null;
+};
+
 export default function AdminIntegrationsPage() {
   const router = useRouter();
   const { success, error: toastError, info, show } = useToast();
@@ -28,7 +38,7 @@ export default function AdminIntegrationsPage() {
   const [error, setError] = useState<string>('');
   const [testing, setTesting] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
-  const [balances, setBalances] = useState<Record<string, number | null>>({});
+  const [balances, setBalances] = useState<Record<string, BalanceInfo | undefined>>({});
   const [deleting, setDeleting] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
 
@@ -105,16 +115,83 @@ export default function AdminIntegrationsPage() {
   const handleRefreshBalance = async (id: string) => {
     setRefreshing(id);
     try {
-      const { data } = await api.post<{ balance: number }>(
+      const { data } = await api.post<{ balance: number | null; debt?: number | null; currency?: string | null; balanceUpdatedAt?: string | null; error?: string | null; message?: string | null; debtError?: string | null }>(
         API_ROUTES.admin.integrations.refreshBalance(id)
       );
-      setBalances((b) => ({ ...b, [id]: data?.balance ?? null }));
+      setBalances((b) => ({
+        ...b,
+        [id]: {
+          balance: data?.balance ?? null,
+          debt: data?.debt ?? null,
+          currency: data?.currency ?? null,
+          updatedAt: data?.balanceUpdatedAt ?? null,
+          error: data?.error ?? null,
+          message: data?.message ?? null,
+          debtError: data?.debtError ?? null,
+        },
+      }));
     } catch {
-      setBalances((b) => ({ ...b, [id]: null }));
+      setBalances((b) => ({
+        ...b,
+        [id]: { balance: null, debt: null, error: 'FETCH_FAILED', message: 'تعذّر جلب الرصيد' },
+      }));
     } finally {
       setRefreshing(null);
     }
   };
+  const formatAmount = (
+    value: number | null | undefined,
+    rawCurrency: string | null | undefined | Record<string, any>,
+    provider?: ProviderKind
+  ) => {
+    if (value === null || value === undefined) return '—';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    const formatted = num.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const resolvedCurrency = (() => {
+      if (typeof rawCurrency === 'string' && rawCurrency.trim()) {
+        return rawCurrency.trim();
+      }
+      if (rawCurrency && typeof rawCurrency === 'object') {
+        const obj = rawCurrency as Record<string, any>;
+        for (const key of ['symbol', 'code', 'Code', 'currency']) {
+          const val = obj[key];
+          if (typeof val === 'string' && val.trim()) return val.trim();
+        }
+      }
+      if (provider === 'internal') return 'USD';
+      if (provider === 'znet' || provider === 'apstore' || provider === 'barakat') return 'TRY';
+      return '';
+    })();
+
+    const currencySymbol = (() => {
+      if (!resolvedCurrency) return '';
+      if (resolvedCurrency.length === 1 && /[^A-Za-z]/.test(resolvedCurrency)) {
+        return resolvedCurrency;
+      }
+      const lookup: Record<string, string> = {
+        USD: '$',
+        USDT: '$',
+        TRY: '₺',
+        TL: '₺',
+        EUR: '€',
+        GBP: '£',
+        SAR: '﷼',
+        AED: 'د.إ',
+        KWD: 'د.ك',
+      };
+      return lookup[resolvedCurrency.toUpperCase()] || '';
+    })();
+
+    if (currencySymbol) {
+      return `${currencySymbol} ${formatted}`;
+    }
+    return resolvedCurrency ? `${formatted} ${resolvedCurrency}` : formatted;
+  };
+
 
   const handleDelete = async (id: string) => {
     show('تحذير: سيتم حذف التكامل نهائياً', 'error');
@@ -270,9 +347,32 @@ export default function AdminIntegrationsPage() {
                     />
                 </td>
                 <td className="border border-border px-3 py-2">
-                  {it.enabled === false ? '—' : (balances[it.id] !== undefined
-                    ? (balances[it.id] ?? '—')
-                    : <span className="text-text-secondary">—</span>)}
+                  {it.enabled === false ? '—' : (() => {
+                    const info = balances[it.id];
+                    if (!info) {
+                      return <span className="text-text-secondary">—</span>;
+                    }
+                    const balanceLabel = formatAmount(info.balance, info.currency, it.provider);
+                    const debtLabel = info.debt !== null && info.debt !== undefined
+                      ? formatAmount(info.debt, info.currency, it.provider)
+                      : null;
+                    const metaMessage = info.debtError || info.message || (info.error && info.error !== 'FETCH_FAILED' ? info.error : null);
+                    return (
+                      <div className="flex flex-col items-end gap-0.5 leading-tight">
+                        <span>{balanceLabel}</span>
+                        {debtLabel && (
+                          <span className="text-xs text-danger">
+                            دين: {debtLabel}
+                          </span>
+                        )}
+                        {metaMessage && (
+                          <span className="text-xs text-danger/80">
+                            {metaMessage}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex flex-wrap items-center gap-2">

@@ -1,7 +1,7 @@
 // src/app/admin/users/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import api, { API_ROUTES } from '@/utils/api';
@@ -26,6 +26,8 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState('');
+  const [showDisabledOnly, setShowDisabledOnly] = useState(false);
+  const [showTotalsView, setShowTotalsView] = useState(false);
 
   // حالة نافذة الإضافة (+)
   const [topupOpen, setTopupOpen] = useState(false);
@@ -75,7 +77,7 @@ export default function AdminUsersPage() {
   const handleToggleActive = async (u: UserRow) => {
     try {
       const next = !(u.isActive ?? true);
-      await api.patch(API_ROUTES.users.toggleActive(u.id), { isActive: next });
+      await api.put(API_ROUTES.users.byId(u.id), { isActive: next });
       setUsers((prev) =>
         prev.map((x) => (x.id === u.id ? { ...x, isActive: next } : x))
       );
@@ -160,7 +162,7 @@ export default function AdminUsersPage() {
   };
 
   const filtered = users.filter((u) => {
-    if (currentUserId && u.id === currentUserId) return false; // استثناء مالك الساب دومين (أو المستخدم الحالي)
+  if (currentUserId && String(u.id) === currentUserId) return false; // استثناء مالك الساب دومين (أو المستخدم الحالي)
     // استثناء المستخدمين الافتراضيين (seed / system) من العرض
     const SEED_EMAILS = [
       'owner@example.com',
@@ -169,6 +171,12 @@ export default function AdminUsersPage() {
       'lebidhacalayebank@gmail.com',
     ];
     if (SEED_EMAILS.includes(u.email.toLowerCase())) return false;
+    const normalizedActive = u.isActive !== undefined ? !!u.isActive : true;
+    if (showDisabledOnly) {
+      if (normalizedActive) return false;
+    } else if (!normalizedActive) {
+      return false;
+    }
     const t = search.toLowerCase();
     return (
       u.email.toLowerCase().includes(t) ||
@@ -177,6 +185,21 @@ export default function AdminUsersPage() {
       (u.phoneNumber ?? '').toLowerCase().includes(t)
     );
   });
+
+  const totalsByCurrency = useMemo(() => {
+    const totalsMap = new Map<string, number>();
+    for (const user of filtered) {
+      if (user.balance === null || user.balance === undefined) continue;
+      const numericBalance = Number(user.balance);
+      if (!Number.isFinite(numericBalance)) continue;
+      const code = (user.currency?.code || '').trim().toUpperCase() || '_';
+      totalsMap.set(code, (totalsMap.get(code) ?? 0) + numericBalance);
+    }
+    return Array.from(totalsMap.entries()).map(([code, total]) => ({
+      code: code === '_' ? '' : code,
+      total,
+    }));
+  }, [filtered]);
 
   return (
     <div className="bg-bg-base text-text-primary p-6 min-h-screen">
@@ -197,6 +220,20 @@ export default function AdminUsersPage() {
             {t('users.search.clear')}
           </button>
         )}
+        <button
+          onClick={() => setShowDisabledOnly((prev) => !prev)}
+          className={`px-3 py-2 rounded border border-border ${showDisabledOnly ? 'bg-warning text-text-inverse' : 'bg-bg-surface-alt text-text-primary hover:opacity-90'}`}
+        >
+          {showDisabledOnly ? t('users.toggle.showActive') : t('users.toggle.showDisabled')}
+        </button>
+        <button
+          onClick={() => setShowTotalsView((prev) => !prev)}
+          className="px-3 py-2 rounded border border-border bg-bg-surface-alt text-text-primary hover:opacity-90"
+        >
+          {showTotalsView
+            ? t('users.totals.toggleTable', { defaultValue: 'عرض الجدول' })
+            : t('users.totals.toggleSummary', { defaultValue: 'عرض ملخص الأرصدة' })}
+        </button>
       </div>
 
       {error && <div className="text-danger mb-3">{error}</div>}
@@ -204,88 +241,119 @@ export default function AdminUsersPage() {
         <div>{t('users.loading')}</div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border border-border bg-bg-surface">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="bg-bg-surface-alt text-center">
-                  <th className="border border-border p-2">{t('users.table.username')}</th>
-                  {/** مخفي بناءً على طلب: عمود البريد الإلكتروني */}
-                  {/** <th className="border border-border p-2">البريد الإلكتروني</th> */}
-                  <th className="border border-border p-2">{t('users.table.balance')}</th>
-                  <th className="border border-border p-2">{t('users.table.status')}</th>
-                  {/* تقليل الحشو في ترويسة الإجراءات */}
-                  <th className="border border-border px-2 py-1">{t('users.table.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((u) => {
-                  const num = Number(u.balance);
-                  const code = u.currency?.code;
-                  const sym = currencySymbol(code || undefined);
-                  const balanceDisplay =
-                    u.balance !== null && !isNaN(num)
-                      ? formatMoney(num, code, {
-                          symbolBefore: sym === '$' || sym === '€',
-                        })
-                      : '-';
-                  const isActive = u.isActive ?? true;
-
+          {showTotalsView ? (
+            totalsByCurrency.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {totalsByCurrency.map(({ code, total }) => {
+                  const symbol = currencySymbol(code || undefined);
+                  const amountLabel = formatMoney(total, code || undefined, {
+                    symbolBefore: symbol === '$' || symbol === '€',
+                  });
+                  const currencyForTitle = code || t('users.totals.unknownCurrencyShort', { defaultValue: 'عملة غير معروفة' });
                   return (
-                    <tr key={u.id} className="text-center hover:bg-bg-surface-alt">
-                      <td className="border border-border p-2">{u.username ?? '-'}</td>
-                      {/** مخفي بناءً على طلب: عمود البريد الإلكتروني */}
-                      {/** <td className="border border-border p-2">{u.email}</td> */}
-                      <td className="border border-border p-2">{balanceDisplay}</td>
-                      <td className="border border-border p-2">
-                        <button
-                          onClick={() => handleToggleActive(u)}
-                          className={`w-4 h-4 rounded-full inline-block ${
-                            isActive
-                              ? 'bg-success hover:opacity-90'
-                              : 'bg-danger hover:opacity-90'
-                          }`}
-                          title={isActive ? t('users.status.active') : t('users.status.inactive')}
-                        />
-                      </td>
-                      <td className="border border-border px-1.5 py-1">
-                        <div className="flex justify-center gap-1.5">
-                          <button
-                            onClick={() => openTopup(u)}
-                            className="bg-success text-text-inverse px-2.5 py-0.5 rounded hover:brightness-110 text-sm"
-                            title={t('users.topup.submit')}
-                          >
-                            +
-                          </button>
-                          <button
-                            onClick={() => handleReset2FA(u.id)}
-                            className="bg-red-600 text-white px-2.5 py-0.5 rounded hover:bg-red-700 text-[11px]"
-                            title={t('users.2fa.reset.button')}
-                          >
-                            {t('users.2fa.reset.button')}
-                          </button>
-                          <Link
-                            href={`/admin/users/${u.id}`}
-                            className="bg-primary text-primary-contrast px-2.5 py-0.5 rounded hover:bg-primary-hover text-sm"
-                          >
-                            {t('users.actions.edit')}
-                          </Link>
-                          <button
-                            onClick={() => handleDelete(u.id)}
-                            className="bg-danger text-text-inverse px-2.5 py-0.5 rounded hover:brightness-110 text-sm"
-                          >
-                            {t('users.actions.delete')}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <div key={code || 'unknown'} className="border border-border bg-bg-surface rounded-lg p-4 shadow-sm">
+                      <div className="text-sm text-text-secondary mb-1">
+                        {t('users.totals.cardTitlePerCurrency', {
+                          currency: currencyForTitle,
+                          defaultValue: `مجموع الأرصدة لـ ${currencyForTitle}`,
+                        })}
+                      </div>
+                      <div className="text-2xl font-bold text-text-primary">{amountLabel}</div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            ) : (
+              <div className="text-text-secondary mt-4">
+                {t('users.totals.empty', { defaultValue: 'لا توجد أرصدة لعرضها حالياً.' })}
+              </div>
+            )
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border border-border bg-bg-surface">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="bg-bg-surface-alt text-center">
+                      <th className="border border-border p-2">{t('users.table.username')}</th>
+                      {/** مخفي بناءً على طلب: عمود البريد الإلكتروني */}
+                      {/** <th className="border border-border p-2">البريد الإلكتروني</th> */}
+                      <th className="border border-border p-2">{t('users.table.balance')}</th>
+                      <th className="border border-border p-2">{t('users.table.status')}</th>
+                      {/* تقليل الحشو في ترويسة الإجراءات */}
+                      <th className="border border-border px-2 py-1">{t('users.table.actions')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((u) => {
+                      const num = Number(u.balance);
+                      const code = u.currency?.code;
+                      const sym = currencySymbol(code || undefined);
+                      const balanceDisplay =
+                        u.balance !== null && !isNaN(num)
+                          ? formatMoney(num, code, {
+                              symbolBefore: sym === '$' || sym === '€',
+                            })
+                          : '-';
+                      const isActive = u.isActive ?? true;
 
-          {filtered.length === 0 && (
-            <div className="text-text-secondary mt-4">{t('users.empty.filtered')}</div>
+                      return (
+                        <tr key={u.id} className="text-center hover:bg-bg-surface-alt">
+                          <td className="border border-border p-2">{u.username ?? '-'}</td>
+                          {/** مخفي بناءً على طلب: عمود البريد الإلكتروني */}
+                          {/** <td className="border border-border p-2">{u.email}</td> */}
+                          <td className="border border-border p-2">{balanceDisplay}</td>
+                          <td className="border border-border p-2">
+                            <button
+                              onClick={() => handleToggleActive(u)}
+                              className={`w-4 h-4 rounded-full inline-block ${
+                                isActive
+                                  ? 'bg-success hover:opacity-90'
+                                  : 'bg-danger hover:opacity-90'
+                              }`}
+                              title={isActive ? t('users.status.active') : t('users.status.inactive')}
+                            />
+                          </td>
+                          <td className="border border-border px-1.5 py-1">
+                            <div className="flex justify-center gap-1.5">
+                              <button
+                                onClick={() => openTopup(u)}
+                                className="bg-success text-text-inverse px-2.5 py-0.5 rounded hover:brightness-110 text-sm"
+                                title={t('users.topup.submit')}
+                              >
+                                +
+                              </button>
+                              <button
+                                onClick={() => handleReset2FA(u.id)}
+                                className="bg-red-600 text-white px-2.5 py-0.5 rounded hover:bg-red-700 text-[11px]"
+                                title={t('users.2fa.reset.button')}
+                              >
+                                {t('users.2fa.reset.button')}
+                              </button>
+                              <Link
+                                href={`/admin/users/${u.id}`}
+                                className="bg-primary text-primary-contrast px-2.5 py-0.5 rounded hover:bg-primary-hover text-sm"
+                              >
+                                {t('users.actions.edit')}
+                              </Link>
+                              <button
+                                onClick={() => handleDelete(u.id)}
+                                className="bg-danger text-text-inverse px-2.5 py-0.5 rounded hover:brightness-110 text-sm"
+                              >
+                                {t('users.actions.delete')}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {filtered.length === 0 && (
+                <div className="text-text-secondary mt-4">{t('users.empty.filtered')}</div>
+              )}
+            </>
           )}
         </>
       )}

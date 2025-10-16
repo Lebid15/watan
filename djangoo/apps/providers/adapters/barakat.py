@@ -138,7 +138,44 @@ class BarakatAdapter:
                 raise BarakatError('Invalid balance response') from exc
         if bal is None:
             raise BarakatError('Balance missing in response')
-        return {'balance': float(bal)}
+
+        currency_value: Optional[str] = None
+        debt_raw: Any = None
+        containers: List[Dict[str, Any]] = []
+        if isinstance(data, dict):
+            containers.append(data)
+            inner = data.get('data')
+            if isinstance(inner, dict):
+                containers.append(inner)
+        for container in containers:
+            for key in ('currency', 'currency_code', 'currencyCode', 'balanceCurrency', 'balance_currency'):
+                value = container.get(key)
+                if isinstance(value, str) and value.strip():
+                    currency_value = value.strip()
+                    break
+            if currency_value:
+                break
+        for container in containers:
+            for key in ('debt', 'borc', 'debit', 'balanceDebt', 'balance_debt'):
+                if container.get(key) is not None:
+                    debt_raw = container.get(key)
+                    break
+            if debt_raw is not None:
+                break
+
+        debt_value: Optional[float] = None
+        if debt_raw is not None:
+            try:
+                debt_value = float(str(debt_raw).replace(',', '.'))
+            except (TypeError, ValueError):
+                debt_value = None
+
+        result: Dict[str, Any] = {'balance': float(bal)}
+        if currency_value:
+            result['currency'] = currency_value
+        if debt_value is not None:
+            result['debt'] = debt_value
+        return result
 
     def list_products(self, creds: BarakatCredentials) -> List[Dict[str, Any]]:
         url = f"{self._resolve_base_url(creds)}/client/api/products"

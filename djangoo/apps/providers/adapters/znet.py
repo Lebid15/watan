@@ -77,7 +77,7 @@ class ZnetAdapter:
 
     def get_balance(self, creds: ZnetCredentials):
         if self._sim():
-            return { 'balance': 123.45 }
+            return { 'balance': 123.45, 'currency': 'TRY' }
 
         path = self._path('servis/bakiye_kontrol.php', 'DJ_ZNET_BALANCE_PATH').lstrip('/')
         if not path:
@@ -100,16 +100,26 @@ class ZnetAdapter:
                     raise ZnetError(f'Unable to parse JSON balance response: {body[:200]}') from exc
 
                 bal = None
+                debt_raw = None
                 if isinstance(data, dict):
                     for key in ('balance', 'bakiye', 'Balance', 'Bakiye'):
                         if data.get(key) is not None:
                             bal = data.get(key)
                             break
-                    if bal is None and isinstance(data.get('data'), dict):
-                        inner = data['data']
+                    for key in ('debt', 'borc', 'Debt', 'borc_tutar', 'borcTutar'):
+                        if data.get(key) is not None:
+                            debt_raw = data.get(key)
+                            break
+                    inner = data.get('data') if isinstance(data.get('data'), dict) else None
+                    if bal is None and inner is not None:
                         for key in ('balance', 'bakiye'):
                             if inner.get(key) is not None:
                                 bal = inner.get(key)
+                                break
+                    if debt_raw is None and inner is not None:
+                        for key in ('debt', 'borc'):
+                            if inner.get(key) is not None:
+                                debt_raw = inner.get(key)
                                 break
                 if bal is None:
                     raise ZnetError(f'Balance key missing in JSON response: {str(data)[:200]}')
@@ -117,7 +127,13 @@ class ZnetAdapter:
                     value = float(str(bal).replace(',', '.'))
                 except Exception as exc:  # pragma: no cover - defensive
                     raise ZnetError('Invalid balance number in JSON response') from exc
-                return { 'balance': value }
+                debt_value = None
+                if debt_raw is not None:
+                    try:
+                        debt_value = float(str(debt_raw).replace(',', '.'))
+                    except Exception:
+                        debt_value = None
+                return { 'balance': value, 'debt': debt_value, 'currency': 'TRY' }
 
             parts = [p.strip() for p in body.split('|')]
             if parts and parts[0].upper() == 'OK' and len(parts) >= 2:
@@ -128,12 +144,20 @@ class ZnetAdapter:
                     value = float(raw_value.replace(',', '.'))
                 except Exception as exc:  # pragma: no cover - defensive
                     raise ZnetError('Invalid balance number in response') from exc
-                return { 'balance': value }
+                debt_value = None
+                if len(parts) >= 3:
+                    raw_debt = parts[2]
+                    if raw_debt:
+                        try:
+                            debt_value = float(raw_debt.replace(',', '.'))
+                        except Exception:
+                            debt_value = None
+                return { 'balance': value, 'debt': debt_value, 'currency': 'TRY' }
 
             raise ZnetError(f'Unexpected balance response: {body[:200]}')
         except Exception as exc:
             msg = str(exc)
-            return { 'balance': 0, 'error': 'FETCH_FAILED', 'message': msg[:200] }
+            return { 'balance': 0, 'debt': None, 'error': 'FETCH_FAILED', 'message': msg[:200], 'currency': 'TRY' }
 
     def list_products(self, creds: ZnetCredentials) -> List[Dict[str, Any]]:
         if self._sim():

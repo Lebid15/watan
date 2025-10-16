@@ -15,7 +15,7 @@ export default function DevStatsPageClient(){
   const [busyId,setBusyId]=useState<string|null>(null);
   async function load(){ try { setLoading(true); setErr(null); const res=await api.get(`${API_BASE_URL}/admin/stats/supervisors`); setRows(res.data as SupervisorRow[]);} catch { setErr('فشل في جلب بيانات المشرفين'); } finally { setLoading(false);} }
   useEffect(()=>{ load(); },[]);
-  async function toggleActive(id:string,current?:boolean){ try { setBusyId(id); const next = !(current ?? true); await api.patch(`${API_BASE_URL}/users/${id}/active`, { isActive: next }); setRows(old=>old.map(r=> r.id===id? {...r, isActive: next}:r)); } catch { alert('لم يتم تبديل الحالة'); } finally { setBusyId(null);} }
+  async function toggleActive(id:string,current?:boolean){ try { setBusyId(id); const next = !(current ?? true); await api.put(`${API_BASE_URL}/users/${id}`, { isActive: next }); setRows(old=>old.map(r=> r.id===id? {...r, isActive: next}:r)); } catch { alert('لم يتم تبديل الحالة'); } finally { setBusyId(null);} }
   async function changePassword(id:string,email:string){ const pwd = prompt(`أدخل كلمة مرور جديدة للمشرف (${email}):`); if(!pwd) return; try { setBusyId(id); await api.patch(`${API_BASE_URL}/users/${id}/password`, { password: pwd }); alert('تم تغيير كلمة المرور ✅'); } catch { alert('فشل تغيير كلمة المرور ❌'); } finally { setBusyId(null);} }
   if (loading) return <div className="p-6"><h1 className="text-2xl font-bold mb-4">إحصائيات المشرفين</h1><p>⏳ جاري التحميل...</p></div>;
   if (err) return <div className="p-6"><h1 className="text-2xl font-bold mb-4">إحصائيات المشرفين</h1><p className="text-red-600">{err}</p></div>;

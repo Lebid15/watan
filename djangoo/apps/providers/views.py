@@ -128,6 +128,7 @@ def _build_balance_payload(integration: Integration, *, persist: bool, overrides
         raw_error = str(raw_error)
 
     balance_value, parse_error = _parse_balance_value(result.get('balance'))
+    debt_value, debt_parse_error = _parse_balance_value(result.get('debt'))
 
     payload: dict = {}
     if missing_config:
@@ -137,6 +138,10 @@ def _build_balance_payload(integration: Integration, *, persist: bool, overrides
     if parse_error and not error_text:
         error_text = 'INVALID_BALANCE'
         message = parse_error
+    if debt_parse_error:
+        payload['debtError'] = debt_parse_error
+        if not message and not error_text:
+            message = debt_parse_error
     if error_text:
         payload['error'] = error_text
     if message:
@@ -146,6 +151,7 @@ def _build_balance_payload(integration: Integration, *, persist: bool, overrides
 
     has_error = bool(error_text)
     response_balance = None if has_error or missing_config or balance_value is None else balance_value
+    response_debt = None if has_error or missing_config or debt_value is None else debt_value
 
     allow_persist = persist and not bool(override_map)
     if allow_persist and response_balance is not None and response_balance != 0:
@@ -161,6 +167,7 @@ def _build_balance_payload(integration: Integration, *, persist: bool, overrides
             response_balance = response_balance
 
     payload['balance'] = response_balance
+    payload['debt'] = response_debt
     payload['balanceUpdatedAt'] = integration.balance_updated_at.isoformat() if integration.balance_updated_at else None
     return payload
 

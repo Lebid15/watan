@@ -71,8 +71,6 @@ export default function EditUserPage() {
         username: user.username ?? null,
         phoneNumber: user.phoneNumber ?? null,
         countryCode: user.countryCode ?? null,
-        role: user.role,
-        isActive: user.isActive,
       });
 
       if (newPassword.trim()) {
@@ -165,30 +163,7 @@ export default function EditUserPage() {
         </div>
       </div>
 
-      {/* الدور */}
-      <div className="mb-4">
-  <label className="block font-semibold mb-1">{t('users.detail.role')}</label>
-        <select
-          value={user.role}
-          onChange={(e) => setUser({ ...user, role: e.target.value })}
-          className="w-full border border-border p-2 rounded bg-bg-input"
-        >
-          <option value="user">user</option>
-          <option value="admin">admin</option>
-        </select>
-      </div>
-
-      {/* الحالة */}
-      <div className="mb-4">
-        <label className="inline-flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={user.isActive ?? true}
-            onChange={(e) => setUser({ ...user, isActive: e.target.checked })}
-          />
-          <span>{t('users.detail.activeCheckbox')}</span>
-        </label>
-      </div>
+      {/* الدور والحالة غير قابلة للتعديل من هذه الصفحة */}
 
       {/* كلمة السر */}
       <div className="mb-4">

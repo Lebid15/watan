@@ -204,6 +204,8 @@
   "users.delete.fail": "فشل حذف المستخدم",
   "users.status.toggle.fail": "تعذّر تغيير الحالة",
   "users.empty.filtered": "لا توجد نتائج مطابقة",
+  "users.toggle.showDisabled": "اظهار المعطلين",
+  "users.toggle.showActive": "اظهار النشطين",
   "users.topup.title": "إضافة رصيد للمستخدم",
   "users.topup.user": "المستخدم",
   "users.topup.currency": "عملة المستخدم",

@@ -5,7 +5,7 @@ import uuid
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, CharField
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -16,6 +16,7 @@ from apps.providers.models import PackageRouting, PackageMapping, Integration
 from apps.providers.adapters import resolve_adapter_credentials
 from django.utils import timezone
 from django.db import connection
+from django.db.models.functions import Cast
 from datetime import datetime
 from .serializers import (
     OrderCreateRequestSerializer,
@@ -465,7 +466,31 @@ class AdminOrdersListView(APIView):
         except Exception:
             pass
         if q:
-            qs = qs.filter(Q(user_identifier__icontains=q) | Q(extra_field__icontains=q))
+            qs = qs.annotate(id_text=Cast('id', CharField()))
+            search_filters = (
+                Q(user_identifier__icontains=q) |
+                Q(extra_field__icontains=q) |
+                Q(user__username__icontains=q) |
+                Q(user__email__icontains=q) |
+                Q(product__name__icontains=q) |
+                Q(package__name__icontains=q) |
+                Q(id_text__icontains=q)
+            )
+
+            if q.isdigit():
+                try:
+                    search_filters |= Q(order_no=int(q))
+                except (TypeError, ValueError):
+                    pass
+
+            try:
+                query_uuid = uuid.UUID(q)
+            except (ValueError, TypeError, AttributeError):
+                query_uuid = None
+            if query_uuid:
+                search_filters |= Q(id=query_uuid)
+
+            qs = qs.filter(search_filters)
         if cursor:
             try:
                 qs = qs.filter(created_at__lt=cursor)

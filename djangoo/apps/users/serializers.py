@@ -45,11 +45,12 @@ class AdminUserSerializer(serializers.ModelSerializer):
     currencyCode = serializers.SerializerMethodField()
     balance = serializers.SerializerMethodField()
     priceGroup = serializers.SerializerMethodField()
+    isActive = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'username', 'roleFinal', 'balance', 'preferred_currency_code',
+            'id', 'email', 'username', 'roleFinal', 'isActive', 'balance', 'preferred_currency_code',
             'currency', 'currencyCode', 'priceGroup', 'price_group_id', 'tenant_id',
         ]
 
@@ -92,6 +93,15 @@ class AdminUserSerializer(serializers.ModelSerializer):
             return float(obj.balance or 0)
         except Exception:
             return 0.0
+
+    def get_isActive(self, obj):
+        status_value = getattr(obj, 'status', None)
+        if status_value is not None and hasattr(User, 'Status'):
+            try:
+                return status_value != User.Status.DISABLED
+            except Exception:
+                pass
+        return bool(getattr(obj, 'is_active', True))
 
     def get_priceGroup(self, obj):
         if getattr(obj, 'price_group_id', None):
