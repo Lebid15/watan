@@ -9,10 +9,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load .env if present. Force override to avoid leaked shell env overriding local file during dev.
 load_dotenv(BASE_DIR / ".env", override=True)
 
+# ======== CRITICAL SECURITY SETTINGS ========
+# SECRET_KEY - يجب أن يكون موجود في الإنتاج
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-insecure-secret")
-DEBUG = os.getenv("DJANGO_DEBUG", "0") == "1"
+if SECRET_KEY == "dev-insecure-secret" and os.getenv("ENVIRONMENT") == "production":
+    raise ValueError("⚠️ DJANGO_SECRET_KEY must be set with a secure value in production!")
 
+# DEBUG - يجب أن يكون False في الإنتاج
+DEBUG = os.getenv("DJANGO_DEBUG", "0") == "1"
+if DEBUG and os.getenv("ENVIRONMENT") == "production":
+    raise ValueError("⚠️ DEBUG mode is not allowed in production! Set DJANGO_DEBUG=0")
+
+# ALLOWED_HOSTS - يجب تحديدها في الإنتاج
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
+if "*" in ALLOWED_HOSTS and os.getenv("ENVIRONMENT") == "production":
+    raise ValueError("⚠️ ALLOWED_HOSTS must be specified in production! Do not use '*'")
 
 LANGUAGE_CODE = os.getenv("DJANGO_LANGUAGE_CODE", "ar")
 TIME_ZONE = os.getenv("DJANGO_TIME_ZONE", "UTC")
@@ -237,3 +248,97 @@ CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 PASSWORD_RESET_TOKEN_TTL_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_MINUTES", "60"))
+
+# ============================================================================
+# CRITICAL SECURITY SETTINGS FOR PRODUCTION
+# ============================================================================
+
+# Security Middleware Settings - تفعيل في الإنتاج فقط
+if not DEBUG and os.getenv("ENVIRONMENT") == "production":
+    # Force HTTPS
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # HSTS (HTTP Strict Transport Security)
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+# Security Headers - دائماً مفعلة
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
+# Cookie Security
+CSRF_COOKIE_SECURE = not DEBUG  # HTTPS only في الإنتاج
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+SESSION_COOKIE_SECURE = not DEBUG  # HTTPS only في الإنتاج
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_AGE = 86400  # 24 hours
+
+# Password Validation - تقوية متطلبات كلمة المرور
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,  # الحد الأدنى 8 أحرف
+        }
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+
+# Security Logging - تسجيل الأحداث الأمنية
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'security_file': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'security.log',
+            'maxBytes': 1024 * 1024 * 10,  # 10MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django.security': {
+            'handlers': ['security_file', 'console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['security_file', 'console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
+
+# إنشاء مجلد logs إذا لم يكن موجود
+(BASE_DIR / 'logs').mkdir(exist_ok=True)

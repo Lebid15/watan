@@ -1,4 +1,0 @@
--- schema_db.sql
--- Placeholder schema snapshot. Replace by running:
--- docker compose exec -T postgres pg_dump -U watan -d watan -s > backend/schema_db.sql
--- The compare script will pick this file automatically.

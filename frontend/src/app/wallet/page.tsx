@@ -1,6 +1,7 @@
 // src/app/wallet/page.tsx
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fmtDateStable } from '@/lib/fmtDateStable';
@@ -220,6 +221,11 @@ export default function WalletPage() {
     });
   }, [rows]);
 
+  const hasPendingDeposit = useMemo(
+    () => rows.some((deposit) => deposit.status === 'pending'),
+    [rows]
+  );
+
   const filters = [
     { key: 'all' as const, label: 'الكل' },
     { key: 'user_request' as const, label: 'طلبات المستخدم' },
@@ -228,8 +234,48 @@ export default function WalletPage() {
 
   return (
     <div className="min-h-screen p-4 max-w-2xl mx-auto bg-bg-base text-text-primary" dir="rtl">
-      <h1 className="text-xl font-bold mb-1">{t('wallet.pageTitle')}</h1>
-      <p className="mb-4 text-text-secondary">{t('wallet.description')}</p>
+      <style>{`
+        .pending-deposit-card {
+          background-color: #584402ff;
+          border: 1px solid #F7C15A;
+        }
+        .pending-deposit-card .pending-deposit-trigger {
+          background-color: transparent;
+        }
+        .pending-deposit-card .pending-deposit-trigger:hover {
+          background-color: rgba(255, 209, 102, 0.18);
+        }
+        .pending-deposit-card .pending-deposit-details {
+          background-color: rgba(255, 233, 160, 0.08);
+        }
+      `}</style>
+
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h1 className="text-lg font-bold mb-1">{t('wallet.pageTitle')}</h1>
+        </div>
+        {hasPendingDeposit ? (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              className="btn btn-primary text-sm px-4 py-2 whitespace-nowrap opacity-60 cursor-not-allowed"
+              disabled
+            >
+              إضافة رصيد
+            </button>
+            <span className="text-xs text-warning">
+              لديك طلب إيداع قيد المعالجة. انتظر الموافقة قبل إرسال طلب جديد.
+            </span>
+          </div>
+        ) : (
+          <Link
+            href="/payments/deposits"
+            className="btn btn-primary text-sm px-4 py-2 whitespace-nowrap"
+          >
+            إضافة رصيد
+          </Link>
+        )}
+      </div>
 
       {err && <div className="mb-3 text-danger">{err}</div>}
 
@@ -262,14 +308,22 @@ export default function WalletPage() {
           <div className="space-y-3">
             {orderedRows.map((r) => {
               const isOpen = openId === r.id;
+              const pending = r.status === 'pending';
               return (
                 <div
                   key={r.id}
-                  className={['card rounded-2xl overflow-hidden ring-1', ringByStatus(r.status)].join(' ')}
+                  className={[
+                    'card rounded-2xl overflow-hidden ring-1',
+                    ringByStatus(r.status),
+                    pending ? 'pending-deposit-card' : '',
+                  ].join(' ')}
                 >
                   <button
                     onClick={() => setOpenId(isOpen ? null : r.id)}
-                    className="w-full px-4 py-3 space-y-1 bg-bg-surface-alt hover:bg-bg-surface transition text-right"
+                    className={[
+                      'w-full px-4 py-3 space-y-1 bg-bg-surface-alt hover:bg-bg-surface transition text-right',
+                      pending ? 'pending-deposit-trigger' : '',
+                    ].join(' ')}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -315,7 +369,12 @@ export default function WalletPage() {
                   </button>
 
                   {isOpen && (
-                    <div className="px-4 pb-4 bg-bg-surface">
+                    <div
+                      className={[
+                        'px-4 pb-4 bg-bg-surface',
+                        pending ? 'pending-deposit-details' : '',
+                      ].join(' ')}
+                    >
                       <div className="grid sm:grid-cols-2 gap-3 text-sm">
                         <div className="bg-bg-surface-alt rounded-lg p-3">
                           <div className="text-text-secondary">{t('wallet.deposit.originalAmount')}</div>

@@ -40,6 +40,73 @@ type Currency = {
   symbolAr?: string; // مثل "$" أو "₺"
 };
 
+function ProvidersPricesCell({ providers, highlightProviderId }: { providers: RoutingItem['providers']; highlightProviderId?: string | null; }) {
+  // يعرض الأسعار داخل قائمة منسدلة ويُظهر في الزر السعر الحالي للمزوّد المختار.
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      if (!open || !ref.current) return;
+      if (!ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const hasProviders = Array.isArray(providers) && providers.length > 0;
+
+  const formatAmount = (amount: number) =>
+    Number.isFinite(amount)
+      ? Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : 'N/A';
+
+  if (!hasProviders) {
+    return <span className="text-xs text-text-secondary">لا توجد أسعار</span>;
+  }
+
+  const selectedProvider = providers.find((provider) => provider.providerId === highlightProviderId) || providers[0];
+  const selectedProviderId = selectedProvider?.providerId ?? null;
+  const othersCount = Math.max(providers.length - (selectedProvider ? 1 : 0), 0);
+  const selectedLabel = selectedProvider
+    ? `${selectedProvider.providerName}: ${formatAmount(selectedProvider.costAmount)} ${selectedProvider.costCurrency || ''}`.trim()
+    : 'عرض الأسعار';
+  const buttonLabel = othersCount > 0 ? `${selectedLabel} (+${othersCount})` : selectedLabel;
+
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      <button
+        type="button"
+        className="btn btn-secondary text-xs"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {buttonLabel}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 z-50 mt-2 w-72 origin-top-right rounded-lg border border-border bg-bg-surface shadow-lg">
+          <ul className="max-h-72 overflow-auto py-1">
+            {providers.map((provider) => {
+              const isActive = provider.providerId === selectedProviderId;
+              return (
+                <li
+                  key={provider.providerId}
+                  className={`px-3 py-2 hover:bg-primary/10 ${isActive ? 'bg-primary/15 font-medium' : ''}`}
+                >
+                <div className="text-sm font-medium">{provider.providerName}</div>
+                <div className="text-xs text-text-secondary mt-0.5">
+                  {formatAmount(provider.costAmount)} {provider.costCurrency || ''}
+                </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* =============== ComboBox صغير ببحث داخلي =============== */
 function ProductFilterCombo({
   value,
@@ -518,17 +585,10 @@ export default function PackagesRoutingPage() {
 
                   {/* تكاليف المزوّدين */}
                   <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-2">
-                      {r.providers.map((p) => (
-                        <span
-                          key={p.providerId}
-                          className="text-xs rounded-md px-2 py-1 bg-success/15 text-success border border-success/30"
-                          title={p.providerName}
-                        >
-                          {p.providerName}: {p.costAmount} {p.costCurrency || 'TL'}
-                        </span>
-                      ))}
-                    </div>
+                    <ProvidersPricesCell
+                      providers={r.providers}
+                      highlightProviderId={r.routing.providerType === 'external' ? r.routing.primaryProviderId : undefined}
+                    />
                   </td>
 
                   {/* اختيار مجموعة الأكواد - يظهر فقط عند internal_codes */}

@@ -12,7 +12,7 @@ export class ClientApiWebhookEnqueueService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
-  async enqueueOrderStatus(opts: { tenantId: string; userId: string; order: { id: string; orderUuid?: string | null; status: string; productId?: string; quantity: number; updatedAt?: Date | null; }; }) {
+  async enqueueOrderStatus(opts: { tenantId: string; userId: string; order: { id: string; orderUuid?: string | null; status: string; productId?: string; quantity: number; updatedAt?: Date | null; manualNote?: string | null; }; }) {
     const user = await this.userRepo.findOne({ where: { id: opts.userId } as any });
     if (!user || !user.apiWebhookEnabled || !user.apiWebhookSecret || !user.apiWebhookUrl) return;
     const eventId = crypto.randomUUID();
@@ -25,6 +25,7 @@ export class ClientApiWebhookEnqueueService {
       product_id: opts.order.productId || null,
       quantity: opts.order.quantity,
       updated_at: (opts.order.updatedAt || new Date()).toISOString(),
+      note: opts.order.manualNote || null,  // ✅ إضافة الملاحظة
     };
     const row = this.outboxRepo.create({
       tenantId: opts.tenantId,

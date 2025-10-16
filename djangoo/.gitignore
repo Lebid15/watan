@@ -7,3 +7,20 @@ static/
 *.sqlite3
 .DS_Store
 *.log
+
+# Environment files - CRITICAL: Never commit secrets!
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Security
+logs/*.log
+logs/security.log
+*.key
+*.pem
+*.crt
+
+# Sensitive data
+secrets/
+credentials/

@@ -148,7 +148,8 @@ class AdminDepositTopupRequestSerializer(serializers.Serializer):
 
 class AdminDepositTopupDepositSerializer(serializers.Serializer):
     id = serializers.UUIDField()
-    userId = serializers.UUIDField()
+    userId = serializers.CharField()
+    legacyUserId = serializers.UUIDField(required=False, allow_null=True)
     methodId = serializers.UUIDField(allow_null=True)
     originalAmount = serializers.DecimalField(max_digits=18, decimal_places=6)
     originalCurrency = serializers.CharField()

@@ -127,3 +127,7 @@ class LegacyPasswordResetToken(models.Model):
 
     def __str__(self) -> str:
         return f"PasswordResetToken(user={self.user_id})"
+
+
+# Import wallet transaction model
+from apps.users.wallet_models import WalletTransaction  # noqa: E402, F401

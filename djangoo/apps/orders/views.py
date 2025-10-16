@@ -347,6 +347,34 @@ class OrdersCreateView(APIView):
                 notes=[],
                 notes_count=0,
             )
+            
+            # ✅ تسجيل المعاملة في المحفظة عند إنشاء الطلب (خصم فوري)
+            from apps.users.wallet_helpers import record_wallet_transaction
+            try:
+                order_short_id = str(order.id)[:8]
+                package_name = getattr(package, 'name', 'باقة غير معروفة') if package else 'باقة غير معروفة'
+                
+                description = f"إنشاء طلب ({order_short_id})\n{package_name}"
+                if user_identifier:
+                    description += f" - ID: {user_identifier}"
+                
+                # الرصيد قبل الخصم، بعد الخصم
+                record_wallet_transaction(
+                    user=django_user_locked,
+                    transaction_type='approved',
+                    amount=total_user,
+                    description=description,
+                    order_id=str(order.id),
+                    balance_before=django_balance,  # الرصيد قبل الخصم
+                    metadata={
+                        'order_status': 'pending',
+                        'package_name': package_name,
+                        'user_identifier': user_identifier or '',
+                        'created_at_order': True,  # علامة أن المعاملة أُنشئت مع الطلب
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record wallet transaction on order creation: {e}")
 
         # محاولة التوجيه التلقائي للمزود الخارجي (الآن بشكل غير متزامن - سريع!)
         from apps.orders.services import try_auto_dispatch_async

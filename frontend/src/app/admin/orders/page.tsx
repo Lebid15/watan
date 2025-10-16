@@ -961,7 +961,14 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="text-text-primary bg-bg-base p-4 min-h-screen">
-      <style>{`.animate-spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        tr.pending-row td {
+          background-color: #584402ff;
+          border-color: #F7C15A;
+        }
+      `}</style>
 
   <h1 className="font-bold mb-4">{t('orders.pageTitle')}</h1>
 
@@ -1137,8 +1144,9 @@ export default function AdminOrdersPage() {
               const rawLogo = (pickImageField(o.package) ?? pickImageField(o.product)) || logoUrlOf(o);
               const logoSrc = buildImageSrc(rawLogo || null);
 
+              const pendingRowClass = o.status === 'pending' ? 'pending-row' : '';
               return (
-                <tr key={o.id} className="group">
+                <tr key={o.id} className={`group ${pendingRowClass}`}>
                   {(() => {
                     // احسب ربح الدولار لتمييز اللون عند السالب
                     // نفضّل اللقطة المحفوظة، ثم الفرق بين لقطة البيع والشراء

@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { performLogout } from '@/utils/logout';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api, { API_ROUTES } from '@/utils/api';
 import {
   HiHome,
@@ -25,10 +25,23 @@ interface NavItem {
   key: string;
 }
 
+type DepositStatus = 'pending' | 'approved' | 'rejected';
+
+interface SheetItem {
+  label: string;
+  href: string;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
+  onClick?: () => void;
+  disabled?: boolean;
+  helper?: string;
+}
+
 export default function BottomNav() {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [checkingPendingDeposit, setCheckingPendingDeposit] = useState(false);
+  const [hasPendingDeposit, setHasPendingDeposit] = useState(false);
 
   const billingEnabled = process.env.NEXT_PUBLIC_FEATURE_BILLING_V1 === 'true';
   const items: NavItem[] = [
@@ -74,23 +87,101 @@ export default function BottomNav() {
     return () => document.removeEventListener('keydown', onKey);
   }, [menuOpen]);
 
+  const depositEndpoints = useMemo(() => {
+    const depositsRoutes = API_ROUTES.payments.deposits as typeof API_ROUTES.payments.deposits & {
+      legacyMine?: string | null;
+    };
+    return [depositsRoutes.mine, depositsRoutes.legacyMine]
+      .filter((u): u is string => typeof u === 'string' && !!u);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    let cancelled = false;
+
+    const normalize = (payload: any): Array<{ status?: DepositStatus | string }> => {
+      if (Array.isArray(payload)) return payload as Array<{ status?: DepositStatus | string }>;
+      if (payload?.items && Array.isArray(payload.items)) return payload.items;
+      if (payload?.results && Array.isArray(payload.results)) return payload.results;
+      return [];
+    };
+
+    const fetchPendingDeposits = async () => {
+      setCheckingPendingDeposit(true);
+      setHasPendingDeposit(false);
+
+      try {
+        for (const endpoint of depositEndpoints) {
+          try {
+            const { data } = await api.get(endpoint, {
+              params: { limit: 20 },
+            });
+
+            if (cancelled) return;
+
+            const list = normalize(data);
+            const found = list.some((entry) => String(entry?.status ?? '').toLowerCase() === 'pending');
+            if (found) {
+              setHasPendingDeposit(true);
+              return;
+            }
+          } catch {
+            // Try the next endpoint (legacy fallback)
+            continue;
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingPendingDeposit(false);
+        }
+      }
+    };
+
+    fetchPendingDeposits();
+    return () => {
+      cancelled = true;
+    };
+  }, [menuOpen, depositEndpoints]);
+
   // عناصر القائمة (Bottom Sheet)
-    const sheetItems = [
-      { label: 'إضافة رصيد', href: '/payments/deposits', Icon: HiCurrencyDollar },
+  const sheetItems = useMemo<SheetItem[]>(() => {
+    const addFundsHelper = checkingPendingDeposit
+      ? 'جارٍ التحقق من وجود طلب إيداع قيد المعالجة...'
+      : hasPendingDeposit
+      ? 'لديك طلب إيداع قيد المعالجة. انتظر الموافقة قبل إرسال طلب جديد.'
+      : undefined;
+
+    const base: SheetItem[] = [
+      {
+        label: 'إضافة رصيد',
+        href: '/payments/deposits',
+        Icon: HiCurrencyDollar,
+        disabled: checkingPendingDeposit || hasPendingDeposit,
+        helper: addFundsHelper,
+      },
+      { label: 'سجل المحفظة', href: '/wallet/transactions', Icon: HiCreditCard },
       { label: 'تعليمات', href: '/user/infoes', Icon: HiCog },
       { label: 'من نحن', href: '/user/about', Icon: HiInformationCircle },
-      ...(billingEnabled ? [
+    ];
+
+    if (billingEnabled) {
+      base.push(
         { label: 'الفوترة - نظرة عامة', href: '/billing/overview', Icon: HiCurrencyDollar },
         { label: 'الفوترة - الفواتير', href: '/billing/invoices', Icon: HiCurrencyDollar },
         { label: 'دفع فاتورة', href: '/billing/pay', Icon: HiCurrencyDollar },
-      ] : []),
-      {
-        label: 'تسجيل خروج',
-        href: '/login',
-        Icon: HiLogout,
-  onClick: () => performLogout(),
-      },
-    ];
+      );
+    }
+
+    base.push({
+      label: 'تسجيل خروج',
+      href: '/login',
+      Icon: HiLogout,
+      onClick: () => performLogout(),
+    });
+
+    return base;
+  }, [billingEnabled, checkingPendingDeposit, hasPendingDeposit]);
 
   return (
     <>
@@ -174,21 +265,34 @@ export default function BottomNav() {
             </div>
 
             <ul className="divide-y divide-border">
-              {sheetItems.map(({ label, href, Icon, onClick }) => (
-                <li key={href}>
-                  <Link
-                    href={href}
-                    onClick={() => {
-                      if (onClick) onClick();
-                      setMenuOpen(false);
-                    }}
-                    className="flex items-center gap-3 py-3 rounded-md px-2 hover:bg-bg-surface-alt"
-                  >
-                    <Icon size={22} className="text-text-primary" />
-                    <span className="text-text-primary">{label}</span>
-                  </Link>
-                </li>
-              ))}
+              {sheetItems.map((item) => {
+                const { label, href, Icon, onClick, disabled, helper } = item;
+                return (
+                  <li key={href} className="py-1">
+                    {disabled ? (
+                      <div className="flex items-center gap-3 py-3 rounded-md px-2 bg-bg-surface-alt opacity-60 cursor-not-allowed">
+                        <Icon size={22} className="text-text-secondary" />
+                        <span className="text-text-secondary">{label}</span>
+                      </div>
+                    ) : (
+                      <Link
+                        href={href}
+                        onClick={() => {
+                          if (onClick) onClick();
+                          setMenuOpen(false);
+                        }}
+                        className="flex items-center gap-3 py-3 rounded-md px-2 hover:bg-bg-surface-alt"
+                      >
+                        <Icon size={22} className="text-text-primary" />
+                        <span className="text-text-primary">{label}</span>
+                      </Link>
+                    )}
+                    {helper && (
+                      <div className="pr-9 pt-1 text-xs text-warning">{helper}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>

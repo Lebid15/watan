@@ -9,6 +9,7 @@ from typing import Optional
 
 from django.db import transaction, connection
 from django.db.models import Q
+from django.utils import timezone
 
 from .models import ProductOrder
 from apps.users.legacy_models import LegacyUser
@@ -58,6 +59,30 @@ def _as_decimal(value: object) -> Decimal:
 
 def _quantize(value: Decimal, quantum: Decimal) -> Decimal:
     return value.quantize(quantum, rounding=ROUND_HALF_UP)
+
+
+def _update_order_wallet_metadata(*, order_id, user: DjangoUser | None, updates: dict[str, object], unset: tuple[str, ...] = ()) -> None:
+    """Safely patch the wallet transaction metadata linked to the order."""
+    try:
+        from apps.users.wallet_models import WalletTransaction
+    except Exception as exc:  # pragma: no cover - defensive import guard
+        logger.warning("WalletTransaction model import failed", extra={"order_id": str(order_id), "error": str(exc)})
+        return
+
+    qs = WalletTransaction.objects.select_for_update().filter(order_id=order_id, transaction_type='approved')
+    if user is not None:
+        qs = qs.filter(user=user)
+
+    tx = qs.order_by("created_at").first()
+    if tx is None:
+        return
+
+    metadata = dict(tx.metadata or {})
+    for key in unset:
+        metadata.pop(key, None)
+    metadata.update(updates)
+    tx.metadata = metadata
+    tx.save(update_fields=["metadata"])
 
 
 def _resolve_django_user_for_update(legacy_user: LegacyUser, tenant_id: Optional[str]) -> Optional[DjangoUser]:
@@ -152,6 +177,75 @@ def apply_order_status_change(
                     new_django_balance = _quantize(django_balance + _quantize(amount_user_dec, DJANGO_QUANT), DJANGO_QUANT)
                     django_user.balance = new_django_balance
                     django_user.save(update_fields=["balance"])
+                    
+                    # ✅ تسجيل عملية الرفض في المحفظة بشكل احترافي
+                    from apps.users.wallet_helpers import record_wallet_transaction
+                    from apps.users.models import User
+                    try:
+                        # 🔒 Lock على المستخدم بعد تحديث الرصيد للحصول على القيمة الجديدة
+                        locked_user = User.objects.select_for_update().get(id=django_user.id)
+                        current_balance = _quantize(_as_decimal(locked_user.balance), DJANGO_QUANT)
+                        
+                        # جلب اسم الباقة
+                        package_name = getattr(order.package, 'name', 'باقة غير معروفة') if hasattr(order, 'package') and order.package else 'باقة غير معروفة'
+                        user_identifier = order.user_identifier or ''
+                        order_short_id = str(order.id)[:8]
+                        
+                        # تحديد نوع العملية بناءً على الحالة السابقة
+                        if prev_status == "approved":
+                            transaction_type = 'rejected'
+                            title = f"تغيير الحالة إلى رفض ({order_short_id})"
+                        else:
+                            transaction_type = 'rejected'
+                            title = f"رفض الطلب ({order_short_id})"
+                        
+                        # بناء الوصف
+                        description = f"{title}\n{package_name}"
+                        if user_identifier:
+                            description += f" - ID: {user_identifier}"
+                        
+                        # الرصيد بعد = الرصيد الحالي (بعد الإرجاع)
+                        # الرصيد قبل = الرصيد الحالي - المبلغ المرتجع
+                        balance_after = current_balance
+                        balance_before = current_balance - _quantize(amount_user_dec, DJANGO_QUANT)
+                        
+                        record_wallet_transaction(
+                            user=locked_user,
+                            transaction_type=transaction_type,
+                            amount=amount_user_dec,
+                            description=description,
+                            order_id=str(order.id),
+                            balance_before=balance_before,
+                            metadata={
+                                'order_status': 'rejected',
+                                'previous_status': prev_status,
+                                'package_name': package_name,
+                                'user_identifier': user_identifier,
+                                'status_change': False,
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to record wallet transaction: {e}")
+
+                timestamp_iso = timezone.now().isoformat()
+                try:
+                    _update_order_wallet_metadata(
+                        order_id=order.id,
+                        user=django_user,
+                        updates={
+                            'order_status': 'rejected',
+                            'created_at_order': False,
+                            'rejected_at': timestamp_iso,
+                            'updated_at': timestamp_iso,
+                            'previous_status': prev_status,
+                        },
+                        unset=('approved_at',),
+                    )
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    logger.warning(
+                        "Failed to update wallet metadata on rejection",
+                        extra={"order_id": str(order.id), "error": str(exc)},
+                    )
 
                 delta = amount_user_dec
 
@@ -171,10 +265,95 @@ def apply_order_status_change(
                         raise OverdraftExceededError("DJANGO_OVERDRAFT_EXCEEDED")
                     django_user.balance = _quantize(proposed_django_balance, DJANGO_QUANT)
                     django_user.save(update_fields=["balance"])
+                    
+                    # ✅ تسجيل عملية تغيير الحالة في المحفظة بشكل احترافي
+                    from apps.users.wallet_helpers import record_wallet_transaction
+                    from apps.users.models import User
+                    try:
+                        # 🔒 Lock على المستخدم بعد تحديث الرصيد
+                        locked_user = User.objects.select_for_update().get(id=django_user.id)
+                        current_balance = _quantize(_as_decimal(locked_user.balance), DJANGO_QUANT)
+                        
+                        # جلب اسم الباقة
+                        package_name = getattr(order.package, 'name', 'باقة غير معروفة') if hasattr(order, 'package') and order.package else 'باقة غير معروفة'
+                        user_identifier = order.user_identifier or ''
+                        order_short_id = str(order.id)[:8]
+                        
+                        # بناء الوصف
+                        description = f"تغيير الحالة إلى قبول ({order_short_id})\n{package_name}"
+                        if user_identifier:
+                            description += f" - ID: {user_identifier}"
+                        
+                        # الرصيد بعد = الرصيد الحالي (بعد الخصم)
+                        # الرصيد قبل = الرصيد الحالي + المبلغ المخصوم
+                        balance_after = current_balance
+                        balance_before = current_balance + _quantize(amount_user_dec, DJANGO_QUANT)
+                        
+                        record_wallet_transaction(
+                            user=locked_user,
+                            transaction_type='status_change',
+                            amount=amount_user_dec,
+                            description=description,
+                            order_id=str(order.id),
+                            balance_before=balance_before,
+                            metadata={
+                                'order_status': 'approved',
+                                'previous_status': prev_status,
+                                'package_name': package_name,
+                                'user_identifier': user_identifier,
+                                'status_change': True,
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to record wallet transaction: {e}")
+
+                timestamp_iso = timezone.now().isoformat()
+                try:
+                    _update_order_wallet_metadata(
+                        order_id=order.id,
+                        user=django_user,
+                        updates={
+                            'order_status': 'approved',
+                            'created_at_order': False,
+                            'approved_at': timestamp_iso,
+                            'updated_at': timestamp_iso,
+                            'previous_status': prev_status,
+                        },
+                        unset=('rejected_at',),
+                    )
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    logger.warning(
+                        "Failed to update wallet metadata on status change",
+                        extra={"order_id": str(order.id), "error": str(exc)},
+                    )
 
                 delta = -amount_user_dec
+            
+            elif normalized_status == "approved" and prev_status == "pending":
+                # القبول المباشر - لا نغير الرصيد (تم خصمه عند الإنشاء)
+                # نحدث حالة المعاملة في سجل المحفظة من pending إلى approved
+                timestamp_iso = timezone.now().isoformat()
+                try:
+                    _update_order_wallet_metadata(
+                        order_id=order.id,
+                        user=django_user,
+                        updates={
+                            'order_status': 'approved',
+                            'created_at_order': False,
+                            'approved_at': timestamp_iso,
+                            'updated_at': timestamp_iso,
+                            'previous_status': prev_status,
+                        },
+                        unset=('rejected_at',),
+                    )
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    logger.warning(
+                        "Failed to update wallet metadata on approval",
+                        extra={"order_id": str(order.id), "error": str(exc)},
+                    )
 
-        # Apply status and prepare DB update payload (raw update for managed=False models reliability)
+                delta = Decimal("0")
+                    # Apply status and prepare DB update payload (raw update for managed=False models reliability)
         order.status = normalized_status
         update_payload: dict[str, object] = {"status": normalized_status}
 
@@ -296,6 +475,43 @@ def apply_order_status_change(
                 "rows_affected": rows_affected,
             },
         )
+
+        # ✅ تحديث الطلب المرتبط (parent أو child) عبر externalOrderId
+        if note and order.external_order_id:
+            try:
+                trimmed_note = (note or "")[:500]
+                related_update_sql = """
+                    UPDATE product_orders 
+                    SET "manualNote" = %s, 
+                        "providerMessage" = %s, 
+                        "lastMessage" = %s
+                    WHERE id = %s::uuid
+                """
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        related_update_sql,
+                        [
+                            trimmed_note,
+                            trimmed_note[:250],
+                            f"sync: {trimmed_note[:200]}",
+                            str(order.external_order_id),
+                        ]
+                    )
+                    related_rows = cursor.rowcount
+                    if related_rows > 0:
+                        logger.info(
+                            f"✅ Updated related order via externalOrderId",
+                            extra={
+                                "order_id": str(order.id),
+                                "external_order_id": str(order.external_order_id),
+                                "rows_affected": related_rows,
+                            }
+                        )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to update related order via externalOrderId: {e}",
+                    extra={"order_id": str(order.id), "external_order_id": str(order.external_order_id)}
+                )
 
         try:
             order.refresh_from_db()

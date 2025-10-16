@@ -276,7 +276,7 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                     order_id=str(order.id),
                     next_status=new_order_status,
                     expected_tenant_id=str(order.tenant_id),
-                    note=None,
+                    note=message,  # ✅ تمرير الملاحظة من المزود
                 )
                 order.refresh_from_db()
                 old_order_status = order.status
@@ -347,12 +347,15 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             new_message = (order.last_message or '') + f" | {message}"
             update_fields.append('"lastMessage" = %s')
             update_values.append(new_message[:250])
-            # ✅ تحديث manual_note لعرضها للجميع
+            
+            # ✅ تحديث manual_note دائماً بملاحظة المزود (ستظهر للجميع)
             update_fields.append('"manualNote" = %s')
             update_values.append(message[:500])
+            print(f"💬 تحديث manualNote: {message[:50]}...")
+            
             update_fields.append('"providerMessage" = %s')
             update_values.append(message[:250])
-            print(f"💬 تحديث الرسالة: {message[:50]}...")
+            print(f"💬 تحديث providerMessage: {message[:50]}...")
         
         # Always update lastSyncAt
         update_fields.append('"lastSyncAt" = %s')

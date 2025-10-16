@@ -5,11 +5,13 @@ from .views import (
     legacy_user_detail, legacy_user_set_password, legacy_user_set_overdraft,
     request_password_reset, reset_password,
 )
+from .wallet_views import WalletTransactionsView
 
 
 urlpatterns = [
     path("profile", profile, name="users-profile"),
     path("profile-with-currency", profile_with_currency, name="users-profile-with-currency"),
+    path("wallet/transactions/", WalletTransactionsView.as_view(), name="wallet-transactions"),
     path("", list_users, name="users-list"),
     path("with-price-group", users_with_price_group, name="users-with-price-group"),
     path("password-reset/request", request_password_reset, name="users-password-reset-request"),

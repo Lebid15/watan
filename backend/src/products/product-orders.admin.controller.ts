@@ -362,6 +362,15 @@ export class ProductOrdersAdminController {
           (order as any).manualNote = note.slice(0, 500);
           await this.orderRepo.save(order);
           await this.productsService.addOrderNote(order.id, 'admin', `Approve: ${note}`);
+          
+          // ✅ تحديث الطلب المرتبط أيضاً
+          const externalOrderId = (order as any).externalOrderId;
+          if (externalOrderId) {
+            await this.orderRepo.update({ id: externalOrderId } as any, {
+              manualNote: note.slice(0, 500),
+              providerMessage: note.slice(0, 250),
+            } as any);
+          }
         }
         await this.productsService.updateOrderStatus(order.id, 'approved');
         await this.logRepo.save(
@@ -407,6 +416,15 @@ export class ProductOrdersAdminController {
           (order as any).manualNote = note.slice(0, 500);
           await this.orderRepo.save(order);
           await this.productsService.addOrderNote(order.id, 'admin', `Reject: ${note}`);
+          
+          // ✅ تحديث الطلب المرتبط أيضاً
+          const externalOrderId = (order as any).externalOrderId;
+          if (externalOrderId) {
+            await this.orderRepo.update({ id: externalOrderId } as any, {
+              manualNote: note.slice(0, 500),
+              providerMessage: note.slice(0, 250),
+            } as any);
+          }
         }
         await this.productsService.updateOrderStatus(order.id, 'rejected');
         await this.logRepo.save(
@@ -495,6 +513,16 @@ export class ProductOrdersAdminController {
         providerMessage: note.slice(0, 250),
         lastMessage: `Manual ${status}: ${note.slice(0, 200)}`,
       } as any);
+      
+      // ✅ تحديث الطلب المرتبط أيضاً (parent أو child عبر externalOrderId)
+      const externalOrderId = (order as any).externalOrderId;
+      if (externalOrderId) {
+        await this.orderRepo.update({ id: externalOrderId } as any, {
+          manualNote: note.slice(0, 500),
+          providerMessage: note.slice(0, 250),
+          lastMessage: `sync: ${note.slice(0, 200)}`,
+        } as any);
+      }
     } else {
       await this.productsService.addOrderNote(order.id, 'admin', `Manual ${status}`);
       await this.orderRepo.update({ id: order.id } as any, {

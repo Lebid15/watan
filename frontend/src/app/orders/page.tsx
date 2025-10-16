@@ -325,6 +325,17 @@ export default function OrdersPage() {
 
   return (
     <div className="p-4 bg-bg-base text-text-primary" dir="rtl">
+      <style>{`
+        .pending-order-card {
+          background-color: #584402ff;
+          border-color: #F7C15A;
+        }
+        .pending-order-card .text-text-primary,
+        .pending-order-card .text-text-secondary {
+          color: inherit;
+        }
+      `}</style>
+
       <h1 className="text-lg font-bold mb-4 text-right">📦 طلباتي</h1>
 
       {/* ===== أعلى: شريط الفلترة والبحث ===== */}
@@ -422,7 +433,10 @@ export default function OrdersPage() {
               const totalText = Number(view.total).toFixed(2);
               const dt = new Date(order.createdAt);
               return (
-                <div key={order.id} className="max-w-[980px] mx-auto relative card p-3 shadow text-xs flex justify-between items-center">
+                <div
+                  key={order.id}
+                  className={`max-w-[980px] mx-auto relative card p-3 shadow text-xs flex justify-between items-center ${order.status === 'pending' ? 'pending-order-card' : ''}`}
+                >
                   <div className="text-right">
                     <div className="text-text-secondary">رقم: {displayOrderNumber(order)}</div>
                     <div className="text-text-primary text-[11px]">

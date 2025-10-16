@@ -457,6 +457,7 @@ export class ProductsService {
       arr.push({ by: 'system', text: note, at: nowIso });
       order.notes = arr as any;
       (order as any).providerMessage = note;
+      (order as any).manualNote = note.slice(0, 500); // ✅ حفظ في manualNote أيضاً
       (order as any).notesCount = arr.length;
     }
 
@@ -2475,6 +2476,7 @@ export class ProductsService {
               productId: (saved as any).packageId || null,
               quantity: saved.quantity,
               updatedAt: new Date(),
+              manualNote: (saved as any).manualNote || null,  // ✅ تمرير الملاحظة
             },
         });
       }

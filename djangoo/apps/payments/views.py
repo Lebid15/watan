@@ -513,14 +513,12 @@ class MyDepositsListView(APIView):
             approved_at=None,
             source='user_request',
         )
-
-        with transaction.atomic():
-            try:
-                deposit.save(force_insert=True)
-            except Exception:
-                from django.db import connection
-                with connection.cursor() as cursor:
-                    cursor.execute(
+        try:
+            deposit.save(force_insert=True)
+        except Exception:
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute(
                         (
                             'INSERT INTO deposit (id, "tenantId", user_id, method_id, "originalAmount", '
                             '"originalCurrency", "walletCurrency", "rateUsed", "convertedAmount", note, '
@@ -740,24 +738,18 @@ class AdminDepositTopupView(APIView):
         # البحث عن المستخدم - نحاول UUID أولاً، ثم integer ID
         user = None
         user_lookup_filters = {'tenant_id': tenant_id}
-        
-        # حاول البحث بـ UUID أولاً
+
         try:
             user_uuid = uuid.UUID(str(user_id))
             user = LegacyUser.objects.filter(id=user_uuid, **user_lookup_filters).first()
         except (ValueError, AttributeError, TypeError):
-            # ليس UUID صالح، جرب integer ID
             pass
-        
-        # إذا لم نجد المستخدم بـ UUID، حاول integer ID
+
         if user is None:
             try:
                 user_int = int(str(user_id))
-                # في حالة integer IDs، نبحث في جدول Django users
-                from apps.users.models import User as DjangoUser
                 user_dj = DjangoUser.objects.filter(id=user_int, tenant_id=tenant_id).first()
                 if user_dj:
-                    # نستخدم المستخدم من Django
                     user = user_dj
                     logger.info(
                         "Admin topup: Using Django User (integer ID)",
@@ -770,14 +762,11 @@ class AdminDepositTopupView(APIView):
                 "Admin topup: Using Legacy User (UUID)",
                 extra={"user_id": str(user.id), "tenant_id": tenant_id}
             )
-        
+
         if user is None:
             logger.warning(
                 "Admin topup: User not found",
-                extra={
-                    "user_id": str(user_id),
-                    "tenant_id": tenant_id,
-                },
+                extra={"user_id": str(user_id), "tenant_id": tenant_id},
             )
             raise NotFound('المستخدم غير موجود')
 
@@ -786,10 +775,7 @@ class AdminDepositTopupView(APIView):
         except PaymentMethod.DoesNotExist:
             logger.warning(
                 "Admin topup: Payment method not found",
-                extra={
-                    "method_id": str(method_id),
-                    "tenant_id": tenant_id,
-                },
+                extra={"method_id": str(method_id), "tenant_id": tenant_id},
             )
             raise ValidationError({'methodId': 'وسيلة الدفع غير موجودة'})
 
@@ -798,8 +784,67 @@ class AdminDepositTopupView(APIView):
         if not bool(getattr(method, 'is_active', True)):
             raise ValidationError({'methodId': 'وسيلة الدفع غير مفعّلة'})
 
-        currency_payload = build_currency_payload(user)
-        currency_code_raw = (currency_payload or {}).get('code') or getattr(user, 'preferred_currency_code', None)
+        # حدد المستخدمين في النظام القديم والجديد لضمان المزامنة والتعامل مع المحفظة
+        legacy_user_target: LegacyUser | None = user if isinstance(user, LegacyUser) else None
+        django_user_target: DjangoUser | None = user if isinstance(user, DjangoUser) else None
+
+        def _find_legacy_for_django(dj_user: DjangoUser | None) -> LegacyUser | None:
+            if dj_user is None:
+                return None
+            lookup = LegacyUser.objects.filter(tenant_id=tenant_id)
+            raw_legacy_id = getattr(dj_user, 'legacy_user_id', None)
+            if raw_legacy_id:
+                try:
+                    legacy = lookup.filter(id=uuid.UUID(str(raw_legacy_id))).first()
+                    if legacy:
+                        return legacy
+                except (ValueError, TypeError):
+                    pass
+            username = getattr(dj_user, 'username', None)
+            if username:
+                legacy = lookup.filter(username__iexact=username).first()
+                if legacy:
+                    return legacy
+            email = getattr(dj_user, 'email', None)
+            if email:
+                legacy = lookup.filter(email__iexact=email).first()
+                if legacy:
+                    return legacy
+            return None
+
+        def _find_django_for_legacy(legacy_user: LegacyUser | None) -> DjangoUser | None:
+            if legacy_user is None:
+                return None
+            lookup = DjangoUser.objects.filter(tenant_id=tenant_id)
+            email = getattr(legacy_user, 'email', None)
+            if email:
+                dj = lookup.filter(email__iexact=email).first()
+                if dj:
+                    return dj
+            username = getattr(legacy_user, 'username', None)
+            if username:
+                dj = lookup.filter(username__iexact=username).first()
+                if dj:
+                    return dj
+            return None
+
+        if legacy_user_target is None:
+            legacy_user_target = _find_legacy_for_django(django_user_target)
+        if django_user_target is None:
+            django_user_target = _find_django_for_legacy(legacy_user_target)
+
+        if legacy_user_target is None:
+            logger.error(
+                "Admin topup: Unable to resolve legacy user for target",
+                extra={"tenant_id": str(tenant_id), "user_id": str(user_id)},
+            )
+            raise ValidationError({'userId': 'تعذر العثور على المستخدم في قاعدة البيانات القديمة لهذا المستأجر'})
+
+        currency_source = django_user_target if isinstance(django_user_target, DjangoUser) else user
+        currency_payload = build_currency_payload(currency_source) if isinstance(currency_source, DjangoUser) else None
+        currency_code_raw = (currency_payload or {}).get('code')
+        if not currency_code_raw:
+            currency_code_raw = getattr(currency_source, 'preferred_currency_code', None) or getattr(currency_source, 'currency', None)
         currency_code = str(currency_code_raw or '').strip().upper() or 'USD'
 
         amount_two_decimals = amount_decimal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -811,109 +856,138 @@ class AdminDepositTopupView(APIView):
         deposit_id = uuid.uuid4()
         now = timezone.now()
 
-        with transaction.atomic():
-            # تحديث الرصيد حسب نوع نموذج المستخدم
-            user_model = user.__class__
-            updated = user_model.objects.filter(id=user.id, tenant_id=tenant_id).update(
-                balance=F('balance') + amount_two_decimals
-            )
-            if not updated:
-                raise ValidationError({'message': 'تعذر تحديث رصيد المستخدم'})
+        django_balance_before = None
+        legacy_balance_before = None
+        deposit_record: Deposit | None = None
 
-            # للمستخدمين من Django (integer IDs)، لا يمكن إنشاء deposit في الجدول القديم
-            # لأن جدول deposit له foreign key إلى جدول users القديم فقط
-            is_django_user = isinstance(user.id, int)
-            deposit_user_id = user.id
-            
-            if is_django_user:
+        with transaction.atomic():
+            legacy_locked = LegacyUser.objects.select_for_update().filter(id=legacy_user_target.id, tenant_id=tenant_id).first()
+            if not legacy_locked:
+                raise ValidationError({'userId': 'المستخدم غير موجود ضمن هذا المستأجر'})
+            legacy_balance_before = Decimal(str(legacy_locked.balance or 0))
+            legacy_locked.balance = (legacy_balance_before + amount_two_decimals).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            legacy_locked.save(update_fields=['balance'])
+            legacy_user_target = legacy_locked
+
+            if django_user_target:
+                django_locked = DjangoUser.objects.select_for_update().filter(id=django_user_target.id, tenant_id=tenant_id).first()
+                if not django_locked:
+                    raise ValidationError({'userId': 'المستخدم غير موجود ضمن هذا المستأجر'})
+                django_balance_before = Decimal(str(django_locked.balance or 0))
+                django_locked.balance = (django_balance_before + converted_amount).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)
+                django_locked.save(update_fields=['balance'])
+                django_user_target = django_locked
+
+            deposit_record = Deposit(
+                id=deposit_id,
+                tenant_id=tenant_id,
+                user_id=legacy_user_target.id,
+                method_id=method_id,
+                original_amount=converted_amount,
+                original_currency=currency_code,
+                wallet_currency=currency_code,
+                rate_used=rate_used,
+                converted_amount=converted_amount,
+                note=note_value,
+                status='approved',
+                created_at=now,
+                approved_at=now,
+                source='admin_topup',
+            )
+
+            try:
+                deposit_record.save(force_insert=True)
+                logger.info("Deposit created successfully via ORM", extra={"deposit_id": str(deposit_id)})
+            except Exception as orm_error:
                 logger.warning(
-                    "Skipping deposit record creation for Django user (integer ID) - old deposit table incompatible",
-                    extra={"user_id": user.id, "tenant_id": tenant_id}
+                    "ORM deposit creation failed, trying raw SQL",
+                    extra={
+                        "error": str(orm_error),
+                        "deposit_id": str(deposit_id),
+                        "legacy_user_id": str(legacy_user_target.id),
+                    }
                 )
-                # سنقوم بتحديث الرصيد فقط دون إنشاء سجل deposit
-                deposit_id = uuid.uuid4()  # للاستخدام في الـ response
-                deposit = None
-            else:
-                # مستخدم UUID - يمكن إنشاء deposit عادي
-                deposit = Deposit(
-                    id=deposit_id,
-                    tenant_id=tenant_id,
-                    user_id=deposit_user_id,
-                    method_id=method_id,
-                    original_amount=converted_amount,
-                    original_currency=currency_code,
-                    wallet_currency=currency_code,
-                    rate_used=rate_used,
-                    converted_amount=converted_amount,
-                    note=note_value,
-                    status='approved',
-                    created_at=now,
-                    approved_at=now,
-                    source='admin_topup',
-                )
+                from django.db import connection
 
                 try:
-                    deposit.save(force_insert=True)
-                    logger.info("Deposit created successfully via ORM", extra={"deposit_id": str(deposit_id)})
-                except Exception as orm_error:
-                    logger.warning(
-                        "ORM deposit creation failed, trying raw SQL",
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            (
+                                'INSERT INTO deposit (id, "tenantId", user_id, method_id, "originalAmount", '
+                                '"originalCurrency", "walletCurrency", "rateUsed", "convertedAmount", note, '
+                                'status, "createdAt", "approvedAt", source) '
+                                'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
+                            ),
+                            [
+                                str(deposit_id),
+                                str(tenant_id),
+                                str(legacy_user_target.id),
+                                str(method_id),
+                                str(converted_amount),
+                                currency_code,
+                                currency_code,
+                                str(rate_used),
+                                str(converted_amount),
+                                note_value,
+                                'approved',
+                                now,
+                                now,
+                                'admin_topup',
+                            ],
+                        )
+                        logger.info("Deposit created successfully via raw SQL", extra={"deposit_id": str(deposit_id)})
+                except Exception as exc:
+                    logger.exception(
+                        'Failed to create admin top-up deposit (both ORM and raw SQL)',
                         extra={
-                            "error": str(orm_error),
-                            "deposit_id": str(deposit_id),
-                            "user_id": str(deposit_user_id),
+                            'tenantId': str(tenant_id),
+                            'userId': str(user_id),
+                            'legacy_user_id': str(legacy_user_target.id),
+                            'orm_error': str(orm_error),
+                            'sql_error': str(exc),
                         }
                     )
-                    from django.db import connection
+                    raise ValidationError({'message': 'تعذر إنشاء سجل الإيداع', 'detail': str(exc)}) from exc
 
-                    try:
-                        with connection.cursor() as cursor:
-                            cursor.execute(
-                                (
-                                    'INSERT INTO deposit (id, "tenantId", user_id, method_id, "originalAmount", '
-                                    '"originalCurrency", "walletCurrency", "rateUsed", "convertedAmount", note, '
-                                    'status, "createdAt", "approvedAt", source) '
-                                    'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
-                                ),
-                                [
-                                    str(deposit_id),
-                                    str(tenant_id),
-                                    str(deposit_user_id),
-                                    str(method_id),
-                                    str(converted_amount),
-                                    currency_code,
-                                    currency_code,
-                                    str(rate_used),
-                                    str(converted_amount),
-                                    note_value,
-                                    'approved',
-                                    now,
-                                    now,
-                                    'admin_topup',
-                                ],
-                            )
-                            logger.info("Deposit created successfully via raw SQL", extra={"deposit_id": str(deposit_id)})
-                    except Exception as exc:
-                        logger.exception(
-                            'Failed to create admin top-up deposit (both ORM and raw SQL)',
-                            extra={
-                                'tenantId': str(tenant_id),
-                                'userId': str(user_id),
-                                'deposit_user_id': str(deposit_user_id),
-                                'orm_error': str(orm_error),
-                                'sql_error': str(exc),
-                            }
-                        )
-                        raise ValidationError({'message': 'تعذر إنشاء سجل الإيداع', 'detail': str(exc)}) from exc
+            if django_user_target:
+                from apps.users.wallet_helpers import record_wallet_transaction
 
-            # إعادة تحميل المستخدم للحصول على الرصيد المحدث
-            refreshed_user = user_model.objects.get(id=user.id, tenant_id=tenant_id)
+                description_parts = [
+                    "شحن المحفظة (إداري)",
+                    f"{converted_amount} {currency_code}",
+                ]
+                if getattr(method, 'name', None):
+                    description_parts.append(f"وسيلة الدفع: {method.name}")
+                if note_value:
+                    description_parts.append(f"ملاحظة: {note_value[:120]}")
 
-        balance_decimal = Decimal(refreshed_user.balance or 0).quantize(Decimal('0.000001'))
+                metadata_payload = {
+                    'deposit_id': str(deposit_id),
+                    'legacy_user_id': str(legacy_user_target.id),
+                    'source': 'admin_topup',
+                    'method_id': str(method_id),
+                    'note': note_value[:120] if note_value else None,
+                    'auto_approved': True,
+                }
+
+                record_wallet_transaction(
+                    user=django_user_target,
+                    transaction_type='deposit',
+                    amount=converted_amount,
+                    description="\n".join(description_parts),
+                    payment_id=str(deposit_id),
+                    balance_before=django_balance_before,
+                    created_by=request.user if getattr(request, 'user', None) else None,
+                    metadata={k: v for k, v in metadata_payload.items() if v is not None},
+                )
+
+        target_for_balance = django_user_target or legacy_user_target
+        balance_decimal = Decimal(str(getattr(target_for_balance, 'balance', 0) or 0)).quantize(Decimal('0.000001'))
 
         deposit_payload = {
-            'id': deposit_id,
-            'userId': user_id,
+            'id': str(deposit_id),
+            'userId': str(user_id),
+            'legacyUserId': str(legacy_user_target.id),
             'methodId': method_id,
             'originalAmount': converted_amount,
             'originalCurrency': currency_code,
@@ -1025,6 +1099,9 @@ class AdminDepositDetailsView(APIView):
                 update_fields.append('approved_at')
             balance_delta = -amount_value
 
+        django_wallet_user = None
+        django_balance_before = None
+
         with transaction.atomic():
             d.save(update_fields=update_fields)
             if balance_delta != 0:
@@ -1045,9 +1122,72 @@ class AdminDepositDetailsView(APIView):
                         if username_val:
                             match_filters |= Q(username__iexact=username_val)
                     if match_filters:
-                        DjangoUser.objects.filter(Q(tenant_id=tenant_id) & match_filters).update(
-                            balance=F('balance') + balance_delta
-                        )
+                        qs = DjangoUser.objects.select_for_update().filter(Q(tenant_id=tenant_id) & match_filters)
+                        django_wallet_user = qs.first()
+                        if django_wallet_user is not None:
+                            try:
+                                django_balance_before = Decimal(str(django_wallet_user.balance or 0))
+                            except Exception:
+                                django_balance_before = None
+                        qs.update(balance=F('balance') + balance_delta)
+            should_record_wallet_tx = balance_delta != 0 and django_wallet_user is not None
+
+        if should_record_wallet_tx:
+            try:
+                from apps.users.wallet_helpers import record_wallet_transaction
+
+                django_wallet_user.refresh_from_db()
+
+                if django_balance_before is None:
+                    try:
+                        current_balance = Decimal(str(django_wallet_user.balance or 0))
+                    except Exception:
+                        current_balance = Decimal('0')
+                    django_balance_before = current_balance - balance_delta
+
+                currency_code = (
+                    getattr(d, 'wallet_currency', None)
+                    or getattr(d, 'original_currency', None)
+                    or 'USD'
+                )
+
+                amount_for_record = abs(balance_delta)
+                is_deposit = balance_delta > 0
+                description_parts = [
+                    "شحن المحفظة (إيداع)" if is_deposit else "إلغاء شحن المحفظة (رفض الإيداع)",
+                    f"{amount_for_record} {currency_code}",
+                ]
+                if getattr(d, 'method_id', None):
+                    description_parts.append(f"وسيلة الدفع: {d.method_id}")
+                if note:
+                    description_parts.append(f"ملاحظة: {note[:120]}")
+
+                metadata_payload = {
+                    'deposit_id': str(d.id),
+                    'source': getattr(d, 'source', None),
+                    'method_id': str(getattr(d, 'method_id', '') or ''),
+                    'previous_status': prev_status,
+                    'new_status': action,
+                    'approved_at': d.approved_at.isoformat() if getattr(d, 'approved_at', None) else None,
+                    'balance_delta': str(balance_delta),
+                }
+                if not is_deposit:
+                    metadata_payload['status_change'] = True
+
+                record_wallet_transaction(
+                    user=django_wallet_user,
+                    transaction_type='deposit' if is_deposit else 'deposit_reversal',
+                    amount=amount_for_record,
+                    description="\n".join(description_parts),
+                    payment_id=str(d.id),
+                    balance_before=django_balance_before,
+                    metadata=metadata_payload,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to record wallet transaction for deposit status change",
+                    extra={"deposit_id": str(d.id), "error": str(exc)},
+                )
 
         return Response({ 'ok': True, 'id': str(d.id), 'status': d.status })
 

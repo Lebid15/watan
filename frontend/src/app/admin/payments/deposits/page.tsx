@@ -138,21 +138,9 @@ export default function AdminDepositsPage() {
   const [actionRowId, setActionRowId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
-    if (activeTab === 'all') return rows;
-    return rows.filter(r => r.status === activeTab);
+    const byStatus = activeTab === 'all' ? rows : rows.filter(r => r.status === activeTab);
+    return [...byStatus].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [rows, activeTab]);
-
-  // ترتيب: قيد المراجعة أولاً ثم مقبول ثم مرفوض، وداخل كل حالة الأحدث أولاً
-  const sorted = useMemo(() => {
-    const weight = (s: DepositStatus) => (s === 'pending' ? 0 : s === 'approved' ? 1 : 2);
-    // ننسخ لتجنب تعديل الحالة الأصلية
-    return [...filtered].sort((a, b) => {
-      const dw = weight(a.status) - weight(b.status);
-      if (dw !== 0) return dw;
-      // الأحدث أولاً
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-  }, [filtered]);
 
   const buildUrl = (params: Record<string, string>) =>
     `${API_ROUTES.admin.deposits.base}?${new URLSearchParams(params).toString()}`;
@@ -226,6 +214,15 @@ export default function AdminDepositsPage() {
 
   return (
     <div className="bg-bg-base text-text-primary p-6 min-h-screen">
+      <style>{`
+        tr.pending-row td {
+          background-color: #584402ff;
+          border-color: #F7C15A;
+        }
+        tr.pending-row:hover td {
+          background-color: rgba(120, 86, 4, 0.9);
+        }
+      `}</style>
       <section className="rounded-lg border border-border bg-bg-surface p-4">
         <div className="flex items-center justify-between gap-3 mb-4">
           <h2 className="text-lg font-bold">{t('payments.nav.deposits')}</h2>
@@ -249,14 +246,15 @@ export default function AdminDepositsPage() {
         )}
         {loading ? (
           <div className="text-text-secondary">{t('product.status.loading')}</div>
-        ) : sorted.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="text-text-secondary">{t('orders.empty.filtered')}</div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="min-w-full text-sm bg-bg-surface">
               <thead>
                 <tr className="bg-bg-surface-alt text-center">
-                  <th className="border border-border px-3 py-2">{t('users.table.user')}</th>
+                  <th className="border border-border px-3 py-2">{t('payments.deposits.table.index', '#')}</th>
+                  <th className="border border-border px-3 py-2">{t('users.table.user', 'المستخدم')}</th>
                   <th className="border border-border px-3 py-2">{t('payments.deposits.table.method')}</th>
                   <th className="border border-border px-3 py-2">{t('payments.deposits.table.originalAmount')}</th>
                   <th className="border border-border px-3 py-2">{t('payments.deposits.table.rate')}</th>
@@ -267,7 +265,8 @@ export default function AdminDepositsPage() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((r) => {
+                {filtered.map((r: DepositRow, idx: number, arr: DepositRow[]) => {
+                  const rowNumber = arr.length - idx;
                   const userLabel =
                     r.user?.username ||
                     r.user?.email ||
@@ -281,9 +280,11 @@ export default function AdminDepositsPage() {
                   const converted = `${fmt(r.convertedAmount)} ${r.walletCurrency}`;
 
                   const busy = actionRowId === r.id;
+                  const pendingRowClass = r.status === 'pending' ? 'pending-row' : '';
 
                   return (
-                    <tr key={r.id} className="text-center hover:bg-bg-surface-alt">
+                    <tr key={r.id} className={`text-center hover:bg-bg-surface-alt ${pendingRowClass}`}>
+                      <td className="border border-border px-3 py-2 font-semibold">{rowNumber}</td>
                       <td className="border border-border px-3 py-2">{userLabel}</td>
                       <td className="border border-border px-3 py-2">{methodLabel}</td>
                       <td className="border border-border px-3 py-2">{original}</td>

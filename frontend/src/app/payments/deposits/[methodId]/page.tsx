@@ -264,7 +264,7 @@ const walletCurrency = useMemo(() => {
               <div className="flex-1">
                 <label className="block mb-1 text-sm text-text-secondary">{t('payments.deposits.method.pageTitle')}</label>
                 <input
-                  value={rateUsed ? Number(rateUsed).toFixed(4) : ''}
+                  value={rateUsed ? Number(rateUsed).toFixed(2) : ''}
                   readOnly
                   className="input w-full bg-bg-surface-alt border-border"
                 />
