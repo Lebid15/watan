@@ -966,6 +966,7 @@ class AdminDepositTopupView(APIView):
                     'legacy_user_id': str(legacy_user_target.id),
                     'source': 'admin_topup',
                     'method_id': str(method_id),
+                    'method_name': getattr(method, 'name', None),
                     'note': note_value[:120] if note_value else None,
                     'auto_approved': True,
                 }
@@ -1157,15 +1158,24 @@ class AdminDepositDetailsView(APIView):
                     "شحن المحفظة (إيداع)" if is_deposit else "إلغاء شحن المحفظة (رفض الإيداع)",
                     f"{amount_for_record} {currency_code}",
                 ]
-                if getattr(d, 'method_id', None):
-                    description_parts.append(f"وسيلة الدفع: {d.method_id}")
+                method_id_value = getattr(d, 'method_id', None)
+                method_name_for_metadata = None
+                if method_id_value:
+                    try:
+                        method_obj = PaymentMethod.objects.get(id=method_id_value)
+                        method_name_for_metadata = getattr(method_obj, 'name', None)
+                    except PaymentMethod.DoesNotExist:
+                        method_name_for_metadata = None
+                    label_value = method_name_for_metadata or str(method_id_value)
+                    description_parts.append(f"وسيلة الدفع: {label_value}")
                 if note:
                     description_parts.append(f"ملاحظة: {note[:120]}")
 
                 metadata_payload = {
                     'deposit_id': str(d.id),
                     'source': getattr(d, 'source', None),
-                    'method_id': str(getattr(d, 'method_id', '') or ''),
+                    'method_id': str(method_id_value or ''),
+                    'method_name': method_name_for_metadata,
                     'previous_status': prev_status,
                     'new_status': action,
                     'approved_at': d.approved_at.isoformat() if getattr(d, 'approved_at', None) else None,

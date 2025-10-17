@@ -48,6 +48,8 @@ class Integration(models.Model):
     enabled = models.BooleanField(default=True)
     balance = models.DecimalField(max_digits=18, decimal_places=3, null=True)
     balance_updated_at = models.DateTimeField(null=True, db_column='balanceUpdatedAt')
+    debt = models.DecimalField(max_digits=18, decimal_places=3, null=True, default=0)
+    debt_updated_at = models.DateTimeField(null=True, db_column='debtUpdatedAt')
     created_at = models.DateTimeField(db_column='createdAt')
 
 

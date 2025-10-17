@@ -10,6 +10,7 @@ from apps.users.wallet_serializers import (
     WalletTransactionsListResponseSerializer,
     WalletTransactionSerializer,
 )
+from apps.payments.models import PaymentMethod
 
 
 class WalletTransactionsView(APIView):
@@ -49,8 +50,45 @@ class WalletTransactionsView(APIView):
         # Pagination
         paginator = Paginator(transactions, page_size)
         page_obj = paginator.get_page(page_num)
-        
-        serializer = WalletTransactionSerializer(page_obj.object_list, many=True)
+
+        transactions_list = list(page_obj.object_list)
+
+        method_ids = set()
+        metadata_cache = {}
+
+        for tx in transactions_list:
+            metadata = getattr(tx, 'metadata', None)
+            if isinstance(metadata, dict):
+                method_id = metadata.get('method_id') or metadata.get('methodId')
+                if method_id:
+                    method_id_str = str(method_id)
+                    method_ids.add(method_id_str)
+                    metadata_cache[method_id_str] = metadata
+
+        payment_methods_map = {}
+        if method_ids:
+            qs = PaymentMethod.objects.filter(id__in=method_ids)
+            for method in qs:
+                method_id_str = str(getattr(method, 'id', ''))
+                payment_methods_map[method_id_str] = {
+                    'id': method_id_str,
+                    'name': getattr(method, 'name', None),
+                }
+
+        # استعمل الاسم الموجود في الميتاداتا إن لم يكن موجوداً في قاعدة البيانات
+        for method_id_str, metadata in metadata_cache.items():
+            if method_id_str not in payment_methods_map:
+                name_candidate = metadata.get('method_name') or metadata.get('methodName')
+                payment_methods_map[method_id_str] = {
+                    'id': method_id_str,
+                    'name': str(name_candidate) if name_candidate else None,
+                }
+
+        serializer = WalletTransactionSerializer(
+            transactions_list,
+            many=True,
+            context={'payment_methods': payment_methods_map},
+        )
         
         return Response({
             'transactions': serializer.data,

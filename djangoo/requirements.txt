@@ -11,6 +11,7 @@ whitenoise==6.7.0
 django-jazzmin
 requests==2.32.3
 Pillow==10.4.0
+openpyxl==3.1.2
 pyotp==2.9.0
 qrcode==7.4.2
 cryptography==43.0.1

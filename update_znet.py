@@ -1,0 +1,10 @@
+import psycopg
+conn = psycopg.connect('host=localhost port=5432 dbname=watan user=postgres password=Asdf1212asdf.')
+cursor = conn.cursor()
+cursor.execute('UPDATE integrations SET balance = 948.80, debt = 500.00, "debtUpdatedAt" = NOW() WHERE provider = \'znet\'')
+conn.commit()
+print('✅ تم تحديث ZNET: الرصيد=948.80, الدين=500.00')
+cursor.execute('SELECT name, balance, debt, balance - debt as net FROM integrations WHERE provider = \'znet\'')
+result = cursor.fetchone()
+print(f'📊 الرصيد: {result[1]}, الدين: {result[2]}, المحصلة: {result[3]}')
+conn.close()

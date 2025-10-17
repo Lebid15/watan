@@ -225,6 +225,7 @@ export const API_ROUTES = {
       users: `${EFFECTIVE_API_BASE_URL}/admin/reports/users`,
       providers: `${EFFECTIVE_API_BASE_URL}/admin/reports/providers`,
       capital: `${EFFECTIVE_API_BASE_URL}/admin/reports/capital`,
+      capitalExport: `${EFFECTIVE_API_BASE_URL}/admin/reports/capital/export.xlsx`,
       capitalAdjustments: {
         base: `${EFFECTIVE_API_BASE_URL}/admin/reports/capital/adjustments`,
         byId: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/reports/capital/adjustments/${id}`,

@@ -13,6 +13,11 @@ import {
   HiClock,
 } from 'react-icons/hi2';
 
+interface WalletPaymentMethod {
+  id: string;
+  name?: string | null;
+}
+
 interface WalletTransaction {
   id: string;
   transaction_type: 'approved' | 'rejected' | 'status_change' | 'deposit' | 'deposit_reversal';
@@ -30,6 +35,7 @@ interface WalletTransaction {
     status_change?: boolean;
     [key: string]: any;
   };
+  payment_method?: WalletPaymentMethod | null;
 }
 
 interface TransactionsResponse {
@@ -51,9 +57,78 @@ const fmt = (v: number | string | undefined | null, maxFrac = 2) => {
 
 const fmtDate = (d: string) => fmtDateStable(d);
 
+const shortenLongDecimals = (line: string) =>
+  line.replace(/(-?\d+\.\d{3,})/g, (match) => {
+    const parsed = Number(match);
+    return Number.isFinite(parsed) ? parsed.toFixed(2) : match;
+  });
+
+const buildDescriptionLines = (tx: WalletTransaction, methodLabel: string) => {
+  const description = typeof tx.description === 'string' ? tx.description : '';
+  const baseLines = description.split('\n');
+
+  const methodName = tx.payment_method?.name?.toString().trim();
+  if (!methodName) {
+    return baseLines;
+  }
+
+  const methodId = tx.payment_method?.id ? String(tx.payment_method.id) : '';
+
+  const labelVariants = [
+    methodLabel,
+    methodLabel.replace(/\s+/g, ''),
+    'وسيلة الدفع',
+    'طريقة الدفع',
+    'Payment Method',
+    'Payment method',
+  ];
+
+  let replaced = false;
+
+  const processed = baseLines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return line;
+    }
+
+    const hasKnownLabel = labelVariants.some((label) => trimmed.startsWith(label));
+    const hasMethodId = methodId && (trimmed === methodId || trimmed.endsWith(methodId));
+
+    if (hasKnownLabel || hasMethodId) {
+      replaced = true;
+      return `${methodLabel}: ${methodName}`;
+    }
+
+    return line;
+  });
+
+  const sanitized = processed.filter((line, index) => index === 0 || line.trim() !== '');
+
+  if (!replaced) {
+    sanitized.push(`${methodLabel}: ${methodName}`);
+  }
+
+  if (sanitized.length === 0) {
+    sanitized.push(`${methodLabel}: ${methodName}`);
+  }
+
+  return sanitized.map(shortenLongDecimals);
+};
+
+const normalizeDescription = (tx: WalletTransaction, methodLabel: string) => {
+  const lines = buildDescriptionLines(tx, methodLabel);
+  const [primary = '', ...rest] = lines;
+  return {
+    primary,
+    restLines: rest,
+    restText: rest.join('\n'),
+  };
+};
+
 export default function WalletTransactionsPage() {
   useAuthRequired();
   const { t } = useTranslation();
+  const methodLabel = t('wallet.transactions.payment_method', 'وسيلة الدفع');
 
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -232,77 +307,84 @@ export default function WalletTransactionsPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                      {transactions.map((tx) => (
-                        <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              {getTransactionIcon(tx)}
-                              <span className="text-sm text-gray-900 dark:text-white">
-                                {tx.description.split('\n')[0]}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900 dark:text-white whitespace-pre-line">
-                              {tx.description.split('\n').slice(1).join('\n')}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {tx.description.includes('تغيير الحالة إلى رفض') || tx.transaction_type === 'rejected' ? (
-                              <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
-                            ) : (
-                              <span className={`text-sm font-semibold ${getAmountColor(tx.amount)}`}>
-                                {Number(tx.amount) > 0 ? '+' : ''}
-                                {fmt(tx.amount)} {tx.currency}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                            {fmt(tx.balance_after)} {tx.currency}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {fmtDate(tx.created_at)}
-                          </td>
-                        </tr>
-                      ))}
+                      {transactions.map((tx) => {
+                        const desc = normalizeDescription(tx, methodLabel);
+                        const detailsText = desc.restText;
+                        return (
+                          <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                {getTransactionIcon(tx)}
+                                <span className="text-sm text-gray-900 dark:text-white">
+                                  {desc.primary || '—'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-gray-900 dark:text-white whitespace-pre-line">
+                                {detailsText}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {tx.description.includes('تغيير الحالة إلى رفض') || tx.transaction_type === 'rejected' ? (
+                                <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
+                              ) : (
+                                <span className={`text-sm font-semibold ${getAmountColor(tx.amount)}`}>
+                                  {Number(tx.amount) > 0 ? '+' : ''}
+                                  {fmt(tx.amount)} {tx.currency}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                              {fmt(tx.balance_after)} {tx.currency}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                              {fmtDate(tx.created_at)}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
 
                 {/* Mobile View */}
                 <div className="md:hidden space-y-4">
-                  {transactions.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="bg-white dark:bg-gray-800 shadow rounded-lg p-4"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          {getTransactionIcon(tx)}
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {tx.description.split('\n')[0]}
-                          </span>
+                  {transactions.map((tx) => {
+                    const desc = normalizeDescription(tx, methodLabel);
+                    return (
+                      <div
+                        key={tx.id}
+                        className="bg-white dark:bg-gray-800 shadow rounded-lg p-4"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            {getTransactionIcon(tx)}
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              {desc.primary || '—'}
+                            </span>
+                          </div>
+                          {tx.description.includes('تغيير الحالة إلى رفض') || tx.transaction_type === 'rejected' ? (
+                            <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
+                          ) : (
+                            <span className={`text-sm font-bold ${getAmountColor(tx.amount)}`}>
+                              {Number(tx.amount) > 0 ? '+' : ''}
+                              {fmt(tx.amount)} {tx.currency}
+                            </span>
+                          )}
                         </div>
-                        {tx.description.includes('تغيير الحالة إلى رفض') || tx.transaction_type === 'rejected' ? (
-                          <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
-                        ) : (
-                          <span className={`text-sm font-bold ${getAmountColor(tx.amount)}`}>
-                            {Number(tx.amount) > 0 ? '+' : ''}
-                            {fmt(tx.amount)} {tx.currency}
-                          </span>
-                        )}
+
+                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-2 whitespace-pre-line">
+                          {desc.restText}
+                        </p>
+
+                        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                          <span>{fmtDate(tx.created_at)}</span>
+                          <span>الرصيد: {fmt(tx.balance_after)} {tx.currency}</span>
+                        </div>
                       </div>
-                      
-                      <p className="text-sm text-gray-700 dark:text-gray-300 mb-2 whitespace-pre-line">
-                        {tx.description.split('\n').slice(1).join('\n')}
-                      </p>
-                      
-                      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <span>{fmtDate(tx.created_at)}</span>
-                        <span>الرصيد: {fmt(tx.balance_after)} {tx.currency}</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Pagination */}

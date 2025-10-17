@@ -165,6 +165,19 @@ def _build_balance_payload(integration: Integration, *, persist: bool, overrides
             response_balance = float(integration.balance) if integration.balance is not None else response_balance
         except (TypeError, ValueError):
             response_balance = response_balance
+    
+    # حفظ الدين أيضاً (خاص بـ ZNET)
+    if allow_persist and response_debt is not None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'UPDATE integrations SET debt=%s, "debtUpdatedAt"=NOW() WHERE id=%s',
+                [response_debt, integration.id]
+            )
+        integration.refresh_from_db()
+        try:
+            response_debt = float(integration.debt) if integration.debt is not None else response_debt
+        except (TypeError, ValueError):
+            response_debt = response_debt
 
     payload['balance'] = response_balance
     payload['debt'] = response_debt

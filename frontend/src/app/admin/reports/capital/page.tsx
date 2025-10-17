@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import api, { API_ROUTES } from '@/utils/api';
 import { formatMoney } from '@/utils/format';
-import { FiPlus, FiRefreshCcw, FiTrash2 } from 'react-icons/fi';
+import { FiDownload, FiPlus, FiRefreshCcw, FiTrash2 } from 'react-icons/fi';
 
 type AmountRow = {
   currency: string;
@@ -17,9 +17,12 @@ type ProviderItem = {
   name: string;
   provider?: string | null;
   balance: number;
+  debt?: number;
+  netBalance?: number;
   currency: string;
   balanceUsd: number;
   balanceUpdatedAt?: string | null;
+  debtUpdatedAt?: string | null;
 };
 
 type AdjustmentItem = {
@@ -87,13 +90,14 @@ type ApiErrorShape = {
 type SectionCardProps = {
   title: string;
   accentClass?: string;
+  bgClass?: string;
   children: ReactNode;
   footer?: ReactNode;
 };
 
-function SectionCard({ title, accentClass = '', children, footer }: SectionCardProps) {
+function SectionCard({ title, accentClass = '', bgClass = '', children, footer }: SectionCardProps) {
   return (
-    <div className="border border-border/70 rounded-2xl overflow-hidden shadow-sm bg-bg-surface">
+    <div className={`border border-border/70 rounded-2xl overflow-hidden shadow-sm ${bgClass || 'bg-bg-surface'}`}>
       <div
         className={`px-4 py-2 text-sm font-semibold tracking-wide ${accentClass || 'bg-bg-surface-alt text-text-secondary'}`}
       >
@@ -101,7 +105,7 @@ function SectionCard({ title, accentClass = '', children, footer }: SectionCardP
       </div>
       <div className="overflow-x-auto">{children}</div>
       {footer ? (
-        <div className="border-t border-border/60 bg-bg-surface-alt px-4 py-3 text-xs text-text-secondary">
+        <div className={`border-t border-border/60 px-4 py-3 text-xs text-text-secondary ${bgClass || 'bg-bg-surface-alt'}`}>
           {footer}
         </div>
       ) : null}
@@ -146,6 +150,7 @@ export default function CapitalReport() {
   const [pendingLabels, setPendingLabels] = useState<string[]>([]);
   const [addingRow, setAddingRow] = useState(false);
   const [newRowLabel, setNewRowLabel] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [savingNoteLabel, setSavingNoteLabel] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ label: string; currency: string } | null>(null);
@@ -476,12 +481,14 @@ export default function CapitalReport() {
     noteLabel = `ملاحظة (حتى ${MAX_NOTE_CHARS})`,
     showActions = true,
     actionsLabel = 'العمليات',
+    headerClass = 'bg-bg-surface-alt text-text-secondary',
   }: {
     noteLabel?: string;
     showActions?: boolean;
     actionsLabel?: string;
+    headerClass?: string;
   } = {}) => (
-    <thead className="bg-bg-surface-alt text-xs uppercase tracking-wide text-text-secondary">
+    <thead className={`text-xs uppercase tracking-wide ${headerClass}`}>
       <tr>
         <th className="px-3 py-2 text-right font-semibold">الجهة</th>
         {sortedCurrencies.map((code) => (
@@ -503,7 +510,7 @@ export default function CapitalReport() {
     const value = resolveRowAmount(label, currency);
     const isEditing = editingCell && editingCell.label === label && editingCell.currency === currency;
     return (
-      <td key={`${label}-${currency}`} className="px-3 py-2 border-t border-border/40" dir="ltr">
+      <td key={`${label}-${currency}`} className="px-3 py-2 border-t border-border/40 text-right" dir="ltr">
         {isEditing ? (
           <input
             ref={inputRef}
@@ -513,13 +520,13 @@ export default function CapitalReport() {
             onChange={(event) => setCellDraft(event.target.value)}
             onBlur={handleSaveCell}
             onKeyDown={handleCellKeyDown}
-            className="w-full rounded border border-primary/50 bg-bg-input px-2 py-1 text-sm focus:border-primary focus:outline-none"
+            className="w-full rounded border border-primary/50 bg-bg-input px-2 py-1 text-sm focus:border-primary focus:outline-none text-right"
             disabled={savingCell}
           />
         ) : (
           <button
             type="button"
-            className="w-full text-left hover:text-primary transition-colors"
+            className="w-full text-right hover:text-primary transition-colors"
             onClick={() => handleStartEdit(label, currency, value)}
           >
             {value === null ? <span className="text-text-secondary/60">—</span> : displayAmount(value, currency)}
@@ -530,7 +537,7 @@ export default function CapitalReport() {
   };
 
   const renderNoteInput = (label: string) => (
-    <td className="px-3 py-2 border-t border-border/40" key={`${label}-note`}>
+    <td className="px-3 py-2 border-t border-border/40 text-right" key={`${label}-note`}>
       <input
         value={resolveNote(label)}
         onChange={(event) =>
@@ -541,7 +548,7 @@ export default function CapitalReport() {
         }
         onBlur={() => syncRowNote(label)}
         maxLength={MAX_NOTE_CHARS}
-        className="w-full rounded border border-border bg-bg-input px-2 py-1 text-sm focus:border-primary focus:outline-none"
+        className="w-full rounded border border-border bg-bg-input px-2 py-1 text-sm focus:border-primary focus:outline-none text-right"
         placeholder="ملاحظة قصيرة"
         disabled={savingNoteLabel === label}
       />
@@ -550,6 +557,39 @@ export default function CapitalReport() {
 
   const grandUsd = summary?.grandTotalUsd ?? 0;
 
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setError('');
+    try {
+      const response = await api.get<Blob>(API_ROUTES.admin.reports.capitalExport, {
+        responseType: 'blob',
+      });
+
+      const headers = response.headers as Record<string, string>;
+      const contentType = headers?.['content-type'] || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const blob = new Blob([response.data], { type: contentType });
+      const url = window.URL.createObjectURL(blob);
+
+      const disposition = headers?.['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const fallbackName = `capital-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const filename = match && match[1] ? match[1] : fallbackName;
+
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch (error: unknown) {
+      setError(extractErrorMessage(error, 'تعذر تصدير الجرد إلى إكسل'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 text-text-primary space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -557,6 +597,16 @@ export default function CapitalReport() {
           {t('capitalReport.title', { defaultValue: 'جرد رأس المال' })}
         </h1>
         <div className="flex items-center flex-wrap gap-2">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1 px-3 py-2 rounded border border-border bg-bg-surface hover:opacity-90 disabled:opacity-60"
+            disabled={loading || exporting}
+          >
+            <FiDownload className={exporting ? 'animate-pulse' : ''} />
+            {exporting
+              ? t('capitalReport.actions.exporting', { defaultValue: 'جاري التصدير...' })
+              : t('capitalReport.actions.export', { defaultValue: 'تصدير إلى Excel' })}
+          </button>
           <button
             onClick={loadSummary}
             className="flex items-center gap-1 px-3 py-2 rounded border border-border bg-bg-surface hover:opacity-90 disabled:opacity-50"
@@ -641,27 +691,61 @@ export default function CapitalReport() {
           <SectionCard
             title="المزودون (عرض فقط)"
             accentClass="bg-orange-100/70 text-orange-900 dark:bg-orange-900/40 dark:text-orange-50"
+            bgClass="bg-orange-50/30 dark:bg-orange-950/20"
           >
             <table className="min-w-full text-sm">
-              {renderTableHead({ noteLabel: 'آخر تحديث', showActions: false })}
+              {renderTableHead({ 
+                noteLabel: 'آخر تحديث', 
+                showActions: false,
+                headerClass: 'bg-orange-100/70 text-orange-900 dark:bg-orange-900/40 dark:text-orange-50'
+              })}
               <tbody>
                 {summary.providers.items.map((item) => (
-                  <tr key={`provider-${item.id}`} className="odd:bg-bg-surface even:bg-bg-surface-alt/60">
-                    <td className="px-3 py-2 border-t border-border/40">
+                  <tr key={`provider-${item.id}`} className="odd:bg-orange-50/20 even:bg-orange-100/20 dark:odd:bg-orange-950/10 dark:even:bg-orange-900/10">
+                    <td className="px-3 py-2 border-t border-border/40 text-right">
                       <div className="font-medium text-text-primary">{item.name}</div>
                       <div className="text-[11px] uppercase text-text-secondary/80">
                         {item.provider || '-'}
                       </div>
                     </td>
                     {sortedCurrencies.map((code) => {
-                      const value = code === normalizeCurrency(item.currency) ? item.balance : null;
+                      const isZnet = item.provider?.toLowerCase() === 'znet';
+                      const currencyMatches = code === normalizeCurrency(item.currency);
+                      
+                      if (!currencyMatches) {
+                        return (
+                          <td key={`provider-${item.id}-${code}`} className="px-3 py-2 border-t border-border/40 text-right" dir="ltr">
+                            <span className="text-text-secondary/60">—</span>
+                          </td>
+                        );
+                      }
+                      
+                      // عرض خاص لـ ZNET: الرصيد / الدين = المحصلة
+                      if (isZnet && (item.debt !== undefined && item.debt !== null && item.debt !== 0)) {
+                        return (
+                          <td key={`provider-${item.id}-${code}`} className="px-3 py-2 border-t border-border/40 text-right" dir="ltr">
+                            <div className="flex flex-col gap-0.5 items-end">
+                              <div className="flex items-center gap-1 text-xs">
+                                <span className="font-medium">{displayAmount(item.balance, code)}</span>
+                                <span className="text-text-secondary/60">/</span>
+                                <span className="text-text-secondary/70">{displayAmount(item.debt, code)}</span>
+                              </div>
+                              <div className="text-xs text-text-secondary/80 border-t border-border/30 pt-0.5">
+                                <span className="font-semibold">{displayAmount(item.netBalance || (item.balance - item.debt), code)}</span> :المحصلة
+                              </div>
+                            </div>
+                          </td>
+                        );
+                      }
+                      
+                      // عرض عادي للمزودين الآخرين
                       return (
-                        <td key={`provider-${item.id}-${code}`} className="px-3 py-2 border-t border-border/40" dir="ltr">
-                          {value === null ? <span className="text-text-secondary/60">—</span> : displayAmount(value, code)}
+                        <td key={`provider-${item.id}-${code}`} className="px-3 py-2 border-t border-border/40 text-right" dir="ltr">
+                          {displayAmount(item.balance, code)}
                         </td>
                       );
                     })}
-                    <td className="px-3 py-2 border-t border-border/40 text-[11px] text-text-secondary" dir="ltr">
+                    <td className="px-3 py-2 border-t border-border/40 text-right text-[11px] text-text-secondary" dir="ltr">
                       {item.balanceUpdatedAt
                         ? item.balanceUpdatedAt.replace('T', ' ').slice(0, 19)
                         : '—'}
@@ -682,6 +766,7 @@ export default function CapitalReport() {
           <SectionCard
             title="مجموع أرصدة المستخدمين"
             accentClass="bg-emerald-100/70 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-50"
+            bgClass="bg-emerald-50/30 dark:bg-emerald-950/20"
             footer={
               <div className="text-xs">
                 {t('capitalReport.cards.usersCount', { defaultValue: 'عدد المستخدمين:' })}{' '}
@@ -690,21 +775,24 @@ export default function CapitalReport() {
             }
           >
             <table className="min-w-full text-sm">
-              {renderTableHead({ showActions: false })}
+              {renderTableHead({ 
+                showActions: false,
+                headerClass: 'bg-emerald-100/70 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-50'
+              })}
               <tbody>
-                <tr className="odd:bg-bg-surface">
-                  <td className="px-3 py-3 border-t border-border/40 font-semibold text-text-primary">
+                <tr className="odd:bg-emerald-50/20 dark:odd:bg-emerald-950/10">
+                  <td className="px-3 py-3 border-t border-border/40 font-semibold text-text-primary text-right">
                     {t('capitalReport.cards.usersTitle', { defaultValue: 'أرصدة المستخدمين' })}
                   </td>
                   {sortedCurrencies.map((code) => {
                     const match = summary.users.totals.find((row) => normalizeCurrency(row.currency) === code);
                     return (
-                      <td key={`users-${code}`} className="px-3 py-3 border-t border-border/40 font-semibold" dir="ltr">
+                      <td key={`users-${code}`} className="px-3 py-3 border-t border-border/40 font-semibold text-right" dir="ltr">
                         {match ? displayAmount(match.amount, code) : <span className="text-text-secondary/60">—</span>}
                       </td>
                     );
                   })}
-                  <td className="px-3 py-3 border-t border-border/40 text-text-secondary" dir="ltr">
+                  <td className="px-3 py-3 border-t border-border/40 text-text-secondary text-right" dir="ltr">
                     {formatUsd(summary.users.totalUsd)}
                   </td>
                 </tr>
@@ -715,6 +803,7 @@ export default function CapitalReport() {
           <SectionCard
             title="وسائل الدفع (قابلة للتعبئة)"
             accentClass="bg-sky-100/70 text-sky-900 dark:bg-sky-900/40 dark:text-sky-50"
+            bgClass="bg-sky-50/30 dark:bg-sky-950/20"
           >
             {paymentMethodRows.length === 0 ? (
               <div className="px-4 py-6 text-sm text-text-secondary text-center">
@@ -722,11 +811,14 @@ export default function CapitalReport() {
               </div>
             ) : (
               <table className="min-w-full text-sm">
-                {renderTableHead({ showActions: false })}
+                {renderTableHead({ 
+                  showActions: false,
+                  headerClass: 'bg-sky-100/70 text-sky-900 dark:bg-sky-900/40 dark:text-sky-50'
+                })}
                 <tbody>
                   {paymentMethodRows.map((label) => (
-                    <tr key={`payment-${label}`} className="odd:bg-bg-surface even:bg-bg-surface-alt/60">
-                      <td className="px-3 py-2 border-t border-border/40 font-medium text-text-primary">
+                    <tr key={`payment-${label}`} className="odd:bg-sky-50/20 even:bg-sky-100/20 dark:odd:bg-sky-950/10 dark:even:bg-sky-900/10">
+                      <td className="px-3 py-2 border-t border-border/40 font-medium text-text-primary text-right">
                         {label}
                       </td>
                       {sortedCurrencies.map((code) => renderEditableCell(label, code))}
@@ -741,6 +833,7 @@ export default function CapitalReport() {
           <SectionCard
             title="صفوف يدوية"
             accentClass="bg-violet-100/70 text-violet-900 dark:bg-violet-900/40 dark:text-violet-50"
+            bgClass="bg-violet-50/30 dark:bg-violet-950/20"
             footer={
               <div className="space-y-3">
                 <p className="text-xs text-text-secondary">
@@ -787,11 +880,13 @@ export default function CapitalReport() {
               </div>
             ) : (
               <table className="min-w-full text-sm">
-                {renderTableHead()}
+                {renderTableHead({
+                  headerClass: 'bg-violet-100/70 text-violet-900 dark:bg-violet-900/40 dark:text-violet-50'
+                })}
                 <tbody>
                   {manualRowLabels.map((label) => (
-                    <tr key={`manual-${label}`} className="odd:bg-bg-surface even:bg-bg-surface-alt/60">
-                      <td className="px-3 py-2 border-t border-border/40 font-medium text-text-primary">
+                    <tr key={`manual-${label}`} className="odd:bg-violet-50/20 even:bg-violet-100/20 dark:odd:bg-violet-950/10 dark:even:bg-violet-900/10">
+                      <td className="px-3 py-2 border-t border-border/40 font-medium text-text-primary text-right">
                         {label}
                       </td>
                       {sortedCurrencies.map((code) => renderEditableCell(label, code))}
@@ -814,9 +909,10 @@ export default function CapitalReport() {
           <SectionCard
             title="الإجمالي حسب العملة"
             accentClass="bg-slate-100/70 text-slate-900 dark:bg-slate-900/40 dark:text-slate-100"
+            bgClass="bg-slate-50/30 dark:bg-slate-950/20"
           >
             <table className="min-w-full text-sm">
-              <thead className="bg-bg-surface-alt text-xs uppercase tracking-wide text-text-secondary">
+              <thead className="bg-slate-100/70 text-slate-900 dark:bg-slate-900/40 dark:text-slate-100 text-xs uppercase tracking-wide">
                 <tr>
                   <th className="px-3 py-2 text-right font-semibold">العملة</th>
                   <th className="px-3 py-2 text-right font-semibold" dir="ltr">
@@ -826,18 +922,18 @@ export default function CapitalReport() {
               </thead>
               <tbody>
                 {sortedCurrencies.map((code) => (
-                  <tr key={`overall-${code}`} className="odd:bg-bg-surface even:bg-bg-surface-alt/60">
-                    <td className="px-3 py-2 border-t border-border/40 font-medium">{code}</td>
-                    <td className="px-3 py-2 border-t border-border/40" dir="ltr">
+                  <tr key={`overall-${code}`} className="odd:bg-slate-50/20 even:bg-slate-100/20 dark:odd:bg-slate-950/10 dark:even:bg-slate-900/10">
+                    <td className="px-3 py-2 border-t border-border/40 font-medium text-right">{code}</td>
+                    <td className="px-3 py-2 border-t border-border/40 text-right" dir="ltr">
                       {overallPerCurrency.has(code)
                         ? displayAmount(overallPerCurrency.get(code) || 0, code)
                         : <span className="text-text-secondary/60">—</span>}
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-bg-surface font-semibold">
-                  <td className="px-3 py-2 border-t border-border text-text-primary">USD</td>
-                  <td className="px-3 py-2 border-t border-border" dir="ltr">
+                <tr className="bg-slate-100/40 dark:bg-slate-900/30 font-semibold">
+                  <td className="px-3 py-2 border-t border-border text-text-primary text-right">USD</td>
+                  <td className="px-3 py-2 border-t border-border text-right" dir="ltr">
                     {formatUsd(grandUsd)}
                   </td>
                 </tr>
