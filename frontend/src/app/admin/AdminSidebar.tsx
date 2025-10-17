@@ -28,6 +28,7 @@ import {
   FiLifeBuoy,
   FiUnlock,
   FiShield,
+  FiImage,
 } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { loadNamespace } from '@/i18n/client';
@@ -214,6 +215,7 @@ export default function AdminSidebar() {
       icon: <FiSettings size={20} />,
       subItems: [
         { name: t('settings.nav.notifications'), href: '/admin/notifications', icon: <FiBell size={16} /> },
+        { name: 'صور السلايدر', href: '/admin/settings/banners', icon: <FiImage size={16} /> },
         { name: t('settings.nav.theme'), href: '/admin/settings/theme', icon: <FiMonitor size={16} /> },
         { name: t('settings.nav.about'), href: '/admin/settings/about', icon: <FiInfo size={16} /> },
         { name: t('settings.nav.help'), href: '/admin/settings/infoes', icon: <FiLifeBuoy size={16} /> },

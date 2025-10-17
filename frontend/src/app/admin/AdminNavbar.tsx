@@ -141,6 +141,7 @@ export default function AdminNavbar() {
       name: t('settings.nav.group'),
       subItems: [
         { name: t('settings.nav.notifications'), href: '/admin/notifications' },
+        { name: 'صور السلايدر', href: '/admin/settings/banners' },
         { name: t('settings.nav.theme'), href: '/admin/settings/theme' },
         { name: t('settings.nav.about'), href: '/admin/settings/about' },
         { name: t('settings.nav.help'), href: '/admin/settings/infoes' },

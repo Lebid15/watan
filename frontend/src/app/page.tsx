@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import api, { API_ROUTES } from "@/utils/api";
+import BannerSlider from "@/components/BannerSlider";
 
 interface Product {
   id: string;
@@ -69,9 +70,12 @@ export default function HomePage() {
   );
 
   return (
-    <div className="admin-container">
+    <div className="admin-container pt-2 sm:pt-4 md:pt-6">
+      {/* سلايدر البانرات */}
+      <BannerSlider />
+
       {/* شريط البحث */}
-      <div className="mb-6 flex justify-center">
+      <div className="-mt-6 sm:mt-2 md:mt-3 mb-4 flex justify-center px-4 sm:px-6 md:px-8 lg:px-12">
         <input
           type="text"
           placeholder="بحث..."
@@ -124,7 +128,7 @@ export default function HomePage() {
                   }
                 />
               </div>
-              <div className="text-center text-[13px] sm:text-sm mt-2 text-text-primary sm:w-24 truncate">
+              <div className="text-center text-[13px] sm:text-sm mt-2 text-text-primary sm:w-24 line-clamp-2 leading-tight">
                 {product.name}
               </div>
             </div>
