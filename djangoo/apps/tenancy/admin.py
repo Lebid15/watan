@@ -52,7 +52,7 @@ class TenantCreateForm(forms.ModelForm):
 @admin.register(Tenant)
 class TenantAdmin(admin.ModelAdmin):
     list_display = ("id", "host", "name", "is_active", "created_at")
-    search_fields = ("host", "name")
+    search_fields = ("host", "name", "address")
     list_filter = ("is_active",)
     
     def get_form(self, request, obj=None, **kwargs):
@@ -68,11 +68,19 @@ class TenantAdmin(admin.ModelAdmin):
                 (_('معلومات المستأجر'), {
                     'fields': ('host', 'name', 'is_active')
                 }),
+                (_('العنوان والوثائق'), {
+                    'fields': ('address', 'documents'),
+                    'classes': ('collapse',),
+                }),
             )
         else:  # إنشاء جديد - عرض حقول المستأجر + حقول المستخدم المالك
             return (
                 (_('معلومات المستأجر'), {
                     'fields': ('host', 'name', 'is_active')
+                }),
+                (_('العنوان والوثائق'), {
+                    'fields': ('address', 'documents'),
+                    'classes': ('collapse',),
                 }),
                 (_('إنشاء مستخدم مالك (اختياري)'), {
                     'fields': ('owner_username', 'owner_email', 'owner_password', 'owner_balance', 'owner_currency'),

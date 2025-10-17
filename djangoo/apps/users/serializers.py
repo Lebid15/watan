@@ -52,6 +52,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'username', 'roleFinal', 'isActive', 'balance', 'preferred_currency_code',
             'currency', 'currencyCode', 'priceGroup', 'price_group_id', 'tenant_id',
+            'address', 'documents',  # الحقول الجديدة
         ]
 
     def get_roleFinal(self, obj):

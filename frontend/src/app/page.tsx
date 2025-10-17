@@ -75,7 +75,7 @@ export default function HomePage() {
       <BannerSlider />
 
       {/* شريط البحث */}
-      <div className="-mt-6 sm:mt-2 md:mt-3 mb-4 flex justify-center px-4 sm:px-6 md:px-8 lg:px-12">
+      <div className="-mt-4 sm:mt-2 md:mt-3 mb-4 flex justify-center px-4 sm:px-6 md:px-8 lg:px-12 relative z-10">
         <input
           type="text"
           placeholder="بحث..."

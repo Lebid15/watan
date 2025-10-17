@@ -87,6 +87,8 @@ def _user_detail_payload(user) -> dict:
         'tenantId': str(user.tenant_id) if user.tenant_id else None,
         'priceGroupId': str(user.price_group_id) if user.price_group_id else None,
         'priceGroup': {'id': str(user.price_group_id)} if user.price_group_id else None,
+        'address': getattr(user, 'address', ''),  # جديد
+        'documents': getattr(user, 'documents', []),  # جديد
     }
 
 
@@ -292,6 +294,7 @@ def legacy_user_detail(request, id: str):
     full_name = (payload.get('fullName') or '').strip() or None
     phone_number = (payload.get('phoneNumber') or '').strip() or None
     country_code = (payload.get('countryCode') or '').strip() or None
+    address = payload.get('address')  # جديد
     role_raw = (payload.get('role') or payload.get('roleFinal') or user.role or 'user')
     role = str(role_raw).lower()
     is_active = payload.get('isActive')
@@ -305,6 +308,8 @@ def legacy_user_detail(request, id: str):
         updates['phone_number'] = phone_number
     if country_code is not None:
         updates['country_code'] = country_code
+    if address is not None:  # جديد
+        updates['address'] = address
 
     if role:
         valid_roles = set(getattr(UserModel, 'Roles').values) if hasattr(UserModel, 'Roles') else None
@@ -711,3 +716,91 @@ class RegisterView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def upload_user_document(request):
+    """رفع وثيقة (صورة) للمستخدم - حد أقصى 3 وثائق"""
+    from django.core.files.storage import default_storage
+    import os
+    
+    tenant_raw = _resolve_tenant_id(request)
+    if not tenant_raw:
+        raise ValidationError('TENANT_ID_REQUIRED')
+    tenant_id = _require_tenant_uuid(tenant_raw)
+    
+    user_id = request.data.get('userId')
+    if not user_id:
+        return Response({'error': 'userId مطلوب'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    user = _get_user_for_tenant_or_404(user_id, tenant_id)
+    
+    # التحقق من عدد الوثائق الحالية
+    current_docs = user.documents or []
+    if len(current_docs) >= 3:
+        return Response({'error': 'الحد الأقصى 3 وثائق'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # الحصول على الملف
+    uploaded_file = request.FILES.get('file')
+    if not uploaded_file:
+        return Response({'error': 'ملف مطلوب'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # التحقق من نوع الملف (صور فقط)
+    allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+    file_ext = uploaded_file.name.split('.')[-1].lower()
+    if file_ext not in allowed_extensions:
+        return Response({'error': 'نوع الملف غير مدعوم. الرجاء رفع صورة'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # حفظ الملف
+    file_name = f"user_{user.id}_{uuid.uuid4()}.{file_ext}"
+    file_path = f"documents/users/{file_name}"
+    
+    saved_path = default_storage.save(file_path, uploaded_file)
+    file_url = default_storage.url(saved_path)
+    
+    # إضافة الرابط للوثائق
+    current_docs.append(file_url)
+    user.documents = current_docs
+    user.save(update_fields=['documents'])
+    
+    return Response({
+        'url': file_url,
+        'documents': user.documents
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_user_document(request, user_id: str):
+    """حذف وثيقة من وثائق المستخدم"""
+    tenant_raw = _resolve_tenant_id(request)
+    if not tenant_raw:
+        raise ValidationError('TENANT_ID_REQUIRED')
+    tenant_id = _require_tenant_uuid(tenant_raw)
+    
+    user = _get_user_for_tenant_or_404(user_id, tenant_id)
+    
+    document_url = request.data.get('documentUrl')
+    if not document_url:
+        return Response({'error': 'documentUrl مطلوب'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    current_docs = user.documents or []
+    if document_url in current_docs:
+        current_docs.remove(document_url)
+        user.documents = current_docs
+        user.save(update_fields=['documents'])
+        
+        # حذف الملف من التخزين
+        try:
+            from django.core.files.storage import default_storage
+            # استخراج المسار من URL
+            if '/media/' in document_url:
+                file_path = document_url.split('/media/')[-1]
+                default_storage.delete(file_path)
+        except Exception as e:
+            logger.warning(f'فشل حذف الملف: {str(e)}')
+    
+    return Response({
+        'documents': user.documents
+    }, status=status.HTTP_200_OK)

@@ -47,6 +47,16 @@ class User(AbstractUser):
     api_webhook_secret = models.CharField(max_length=64, null=True, blank=True)
     api_webhook_sig_version = models.CharField(max_length=10, default='v1', null=True, blank=True)
     api_webhook_last_rotated_at = models.DateTimeField(null=True, blank=True)
+    
+    # الحقول الجديدة
+    address = models.TextField(blank=True, null=True, verbose_name='العنوان الكامل')
+    documents = models.JSONField(
+        default=list,
+        blank=True,
+        null=True,
+        verbose_name='الوثائق',
+        help_text='حد أقصى 3 صور - يتم تخزين روابط الصور'
+    )
 
     class Meta:
         db_table = 'dj_users'
@@ -106,8 +116,7 @@ class RecoveryCode(models.Model):
 
 # Legacy read-only models from old NestJS backend - kept for reference only
 # These are NOT registered in admin and should NOT be used for new development
-# Uncomment only if needed for data migration scripts
-# from .legacy_models import LegacyUser  # noqa: E402,F401
+from .legacy_models import LegacyUser  # noqa: E402,F401
 
 
 class LegacyPasswordResetToken(models.Model):

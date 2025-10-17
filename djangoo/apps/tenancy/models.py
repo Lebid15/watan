@@ -7,6 +7,16 @@ class Tenant(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # الحقول الجديدة
+    address = models.TextField(blank=True, null=True, verbose_name='العنوان الكامل')
+    documents = models.JSONField(
+        default=list,
+        blank=True,
+        null=True,
+        verbose_name='الوثائق',
+        help_text='حد أقصى 3 صور - يتم تخزين روابط الصور'
+    )
 
     class Meta:
         db_table = 'dj_tenants'

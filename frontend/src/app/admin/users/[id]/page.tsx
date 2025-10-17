@@ -15,6 +15,8 @@ interface User {
   role: string;
   isActive?: boolean;
   overdraftLimit?: number | null;
+  address?: string;  // جديد
+  documents?: string[];  // جديد
 }
 
 const COUNTRY_CODES = [
@@ -44,6 +46,7 @@ export default function EditUserPage() {
 
   const [newPassword, setNewPassword] = useState('');
   const [overdraft, setOverdraft] = useState<string>('');
+  const [uploading, setUploading] = useState(false);  // جديد
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -71,6 +74,7 @@ export default function EditUserPage() {
         username: user.username ?? null,
         phoneNumber: user.phoneNumber ?? null,
         countryCode: user.countryCode ?? null,
+        address: user.address ?? '',  // جديد
       });
 
       if (newPassword.trim()) {
@@ -96,6 +100,53 @@ export default function EditUserPage() {
       setSaving(false);
     }
   };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    // التحقق من عدد الوثائق
+    const currentDocs = user.documents || [];
+    if (currentDocs.length >= 3) {
+      alert('الحد الأقصى 3 وثائق');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('userId', user.id);
+
+      const res = await api.post('/api-dj/users/documents/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setUser({ ...user, documents: res.data.documents });
+      alert('تم رفع الوثيقة بنجاح');
+    } catch {
+      alert('فشل رفع الوثيقة');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleDeleteDocument = async (docUrl: string) => {
+    if (!user || !confirm('هل تريد حذف هذه الوثيقة؟')) return;
+
+    try {
+      const res = await api.delete(`/api-dj/users/${user.id}/documents/delete`, {
+        data: { documentUrl: docUrl },
+      });
+
+      setUser({ ...user, documents: res.data.documents });
+      alert('تم حذف الوثيقة بنجاح');
+    } catch {
+      alert('فشل حذف الوثيقة');
+    }
+  };
+  
   if (loading) return <div className="p-4">{t('users.loading')}</div>;
   if (error) return <div className="p-4 text-danger">{error}</div>;
   if (!user) return <div className="p-4 text-danger">{t('users.detail.notFound')}</div>;
@@ -189,6 +240,68 @@ export default function EditUserPage() {
           placeholder={t('users.detail.overdraft.placeholder')}
         />
         <p className="text-xs text-text-secondary mt-1">{t('users.detail.overdraft.help')}</p>
+      </div>
+
+      {/* العنوان الكامل */}
+      <div className="mb-4">
+        <label className="block font-semibold mb-1">العنوان الكامل</label>
+        <textarea
+          value={user.address ?? ''}
+          onChange={(e) => setUser({ ...user, address: e.target.value })}
+          className="w-full border border-border p-2 rounded bg-bg-input"
+          rows={3}
+          placeholder="أدخل العنوان الكامل..."
+        />
+      </div>
+
+      {/* الوثائق (رفع الصور) */}
+      <div className="mb-6">
+        <label className="block font-semibold mb-2">الوثائق (حد أقصى 3 صور)</label>
+        
+        {/* عرض الوثائق الحالية */}
+        {user.documents && user.documents.length > 0 && (
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            {user.documents.map((doc, idx) => (
+              <div key={idx} className="relative border border-border rounded overflow-hidden">
+                <img 
+                  src={doc} 
+                  alt={`وثيقة ${idx + 1}`}
+                  className="w-full h-32 object-cover"
+                />
+                <button
+                  onClick={() => handleDeleteDocument(doc)}
+                  className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-700"
+                  title="حذف"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* زر رفع وثيقة جديدة */}
+        {(!user.documents || user.documents.length < 3) && (
+          <div>
+            <input
+              type="file"
+              id="document-upload"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+              disabled={uploading}
+            />
+            <label
+              htmlFor="document-upload"
+              className={`inline-block bg-bg-surface-alt text-text-primary px-4 py-2 rounded border border-border cursor-pointer hover:opacity-90 ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {uploading ? '⏳ جاري الرفع...' : '📎 رفع وثيقة'}
+            </label>
+            <p className="text-xs text-text-secondary mt-1">
+              الملفات المدعومة: JPG, PNG, GIF, WebP
+            </p>
+          </div>
+        )}
       </div>
 
       {/* الأزرار */}

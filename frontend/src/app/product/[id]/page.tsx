@@ -196,7 +196,6 @@ export default function ProductDetailsPage() {
       
   await refreshProfile();
       router.push('/orders');
-  alert(`تم إنشاء الطلب: ${selectedPackage.name} بسعر ${formatMoney(price, currencyCode, { fractionDigits: 2, withSymbol: true, symbolBefore: true })}`);
     } catch {
       alert('فشل في تنفيذ الطلب');
     } finally {
@@ -402,11 +401,6 @@ export default function ProductDetailsPage() {
         extraField: extraField?.trim() ? extraField.trim() : undefined,
       });
       await refreshProfile();
-      setUnitModalOpen(false);
-      setUnitQuantity('');
-      setGameId('');
-      setExtraField('');
-      alert('تم إنشاء الطلب');
       router.push('/orders');
     } catch (e) {
   console.error(e);
@@ -501,6 +495,7 @@ export default function ProductDetailsPage() {
               value={gameId}
               onChange={e => setGameId(e.target.value)}
               className="input w-full mb-4 bg-bg-input border-border"
+              maxLength={120}
             />
 
             {/* 👇 الحقل الإضافي الاختياري */}
@@ -510,6 +505,7 @@ export default function ProductDetailsPage() {
               value={extraField}
               onChange={e => setExtraField(e.target.value)}
               className="input w-full mb-4 bg-bg-input border-border"
+              maxLength={120}
             />
 
             <div className="flex justify-center gap-3">
@@ -559,6 +555,7 @@ export default function ProductDetailsPage() {
                 className={`input w-full ${unitGameIdError ? 'border-danger' : ''}`}
                 value={gameId}
                 onChange={e => { setGameId(e.target.value); if (e.target.value.trim()) setUnitGameIdError(''); }}
+                maxLength={120}
               />
               {unitGameIdError && <div className="text-[11px] mt-1 text-danger">{unitGameIdError}</div>}
             </div>
@@ -570,6 +567,7 @@ export default function ProductDetailsPage() {
                 className="input w-full"
                 value={extraField}
                 onChange={e => setExtraField(e.target.value)}
+                maxLength={120}
               />
             </div>
 

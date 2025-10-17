@@ -133,13 +133,13 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   if (!authReady) return null;
   
   const inner = (
-    <div className="flex min-h-screen">
-      {/* Sidebar */}
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar - ثابت */}
       <AdminSidebar />
       
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col">
-        {/* Top Bar */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* Top Bar - ثابت */}
         <AdminTopBar 
           alertMessage={alertMessage} 
           onLogout={handleLogout}
@@ -147,8 +147,8 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
           pendingDepositsCount={pendingDepositsCount}
         />
         
-        {/* Page Content */}
-        <main className="flex-1 overflow-auto p-6">
+        {/* Page Content - قابل للتمرير */}
+        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar">
           {children}
         </main>
       </div>

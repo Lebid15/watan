@@ -272,12 +272,12 @@ export default function AdminSidebar() {
     <aside
       ref={sidebarRef}
       className={`
-        min-h-screen bg-bg-surface border-e border-border flex flex-col shrink-0 transition-all duration-300
+        h-screen bg-bg-surface border-e border-border flex flex-col shrink-0 transition-all duration-300 overflow-hidden
         ${isCollapsed ? 'w-20' : 'w-64'}
       `}
     >
       {/* Logo / Title + Toggle Button */}
-      <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+      <div className="p-4 border-b border-border flex items-center justify-between gap-2 shrink-0">
         {!isCollapsed && (
           <h2 className="text-xl font-bold text-text-primary text-center flex-1">
             لوحة التحكم
@@ -294,7 +294,7 @@ export default function AdminSidebar() {
       </div>
 
       {/* Navigation */}
-  <nav className={`flex-1 p-2 ${isCollapsed ? 'overflow-visible' : 'overflow-y-auto'}`}>
+  <nav className={`flex-1 p-2 overflow-y-auto custom-scrollbar`}>
         {navItems.map((item) => {
           const isActive = item.href ? pathname.startsWith(item.href) : false;
           const hasSubItems = item.subItems && item.subItems.length > 0;
