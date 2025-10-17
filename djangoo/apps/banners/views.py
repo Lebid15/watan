@@ -26,25 +26,28 @@ class BannerViewSet(viewsets.ModelViewSet):
         """
         فلترة الصور حسب المستأجر
         """
-        tenant_id = getattr(self.request, 'tenant_id', None)
+        # الحصول على tenant_id من request.tenant (من middleware)
+        tenant_obj = getattr(self.request, 'tenant', None)
+        tenant_id = getattr(tenant_obj, 'id', None) if tenant_obj else None
         
-        # أو من الـ headers
+        # إذا لم يتم تحديد المستأجر، إرجاع قائمة فارغة (أمان إضافي)
         if not tenant_id:
-            tenant_id = self.request.headers.get('X-Tenant-ID')
+            return Banner.objects.none()
         
-        # إرجاع جميع البانرات للمستأجر (نشطة وغير نشطة)
-        queryset = Banner.objects.all()
-        if tenant_id:
-            queryset = queryset.filter(tenant_id=tenant_id)
-        return queryset.order_by('order')
+        # إرجاع البانرات للمستأجر فقط (نشطة وغير نشطة)
+        return Banner.objects.filter(tenant_id=tenant_id).order_by('order')
     
     def perform_create(self, serializer):
         """
         إضافة tenant_id تلقائياً عند الإنشاء
         """
-        tenant_id = getattr(self.request, 'tenant_id', None)
+        # الحصول على tenant_id من request.tenant (من middleware)
+        tenant_obj = getattr(self.request, 'tenant', None)
+        tenant_id = getattr(tenant_obj, 'id', None) if tenant_obj else None
+        
         if not tenant_id:
-            tenant_id = self.request.headers.get('X-Tenant-ID')
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'detail': 'تعذر تحديد المستأجر'})
         
         # التحقق من عدد البانرات
         existing_count = Banner.objects.filter(tenant_id=tenant_id).count()
@@ -53,6 +56,37 @@ class BannerViewSet(viewsets.ModelViewSet):
             raise ValidationError({'detail': 'الحد الأقصى 3 صور فقط'})
         
         serializer.save(tenant_id=tenant_id)
+    
+    def perform_update(self, serializer):
+        """
+        التأكد من أن المستأجر يحدث بانراته فقط
+        """
+        # الحصول على tenant_id من request.tenant
+        tenant_obj = getattr(self.request, 'tenant', None)
+        current_tenant_id = getattr(tenant_obj, 'id', None) if tenant_obj else None
+        
+        # التأكد من أن البانر يخص نفس المستأجر
+        instance = self.get_object()
+        if str(instance.tenant_id) != str(current_tenant_id):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied({'detail': 'غير مصرح لك بتعديل هذا البانر'})
+        
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        """
+        التأكد من أن المستأجر يحذف بانراته فقط
+        """
+        # الحصول على tenant_id من request.tenant
+        tenant_obj = getattr(self.request, 'tenant', None)
+        current_tenant_id = getattr(tenant_obj, 'id', None) if tenant_obj else None
+        
+        # التأكد من أن البانر يخص نفس المستأجر
+        if str(instance.tenant_id) != str(current_tenant_id):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied({'detail': 'غير مصرح لك بحذف هذا البانر'})
+        
+        instance.delete()
     
     @extend_schema(
         summary="الحصول على الصور النشطة",
@@ -65,9 +99,16 @@ class BannerViewSet(viewsets.ModelViewSet):
         endpoint مخصص للحصول على الصور النشطة فقط (للواجهة الأمامية)
         """
         try:
-            tenant_id = getattr(request, 'tenant_id', None)
+            # الحصول على tenant_id من request.tenant (من middleware)
+            tenant_obj = getattr(request, 'tenant', None)
+            tenant_id = getattr(tenant_obj, 'id', None) if tenant_obj else None
+            
+            # إذا لم يتم تحديد المستأجر، إرجاع قائمة فارغة
             if not tenant_id:
-                tenant_id = request.headers.get('X-Tenant-ID')
+                return Response({
+                    'count': 0,
+                    'results': []
+                })
             
             queryset = Banner.get_active_banners(tenant_id)
             serializer = self.get_serializer(queryset, many=True)

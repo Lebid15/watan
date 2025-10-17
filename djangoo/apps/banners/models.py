@@ -68,17 +68,16 @@ class Banner(models.Model):
     @classmethod
     def get_active_banners(cls, tenant_id=None):
         """
-        جلب الصور النشطة للمستأجر
+        جلب الصور النشطة للمستأجر فقط (عزل تام)
         """
-        queryset = cls.objects.filter(is_active=True)
+        if not tenant_id:
+            # إذا لم يتم تحديد المستأجر، إرجاع قائمة فارغة
+            return cls.objects.none()
         
-        if tenant_id:
-            # جلب الصور الخاصة بالمستأجر أو العامة
-            queryset = queryset.filter(
-                models.Q(tenant_id=tenant_id) | models.Q(tenant_id__isnull=True)
-            )
-        else:
-            # جلب الصور العامة فقط
-            queryset = queryset.filter(tenant_id__isnull=True)
+        # جلب الصور الخاصة بالمستأجر فقط (عزل تام)
+        queryset = cls.objects.filter(
+            is_active=True,
+            tenant_id=tenant_id
+        )
         
         return queryset.order_by('order')[:3]  # حد أقصى 3 صور
