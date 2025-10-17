@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "apps.codes",
     "apps.pages",
     "apps.devtools",
+    "apps.dashboard",
 ]
 
 MIDDLEWARE = [

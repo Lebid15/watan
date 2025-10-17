@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import api, { API_ROUTES } from '@/utils/api';
+import AnnouncementsList from '@/components/admin/AnnouncementsList';
 
 interface User {
   email: string;
@@ -28,15 +29,33 @@ export default function AdminDashboardPageClient() {
     return () => { mounted = false; };
   }, [router]);
 
-  if (!user) return <p>جاري التحميل...</p>;
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">جاري التحميل...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <h1 className="text-lg p-5 font-bold mb-3">لوحة تحكم المشرف</h1>
-      <div className="space-y-2">
-        <p>مرحباً، {user?.fullName || user?.email}</p>
-        <p>هنا سنقدم جميع التعلميات الخاصة بالموقع</p>
-        <p>أهلا وسهلا بكم دائماً.</p>
+    <div className="space-y-8 w-full">
+      {/* Header */}
+      <div 
+        dir="rtl"
+        className="rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 p-6 sm:p-8 text-white shadow-lg w-full"
+      >
+        <h1 className="text-lg sm:text-xl font-bold flex items-center gap-3">
+          <span>👋</span>
+          <span>أهلاً وسهلاً بك في لوحة الإعلانات</span>
+        </h1>
+      </div>
+
+      {/* Announcements Section */}
+      <div className="rounded-lg bg-white dark:bg-gray-800 p-4 sm:p-6 shadow-md w-full">
+        <AnnouncementsList />
       </div>
     </div>
   );

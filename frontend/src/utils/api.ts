@@ -304,6 +304,15 @@ export const API_ROUTES = {
       legacyMine: `${EFFECTIVE_API_BASE_URL}/deposits/mine`, // توافق مسارات قديمة
     },
   },
+  dashboard: {
+    announcements: {
+      base: `${EFFECTIVE_API_BASE_URL}/dashboard/announcements`,
+      list: `${EFFECTIVE_API_BASE_URL}/dashboard/announcements/`,
+      active: `${EFFECTIVE_API_BASE_URL}/dashboard/announcements/active/`,
+      stats: `${EFFECTIVE_API_BASE_URL}/dashboard/announcements/stats/`,
+      byId: (id: string) => `${EFFECTIVE_API_BASE_URL}/dashboard/announcements/${id}/`,
+    },
+  },
   dev: {
     errors: {
       ingest: `${EFFECTIVE_API_BASE_URL}/dev/errors/ingest`,

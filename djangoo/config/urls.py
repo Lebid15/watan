@@ -46,6 +46,8 @@ urlpatterns = [
     path(f"{API_PREFIX}/products/", include("apps.products.urls")),
     path(f"{API_PREFIX}/currencies/", include("apps.currencies.urls")),
     path(f"{API_PREFIX}/", include("apps.notifications.urls")),
+    # dashboard announcements
+    path(f"{API_PREFIX}/dashboard/", include("apps.dashboard.urls")),
     # static pages (public)
     path(f"{API_PREFIX}/", include("apps.pages.urls")),
     path(f"{API_PREFIX}/", include("apps.payments.urls")),
