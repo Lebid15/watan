@@ -167,7 +167,7 @@
   "orders.table.api": "API",
   "orders.table.quantityPrefix": "الكمية:",
   "orders.table.externalProviderDeleted": "(مزود محذوف)",
-  "orders.table.internalCodes": "كود",
+  "orders.table.internalCodes": "أكواد",
   "orders.table.manualExecution": "Manual",
   "orders.empty.filtered": "لا توجد طلبات مطابقة للفلاتر الحالية.",
   "orders.loadMore": "تحميل المزيد",

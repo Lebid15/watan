@@ -243,7 +243,7 @@ CELERY_TIMEZONE = 'Asia/Damascus'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes
-CELERY_TASK_ALWAYS_EAGER = False  # Set to True for testing without worker
+CELERY_TASK_ALWAYS_EAGER = False  # ✅ Changed to False - use real Celery Worker for background tasks
 CELERY_TASK_EAGER_PROPAGATES = True
 
 # Celery Beat (Periodic Tasks)

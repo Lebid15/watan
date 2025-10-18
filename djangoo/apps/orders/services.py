@@ -4,6 +4,7 @@ import datetime
 import logging
 from dataclasses import dataclass
 import json
+import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional
 
@@ -55,6 +56,80 @@ def _as_decimal(value: object) -> Decimal:
         return Decimal(value)
     except (InvalidOperation, TypeError, ValueError):
         return Decimal("0")
+
+
+def _propagate_forward_completion(child_order: ProductOrder, manual_note: Optional[str]) -> None:
+    """Ensure forwarded source orders receive the same completion data."""
+    candidate_ids: list[str] = []
+    for candidate in (getattr(child_order, "external_order_id", None), getattr(child_order, "provider_referans", None)):
+        if not candidate:
+            continue
+        try:
+            candidate_uuid = uuid.UUID(str(candidate))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        candidate_str = str(candidate_uuid)
+        if candidate_str == str(child_order.id):
+            continue
+        candidate_ids.append(candidate_str)
+
+    if not candidate_ids:
+        return
+
+    for source_id in dict.fromkeys(candidate_ids):  # preserve order, deduplicate
+        try:
+            source_order = ProductOrder.objects.get(id=source_id)
+        except ProductOrder.DoesNotExist:
+            continue
+
+        updated_fields: list[str] = []
+        if manual_note and source_order.manual_note != manual_note:
+            source_order.manual_note = manual_note
+            updated_fields.append("manual_note")
+
+        if source_order.status != "approved":
+            source_order.status = "approved"
+            updated_fields.append("status")
+
+        child_provider_id = getattr(child_order, "provider_id", None)
+        if child_provider_id and source_order.provider_id != child_provider_id:
+            source_order.provider_id = child_provider_id
+            updated_fields.append("provider_id")
+
+        child_external_status = getattr(child_order, "external_status", None)
+        if child_external_status and source_order.external_status != child_external_status:
+            source_order.external_status = child_external_status
+            updated_fields.append("external_status")
+
+        child_completed_at = getattr(child_order, "completed_at", None)
+        if child_completed_at and not source_order.completed_at:
+            source_order.completed_at = child_completed_at
+            updated_fields.append("completed_at")
+
+        child_provider_message = getattr(child_order, "provider_message", None)
+        if child_provider_message and source_order.provider_message != child_provider_message:
+            source_order.provider_message = child_provider_message
+            updated_fields.append("provider_message")
+
+        child_last_message = getattr(child_order, "last_message", None)
+        if child_last_message and source_order.last_message != child_last_message:
+            source_order.last_message = child_last_message
+            updated_fields.append("last_message")
+
+        if updated_fields:
+            try:
+                source_order.save(update_fields=updated_fields)
+            except Exception:
+                source_order.save()
+
+            logger.info(
+                "Forwarded order completion propagated",
+                extra={
+                    "source_order_id": source_id,
+                    "child_order_id": str(child_order.id),
+                    "updated_fields": updated_fields,
+                },
+            )
 
 
 def _quantize(value: Decimal, quantum: Decimal) -> Decimal:
@@ -810,9 +885,16 @@ def try_auto_dispatch_async(order_id: str, tenant_id: Optional[str] = None) -> d
         # 1. فحص سريع: هل الطلب قابل للإرسال؟
         order = ProductOrder.objects.select_related('package').get(id=order_id)
         
-        if order.provider_id or order.external_order_id or order.status != 'pending':
+        # إذا كان external_order_id يبدأ بـ "stub-" فهذا يعني أنه تم توجيهه مؤقتاً ويحتاج إعادة معالجة
+        is_stub_forward = order.external_order_id and order.external_order_id.startswith('stub-')
+        
+        # الشرط الأساسي: إذا كان provider_id موجود والطلب تم إرساله فعلياً
+        if not is_stub_forward and order.provider_id and order.status != 'pending':
             print(f"   ⏭️ Order already dispatched or not pending, skipping")
             return {'dispatched': False, 'async': False, 'reason': 'already_dispatched'}
+        
+        if is_stub_forward:
+            print(f"   🔄 Order was forwarded (stub), attempting auto-dispatch to final provider...")
         
         # 2. فحص سريع: هل التوجيه مفعّل؟
         try:
@@ -824,20 +906,25 @@ def try_auto_dispatch_async(order_id: str, tenant_id: Optional[str] = None) -> d
             print(f"   ⏭️ No routing config, skipping")
             return {'dispatched': False, 'async': False, 'reason': 'no_routing'}
         
-        if routing.mode != 'auto' or routing.provider_type != 'external':
-            print(f"   ⏭️ Routing not configured for auto-dispatch")
+        routing_mode = (routing.mode or '').strip().lower()
+        routing_provider_type = (routing.provider_type or '').strip().lower()
+
+        if routing_mode != 'auto' or routing_provider_type not in ('external', 'codes', 'internal_codes'):
+            print(f"   ⏭️ Routing not configured for auto-dispatch (mode={routing.mode}, type={routing.provider_type})")
             return {'dispatched': False, 'async': False, 'reason': 'not_auto'}
         
         # 3. جدولة الإرسال في الخلفية (فوري!)
         print(f"   🎯 Scheduling async dispatch...")
-        task = send_order_to_provider_async.apply_async(
-            args=[str(order_id), str(tenant_id or order.tenant_id)],
-            countdown=0  # فوري
+        
+        # استخدام apply() بدلاً من apply_async() لأن CELERY_TASK_ALWAYS_EAGER لا يعمل مع apply_async
+        # apply() تنفّذ المهمة فوراً عندما CELERY_TASK_ALWAYS_EAGER=True
+        task = send_order_to_provider_async.apply(
+            args=[str(order_id), str(tenant_id or order.tenant_id)]
         )
         
-        print(f"   ✅ Task scheduled!")
+        print(f"   ✅ Task executed!")
         print(f"   - Task ID: {task.id}")
-        print(f"   - الطلب سيُرسل في الخلفية")
+        print(f"   - Result: {task.result}")
         print(f"{'='*80}\n")
         
         return {
@@ -912,7 +999,12 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
     
     # 2. التحقق من أن الطلب لم يُرسل بعد
     print(f"\n🔍 Step 3: Checking if order was already dispatched...")
-    if order.provider_id or order.external_order_id or order.status != 'pending':
+    
+    # إذا كان external_order_id يبدأ بـ "stub-" فهذا يعني أنه تم توجيهه مؤقتاً ويحتاج إعادة معالجة
+    is_stub_forward = order.external_order_id and order.external_order_id.startswith('stub-')
+    
+    # الشرط الأساسي: إذا كان provider_id موجود والطلب تم إرساله فعلياً
+    if not is_stub_forward and order.provider_id and order.status != 'pending':
         print(f"   ⚠️ Order already dispatched or not pending - SKIPPING")
         print(f"   - Status: {order.status}")
         print(f"   - Provider ID: {order.provider_id}")
@@ -924,7 +1016,11 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
             "external_order_id": order.external_order_id
         })
         return
-    print(f"   ✅ Order is pending and not yet dispatched")
+    
+    if is_stub_forward:
+        print(f"   🔄 Order was forwarded with stub ID - attempting final auto-dispatch...")
+    else:
+        print(f"   ✅ Order is pending and not yet dispatched")
     
     # 3. جلب إعدادات التوجيه للباقة
     print(f"\n⚙️ Step 4: Loading PackageRouting configuration...")
@@ -950,7 +1046,11 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
     
     # 4. التحقق من إعدادات التوجيه التلقائي
     print(f"\n✓ Step 5: Validating routing configuration...")
-    if routing.mode != 'auto':
+    routing_mode = (routing.mode or '').strip().lower()
+    routing_provider_type = (routing.provider_type or '').strip().lower()
+    is_codes_provider = routing_provider_type in ('codes', 'internal_codes')
+
+    if routing_mode != 'auto':
         print(f"   ⚠️ Routing mode is NOT 'auto' (it's '{routing.mode}') - SKIPPING")
         logger.debug("Auto-dispatch: Routing mode is not auto", extra={
             "order_id": order_id,
@@ -959,21 +1059,127 @@ def try_auto_dispatch(order_id: str, tenant_id: Optional[str] = None) -> None:
         return
     print(f"   ✅ Mode is 'auto'")
     
-    if routing.provider_type != 'external':
-        print(f"   ⚠️ Provider type is NOT 'external' (it's '{routing.provider_type}') - SKIPPING")
-        logger.debug("Auto-dispatch: Provider type is not external", extra={
+    if routing_provider_type not in ('external', 'codes', 'internal_codes'):
+        print(f"   ⚠️ Provider type is '{routing.provider_type}' (not 'external' or 'codes') - SKIPPING")
+        logger.debug("Auto-dispatch: Provider type not supported", extra={
             "order_id": order_id,
             "provider_type": routing.provider_type
         })
         return
-    print(f"   ✅ Provider type is 'external'")
+    print(f"   ✅ Provider type is '{routing.provider_type}'")
     
-    if not routing.primary_provider_id:
-        print(f"   ❌ No primary provider configured - SKIPPING")
-        logger.debug("Auto-dispatch: No primary provider configured", extra={
-            "order_id": order_id
+    # For 'codes' provider, we need code_group_id; for 'external', we need primary_provider_id
+    if is_codes_provider:
+        if not routing.code_group_id:
+            print(f"   ❌ No code group configured for 'codes' provider - SKIPPING")
+            logger.debug("Auto-dispatch: No code group configured", extra={
+                "order_id": order_id
+            })
+            return
+        print(f"   ✅ Code group configured: {routing.code_group_id}")
+    elif routing_provider_type == 'external':
+        if not routing.primary_provider_id:
+            print(f"   ❌ No primary provider configured for 'external' provider - SKIPPING")
+            logger.debug("Auto-dispatch: No primary provider configured", extra={
+                "order_id": order_id
+            })
+            return
+        print(f"   ✅ Primary provider configured: {routing.primary_provider_id}")
+    
+    # === CODES PROVIDER: استخدام الأكواد الداخلية ===
+    if is_codes_provider:
+        print(f"\n💾 Step 6: Processing CODES provider...")
+        print(f"   - Code Group ID: {routing.code_group_id}")
+        
+        # إذا كان الطلب معاد توجيهه (stub)، نعيد تعيين provider_id و external_order_id
+        if is_stub_forward:
+            print(f"   🔄 Clearing stub forward data...")
+            order.provider_id = None
+            order.external_order_id = None
+            order.external_status = None
+            order.sent_at = None
+            order.provider_message = None
+        
+        from apps.codes.models import CodeGroup, CodeItem
+        try:
+            code_group = CodeGroup.objects.get(id=routing.code_group_id, tenant_id=effective_tenant_id)
+            print(f"   ✅ Code group found: {code_group.name}")
+            
+            # حساب الأكواد المتاحة
+            total_codes = code_group.items.count()
+            used_codes = code_group.items.filter(status='used').count()
+            available_codes = code_group.items.filter(status='available').count()
+            
+            print(f"   - Total codes: {total_codes}")
+            print(f"   - Used codes: {used_codes}")
+            print(f"   - Available codes: {available_codes}")
+        except CodeGroup.DoesNotExist:
+            print(f"   ❌ Code group not found - CANNOT DISPATCH!")
+            logger.warning("Auto-dispatch: Code group not found", extra={
+                "order_id": order_id,
+                "code_group_id": str(routing.code_group_id)
+            })
+            return
+        
+        # التحقق من توفر الأكواد
+        if available_codes == 0:
+            print(f"   ❌ No available codes in group - CANNOT DISPATCH!")
+            logger.warning("Auto-dispatch: No codes available", extra={
+                "order_id": order_id,
+                "code_group_id": str(routing.code_group_id)
+            })
+            return
+        
+        # سحب كود واحد
+        available_code = CodeItem.objects.filter(
+            group_id=routing.code_group_id,
+            tenant_id=effective_tenant_id,
+            status='available'
+        ).first()
+        
+        if not available_code:
+            print(f"   ❌ No unused code found - CANNOT DISPATCH!")
+            logger.warning("Auto-dispatch: No unused code found", extra={
+                "order_id": order_id,
+                "code_group_id": str(routing.code_group_id)
+            })
+            return
+        
+        # تجهيز الكود للعرض (PIN أو Serial)
+        code_text = available_code.pin or available_code.serial or "No code available"
+        print(f"   ✅ Code retrieved: {code_text[:10]}...")
+
+        # تحديث الطلب
+        completion_ts = timezone.now()
+        order.manual_note = code_text
+        order.status = 'approved'
+        order.external_status = 'completed'
+        if not getattr(order, 'completed_at', None):
+            order.completed_at = completion_ts
+        order.provider_message = code_text
+        order.last_message = code_text
+        order.save()
+
+        _propagate_forward_completion(order, code_text)
+        
+        # تحديث الكود كمستخدم
+        available_code.status = 'used'
+        available_code.order_id = order.id
+        available_code.used_at = completion_ts
+        available_code.save()
+        
+        print(f"   ✅ Order dispatched successfully!")
+        print(f"   - Code placed in manual_note")
+        print(f"   - Status updated to 'approved'")
+        print(f"   - Code marked as used")
+        
+        logger.info("Auto-dispatch: Codes provider completed", extra={
+            "order_id": order_id,
+            "code_group_id": str(routing.code_group_id)
         })
         return
+    
+    # === EXTERNAL PROVIDER: إرسال إلى مزود خارجي ===
     
     provider_id = routing.primary_provider_id
     print(f"   ✅ Primary Provider ID: {provider_id}")

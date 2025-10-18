@@ -160,6 +160,7 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
     package = _PackageMiniSerializer(allow_null=True)
     orderNo = serializers.IntegerField(source='order_no', allow_null=True)
     userIdentifier = serializers.CharField(source='user_identifier', allow_null=True)
+    extraField = serializers.CharField(source='extra_field', allow_null=True)
     createdAt = serializers.DateTimeField(source='created_at')
     sentAt = serializers.DateTimeField(source='sent_at', allow_null=True)
     completedAt = serializers.DateTimeField(source='completed_at', allow_null=True)
@@ -188,6 +189,7 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         model = ProductOrder
         fields = (
             'id', 'orderNo', 'status', 'userIdentifier',
+            'extraField',
             'createdAt', 'sentAt', 'completedAt', 'durationMs',
             'sellPriceAmount', 'sellPriceCurrency', 'price',
             'providerMessage', 'notesCount', 'manualNote', 'fxLocked',
@@ -461,8 +463,10 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_providerType(self, obj):
-        # Determine provider type based on provider_id and pin_code
-        if obj.external_status == 'completed' and obj.pin_code:
+        # Determine provider type based on provider_id, pin/manual note, and status
+        if (obj.external_status in ('completed', 'sent') and getattr(obj, 'pin_code', None)) or (
+            getattr(obj, 'manual_note', None) and obj.status == 'approved' and not getattr(obj, 'provider_id', None)
+        ):
             return 'internal_codes'
         elif obj.provider_id:
             return 'external'

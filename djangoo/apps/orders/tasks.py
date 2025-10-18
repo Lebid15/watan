@@ -386,6 +386,18 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         if normalized_status not in final_statuses and (new_status or '').lower() not in final_statuses:
             print(f"\n⏳ الطلب لا يزال قيد المعالجة")
             print(f"   الحالة الحالية: {new_status or 'غير محددة'} → {canonical_external_status}")
+            
+            # في وضع CELERY_TASK_ALWAYS_EAGER، لا نعمل retry لأنه غير مدعوم
+            from django.conf import settings
+            if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False):
+                print(f"   ⚠️ EAGER mode: skipping retry")
+                print(f"{'='*100}\n")
+                return {
+                    'order_id': order_id,
+                    'status': new_status,
+                    'message': 'Status check skipped (EAGER mode)'
+                }
+            
             print(f"   سيتم إعادة الفحص بعد 10 ثواني...")
             print(f"{'='*100}\n")
             

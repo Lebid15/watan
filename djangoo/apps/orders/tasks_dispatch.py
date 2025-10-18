@@ -18,20 +18,45 @@ def try_auto_dispatch_sync_internal(order_id: str, tenant_id: str) -> Dict[str, 
     هذه الدالة تستدعي الدالة الأصلية try_auto_dispatch من services.py
     """
     from apps.orders.services import try_auto_dispatch
+    from apps.orders.models import ProductOrder
     
     print(f"\n{'='*60}")
     print(f"🚀 [Background Task] إرسال الطلب #{order_id[:8]}... إلى المزود الخارجي")
     print(f"{'='*60}\n")
     
     try:
+        # حفظ حالة الطلب قبل التنفيذ
+        order_before = ProductOrder.objects.get(id=order_id)
+        status_before = order_before.status
+        provider_before = order_before.provider_id
+        note_before = order_before.manual_note
+        
         # استدعاء الدالة الأصلية التي تحتوي على كل المنطق
         try_auto_dispatch(order_id, tenant_id)
         
-        print(f"\n{'='*60}")
-        print(f"✅ [Background Task] تم إرسال الطلب بنجاح!")
-        print(f"{'='*60}\n")
+        # فحص إذا تغيّر الطلب فعلياً
+        order_after = ProductOrder.objects.get(id=order_id)
+        status_changed = order_after.status != status_before
+        provider_changed = order_after.provider_id != provider_before
+        note_changed = order_after.manual_note != note_before
         
-        return {'dispatched': True}
+        dispatched = status_changed or provider_changed or note_changed
+        
+        if dispatched:
+            print(f"\n{'='*60}")
+            print(f"✅ [Background Task] تم إرسال الطلب بنجاح!")
+            print(f"   - Status: {status_before} → {order_after.status}")
+            print(f"   - Provider: {provider_before} → {order_after.provider_id}")
+            print(f"   - Note: {'Updated' if note_changed else 'No change'}")
+            print(f"{'='*60}\n")
+        else:
+            print(f"\n{'='*60}")
+            print(f"⚠️ [Background Task] لم يتم إرسال الطلب (لا يوجد تغيير)")
+            print(f"   - Status: {status_before}")
+            print(f"   - Provider: {provider_before}")
+            print(f"{'='*60}\n")
+        
+        return {'dispatched': dispatched}
         
     except Exception as e:
         print(f"\n❌ [Background Task] خطأ في إرسال الطلب: {str(e)}")

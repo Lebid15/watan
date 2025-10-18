@@ -969,6 +969,17 @@ class AdminOrdersBulkDispatchView(_AdminOrdersBulkBaseView):
                 o.save(update_fields=['provider_id','external_order_id','external_status','sent_at','provider_message'])
             except Exception:
                 o.save()
+            
+            # محاولة التوجيه التلقائي للمزود الجديد (إذا كان لديه codes auto-dispatch)
+            try:
+                from apps.orders.services import try_auto_dispatch_async
+                dispatch_result = try_auto_dispatch_async(str(o.id), str(tid))
+                if dispatch_result.get('dispatched'):
+                    print(f"✅ Order {oid} auto-dispatched to codes provider")
+            except Exception as e:
+                # لا نفشل العملية إذا فشل التوجيه التلقائي
+                print(f"⚠️ Auto-dispatch failed for forwarded order {oid}: {e}")
+            
             results.append({ 'id': oid, 'success': True })
         ok_count = len([r for r in results if r.get('success')])
         return Response({ 'ok': True, 'count': ok_count, 'results': results })

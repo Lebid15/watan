@@ -14,6 +14,7 @@ from apps.users.models import User
 from apps.users.legacy_models import LegacyUser
 from apps.products.models import ProductPackage, PackagePrice
 from apps.orders.models import ProductOrder
+from apps.orders.services import try_auto_dispatch_async
 from apps.currencies.models import Currency
 import logging
 
@@ -293,6 +294,25 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                     notes=[],
                     notes_count=0,
                 )
+
+                order_id_for_dispatch = str(order.id)
+                tenant_id_for_dispatch = str(tenant.id)
+
+                def _schedule_auto_dispatch() -> None:
+                    try:
+                        result = try_auto_dispatch_async(order_id_for_dispatch, tenant_id_for_dispatch)
+                        if not result.get('dispatched'):
+                            logger.info(
+                                'Client API auto-dispatch skipped',
+                                extra={
+                                    'order_id': order_id_for_dispatch,
+                                    'reason': result.get('reason') or result.get('error'),
+                                },
+                            )
+                    except Exception:
+                        logger.exception('Client API auto-dispatch failed', extra={'order_id': order_id_for_dispatch})
+
+                transaction.on_commit(_schedule_auto_dispatch)
                 
                 logger.info(f'✅ Client API order created: {order.id} for tenant {tenant.slug}')
                 
