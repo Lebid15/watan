@@ -76,7 +76,15 @@ class ZnetAdapter:
         return out
 
     def get_balance(self, creds: ZnetCredentials):
+        # PATCH 5.x: Remove simulation mode fallback for production
+        # Simulation should only be used in development with explicit env var
         if self._sim():
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "ZNET adapter running in SIMULATION mode - returning mock balance. "
+                "Set DJ_ZNET_SIMULATE=false for production."
+            )
             return { 'balance': 123.45, 'currency': 'TRY' }
 
         path = self._path('servis/bakiye_kontrol.php', 'DJ_ZNET_BALANCE_PATH').lstrip('/')
@@ -84,6 +92,13 @@ class ZnetAdapter:
             return { 'balance': 0, 'error': 'BALANCE_UNSUPPORTED', 'message': 'No balance endpoint configured for Znet' }
         url = f"{self._base(creds)}/{path}"
         params = self._auth_params(creds)
+        
+        # PATCH 5.x: Sanitize sensitive data in logs
+        import logging
+        logger = logging.getLogger(__name__)
+        safe_params = {k: '***' if k in ('kod', 'sifre', 'token', 'apiToken') else v for k, v in params.items()}
+        logger.debug(f"Fetching ZNET balance from {url} with params: {safe_params}")
+        
         try:
             resp = requests.get(url, headers=self._headers(creds), params=params, timeout=DEFAULT_TIMEOUT)
             resp.raise_for_status()
@@ -189,7 +204,7 @@ class ZnetAdapter:
         path = self._path('servis/pin_listesi.php', 'DJ_ZNET_CATALOG_PATH')
         url = f"{self._base(creds)}/{path}"
         params = self._auth_params(creds)
-        print(f"🔍 [ZNET list_products] Calling: {url}")
+        print(f"[ZNET list_products] Calling: {url}")
         print(f"   - Auth params: kod={params.get('kod', 'MISSING')[:10]}..., sifre={params.get('sifre', 'MISSING')[:10]}...")
         resp = requests.get(url, headers=self._headers(creds), params=params, timeout=DEFAULT_TIMEOUT)
         print(f"   - HTTP Status: {resp.status_code}")
@@ -210,8 +225,25 @@ class ZnetAdapter:
                 continue
             external_id = str(external_id)
 
-            name = raw.get('adi') or raw.get('oyun_adi') or raw.get('name') or f'Package {external_id}'
-            category = raw.get('oyun_adi') or raw.get('category')
+            # Handle Unicode names safely
+            raw_name = raw.get('adi') or raw.get('oyun_adi') or raw.get('name')
+            if raw_name:
+                try:
+                    # Try to encode/decode to handle Unicode properly
+                    name = str(raw_name).encode('utf-8', errors='ignore').decode('utf-8')
+                except:
+                    name = f'Package {external_id}'
+            else:
+                name = f'Package {external_id}'
+            # Handle Unicode category safely
+            raw_category = raw.get('oyun_adi') or raw.get('category')
+            if raw_category:
+                try:
+                    category = str(raw_category).encode('utf-8', errors='ignore').decode('utf-8')
+                except:
+                    category = None
+            else:
+                category = None
             price_fields = ['fiyat', 'price', 'maliyet', 'bayi_maliyeti', 'bayiMaliyeti']
             base_price = None
             for field in price_fields:
@@ -319,17 +351,17 @@ class ZnetAdapter:
         if oyuncu_bilgi:
             q['oyuncu_bilgi'] = oyuncu_bilgi
         
-        print(f"🌐 [ZNET] Final request URL params:")
+        print(f"[ZNET] Final request URL params:")
         print(f"   - oyun: {q.get('oyun')}")
         print(f"   - kupur: {q.get('kupur')}")
         print(f"   - oyuncu_bilgi: {q.get('oyuncu_bilgi')}")
         print(f"   - referans: {q.get('referans')} (numeric, generated)")
         print(f"   - original_order_id: {original_order_id} (UUID, for tracking)")
         print(f"   - musteri_tel: {q.get('musteri_tel')}")
-        print(f"🔐 [ZNET] Auth params:")
+        print(f"[ZNET] Auth params:")
         print(f"   - kod: {params.get('kod', 'MISSING')[:10]}... (length: {len(params.get('kod', ''))})")
         print(f"   - sifre: {params.get('sifre', 'MISSING')[:10]}... (length: {len(params.get('sifre', ''))})")
-        print(f"📍 [ZNET] Request URL: {url}")
+        print(f"[ZNET] Request URL: {url}")
         
         # Prefer GET to match provider doc
         r = requests.get(url, headers=self._headers(creds), params={**params, **q}, timeout=DEFAULT_TIMEOUT)

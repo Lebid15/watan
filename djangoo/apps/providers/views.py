@@ -957,6 +957,17 @@ class AdminIntegrationPackagesView(APIView):
                                 'VALUES (gen_random_uuid(), %s, %s, %s, %s)',
                                 [tenant_id, our_id, integration_id, provider_id],
                             )
+                            
+                            # CRITICAL FIX: Ensure PackageRouting exists when admin creates mapping manually
+                            cursor.execute('SELECT id FROM package_routing WHERE "tenantId"=%s AND package_id=%s', [tenant_id, our_id])
+                            routing_exists = cursor.fetchone()
+                            if not routing_exists:
+                                cursor.execute('''
+                                    INSERT INTO package_routing (id, "tenantId", package_id, mode, "providerType", "primaryProviderId")
+                                    VALUES (gen_random_uuid(), %s, %s, %s, %s, NULL)
+                                ''', [tenant_id, our_id, 'auto', 'manual'])
+                                logger.info(f'Auto-created PackageRouting for package {our_id} with AUTO mode (manual mapping)')
+                            
                             continue
                         except ProgrammingError:
                             has_tenant_column = False
@@ -1171,6 +1182,19 @@ class AdminIntegrationImportCatalogView(APIView):
                 else:
                     c.execute('INSERT INTO package_mappings (id, "tenantId", our_package_id, provider_api_id, provider_package_id) VALUES (gen_random_uuid(), %s, %s, %s, %s)', [tenant_id, pkg_id, obj.id, ext_id])
                     inserted += 1
+                
+                # Ensure PackageRouting exists (critical fix)
+                # When admin creates a mapping, they expect the package to be ready for dispatch
+                c.execute('SELECT id FROM package_routing WHERE "tenantId"=%s AND package_id=%s', [tenant_id, pkg_id])
+                routing_exists = c.fetchone()
+                if not routing_exists:
+                    # Create PackageRouting with AUTO mode so Celery can track order status automatically
+                    # This enables automatic status checking every 10 seconds
+                    c.execute('''
+                        INSERT INTO package_routing (id, "tenantId", package_id, mode, "providerType", "primaryProviderId")
+                        VALUES (gen_random_uuid(), %s, %s, %s, %s, NULL)
+                    ''', [tenant_id, pkg_id, 'auto', 'manual'])
+                    logger.info(f'Auto-created PackageRouting for package {pkg_id} with AUTO mode (catalog import)')
 
             # optional upsert costs
             if apply_costs:

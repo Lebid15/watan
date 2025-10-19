@@ -125,4 +125,38 @@ class ProductOrder(models.Model):
     sell_try_at_order = models.DecimalField(max_digits=12, decimal_places=2, null=True, db_column='sell_try_at_order')
     profit_try_at_order = models.DecimalField(max_digits=12, decimal_places=2, null=True, db_column='profit_try_at_order')
     fx_usd_try_at_order = models.DecimalField(max_digits=12, decimal_places=6, null=True, db_column='fx_usd_try_at_order')
+    root_order = models.ForeignKey(
+        'self',
+        on_delete=models.DO_NOTHING,
+        db_column='root_order_id',
+        related_name='child_orders',
+        null=True,
+    )
+    mode = models.CharField(max_length=50, null=True, db_column='mode')
+    cost_source = models.CharField(max_length=50, null=True, db_column='cost_source')
+    cost_price_usd = models.DecimalField(max_digits=12, decimal_places=4, null=True, db_column='cost_price_usd')
+    chain_path = models.TextField(null=True, db_column='chain_path')
+
+
+class OrderDispatchLog(models.Model):
+    class Meta:
+        db_table = 'order_dispatch_log'
+        managed = False
+        app_label = 'orders'
+        verbose_name = 'Order Dispatch Log'
+        verbose_name_plural = 'Order Dispatch Logs'
+
+    id = models.BigAutoField(primary_key=True)
+    order = models.ForeignKey(
+        ProductOrder,
+        on_delete=models.DO_NOTHING,
+        db_column='order_id',
+        related_name='dispatch_logs',
+        null=False,
+    )
+    action = models.CharField(max_length=50)
+    result = models.CharField(max_length=50, null=True)
+    message = models.TextField(null=True)
+    payload_snapshot = models.JSONField(null=True, db_column='payload_snapshot')
+    created_at = models.DateTimeField(db_column='created_at')
 

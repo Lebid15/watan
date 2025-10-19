@@ -8,6 +8,7 @@ from .views import (
     AdminOrderDetailsView,
     AdminOrderSyncExternalView,
     AdminOrderRefreshStatusView,
+    AdminOrderAuditLogView,
 )
 
 urlpatterns = [
@@ -43,4 +44,6 @@ admin_urlpatterns = [
     path('orders/<uuid:id>/sync-external/', AdminOrderSyncExternalView.as_view(), name='admin-order-sync-external-slash'),
     path('orders/<uuid:id>/refresh-external', AdminOrderRefreshStatusView.as_view(), name='admin-order-refresh-external'),
     path('orders/<uuid:id>/refresh-external/', AdminOrderRefreshStatusView.as_view(), name='admin-order-refresh-external-slash'),
+    path('orders/<uuid:id>/audit', AdminOrderAuditLogView.as_view(), name='admin-order-audit'),
+    path('orders/<uuid:id>/audit/', AdminOrderAuditLogView.as_view(), name='admin-order-audit-slash'),
 ]

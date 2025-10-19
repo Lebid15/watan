@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import json
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
 from rest_framework import serializers
+
 from .models import ProductOrder
 
 
@@ -184,6 +189,15 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
     providerId = serializers.CharField(source='provider_id', allow_null=True)
     providerType = serializers.SerializerMethodField()
     externalOrderId = serializers.CharField(source='external_order_id', allow_null=True)
+    fxUsdTryAtOrder = serializers.SerializerMethodField()
+    fxUsdTryAtApproval = serializers.SerializerMethodField()
+    providerName = serializers.SerializerMethodField()
+    rootOrderId = serializers.CharField(source='root_order_id', allow_null=True)
+    chainPath = serializers.SerializerMethodField()
+    mode = serializers.CharField(allow_null=True)
+    costSource = serializers.CharField(source='cost_source', allow_null=True)
+    costPriceUsd = serializers.SerializerMethodField()
+    costTryCurrent = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductOrder
@@ -197,6 +211,9 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
             'costTRY', 'sellTRY', 'profitTRY', 'currencyTRY',
             'costUsdAtOrder', 'sellUsdAtOrder', 'profitUsdAtOrder',
             'providerId', 'providerType', 'externalOrderId',
+            'fxUsdTryAtOrder', 'fxUsdTryAtApproval',
+            'providerName', 'rootOrderId', 'chainPath', 'mode',
+            'costSource', 'costPriceUsd', 'costTryCurrent',
         )
 
     def get_username(self, obj):
@@ -411,6 +428,159 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         
         from apps.products.models import ProductPackage
         from decimal import Decimal
+
+    def get_fxUsdTryAtOrder(self, obj):
+        value = getattr(obj, 'fx_usd_try_at_order', None)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def get_fxUsdTryAtApproval(self, obj):
+        value = getattr(obj, 'fx_usd_try_at_approval', None)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def get_providerName(self, obj) -> str | None:
+        provider_id = getattr(obj, 'provider_id', None)
+        if not provider_id:
+            if getattr(obj, 'pin_code', None) or getattr(obj, 'manual_note', None):
+                return 'Codes / Manual'
+            return None
+
+        cache = self.context.setdefault('_provider_cache', {})
+        provider_key = str(provider_id)
+        if provider_key in cache:
+            return cache[provider_key]
+
+        name = None
+        try:
+            from apps.providers.models import Integration
+
+            name = (
+                Integration.objects
+                .filter(id=provider_id, tenant_id=getattr(obj, 'tenant_id', None))
+                .values_list('name', flat=True)
+                .first()
+            )
+        except Exception:
+            name = None
+
+        cache[provider_key] = name
+        return name
+
+    def get_chainPath(self, obj) -> dict[str, Any] | None:
+        raw = getattr(obj, 'chain_path', None)
+        if raw in (None, ''):
+            return None
+
+        nodes: list[str] = []
+        raw_text = ''
+
+        if isinstance(raw, (list, tuple)):
+            nodes = [str(item) for item in raw if item not in (None, '')]
+            raw_text = ' > '.join(nodes)
+        elif isinstance(raw, str):
+            raw_text = raw.strip()
+            if not raw_text:
+                return None
+            try:
+                parsed = json.loads(raw_text)
+            except json.JSONDecodeError:
+                parsed = None
+
+            if isinstance(parsed, (list, tuple)):
+                nodes = [str(item) for item in parsed if item not in (None, '')]
+            elif isinstance(parsed, dict):
+                nodes = [str(value) for value in parsed.values() if value not in (None, '')]
+            else:
+                nodes = [part.strip() for part in raw_text.split('>') if part.strip()]
+        else:
+            raw_text = str(raw)
+            nodes = [raw_text]
+
+        return {
+            'raw': raw_text,
+            'nodes': nodes,
+        }
+
+    def get_costPriceUsd(self, obj) -> float | None:
+        value = getattr(obj, 'cost_price_usd', None)
+        if value in (None, ''):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _get_try_rate(self, obj) -> Decimal | None:
+        tenant_id = getattr(obj, 'tenant_id', None)
+        if not tenant_id:
+            return None
+
+        cache = self.context.setdefault('_try_rate_cache', {})
+        tenant_key = str(tenant_id)
+        if tenant_key in cache:
+            return cache[tenant_key]
+
+        rate: Decimal | None = None
+        try:
+            from apps.currencies.models import Currency
+
+            raw_rate = (
+                Currency.objects
+                .filter(tenant_id=tenant_id, code__iexact='TRY', is_active=True)
+                .values_list('rate', flat=True)
+                .first()
+            )
+            if raw_rate not in (None, ''):
+                rate = Decimal(str(raw_rate))
+        except (InvalidOperation, ValueError, TypeError):
+            rate = None
+        except Exception:
+            rate = None
+
+        cache[tenant_key] = rate
+        return rate
+
+    def get_costTryCurrent(self, obj) -> float | None:
+        unit_usd = getattr(obj, 'cost_price_usd', None)
+        if unit_usd in (None, ''):
+            return None
+
+        try:
+            unit = Decimal(str(unit_usd))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+        if unit <= 0:
+            return None
+
+        quantity = getattr(obj, 'quantity', None) or 1
+        try:
+            qty = Decimal(str(quantity))
+        except (InvalidOperation, TypeError, ValueError):
+            qty = Decimal('1')
+
+        rate = self._get_try_rate(obj)
+        if rate is None:
+            return None
+
+        try:
+            total_try = (unit * qty * rate).quantize(Decimal('0.01'))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+        try:
+            return float(total_try)
+        except (TypeError, ValueError):
+            return None
         
         try:
             package = ProductPackage.objects.filter(id=obj.package_id).first()
@@ -489,6 +659,7 @@ class OrdersListResponseSerializer(serializers.Serializer):
 class AdminOrdersListResponseSerializer(serializers.Serializer):
     items = AdminOrderListItemSerializer(many=True)
     pageInfo = PageInfoSerializer()
+    meta = serializers.DictField(child=serializers.JSONField(), required=False)
 
 
 class MyOrderDetailsResponseSerializer(OrderListItemSerializer):
@@ -506,7 +677,7 @@ class MyOrderDetailsResponseSerializer(OrderListItemSerializer):
 
 
 class AdminOrderDetailsPayloadSerializer(AdminOrderListItemSerializer):
-    providerId = serializers.IntegerField(source='provider_id', allow_null=True)
+    providerId = serializers.CharField(source='provider_id', allow_null=True)
     externalOrderId = serializers.CharField(source='external_order_id', allow_null=True)
     externalStatus = serializers.CharField(source='external_status', allow_null=True)
     lastMessage = serializers.CharField(source='last_message', allow_null=True)
@@ -521,6 +692,7 @@ class AdminOrderDetailsPayloadSerializer(AdminOrderListItemSerializer):
 
 class AdminOrderDetailsResponseSerializer(serializers.Serializer):
     order = AdminOrderDetailsPayloadSerializer()
+    meta = serializers.DictField(child=serializers.JSONField(), required=False)
 
 
 class AdminOrderNotesResponseSerializer(serializers.Serializer):

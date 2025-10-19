@@ -93,6 +93,43 @@ function normalizeImageUrl(u?: string | null): string | null {
   return `${API_ORIGIN}/${s}`;
 }
 
+const normalizeChainPathPayload = (value: any): ChainPath | null => {
+  if (value === undefined || value === null) return null;
+
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const rawText = typeof value.raw === 'string' ? value.raw : '';
+    const nodes = Array.isArray(value.nodes)
+      ? value.nodes.map((node: any) => String(node)).filter(Boolean)
+      : [];
+    const raw = rawText || (nodes.length ? nodes.join(' → ') : '');
+    return { raw, nodes };
+  }
+
+  if (Array.isArray(value)) {
+    const nodes = value.map((node) => String(node)).filter(Boolean);
+    return { raw: nodes.join(' → '), nodes };
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = JSON.parse(trimmed);
+      const normalized = normalizeChainPathPayload(parsed);
+      if (normalized) return normalized;
+    } catch (err) {
+      // ignore json errors and treat as plain string
+    }
+    const nodes = trimmed.includes('>')
+      ? trimmed.split('>').map((node) => node.trim()).filter(Boolean)
+      : [trimmed];
+    return { raw: trimmed, nodes };
+  }
+
+  const asString = String(value);
+  return { raw: asString, nodes: [asString] };
+};
+
 type ProductImagePayload = {
   imageUrl?: string;
   logoUrl?: string;
@@ -104,6 +141,26 @@ type ProductImagePayload = {
 interface ProductMini { id?: string; name?: string; imageUrl?: string | null; }
 interface ProductPackage { id: string; name: string; imageUrl?: string | null; productId?: string | null; }
 interface Provider { id: string; name: string; }
+
+const CODES_PROVIDER_ID = '__CODES__';
+
+type ChainPath = { raw: string; nodes: string[] };
+type FeatureFlags = {
+  adminReroute?: boolean;
+  chainStatusPropagation?: boolean;
+  usdCostEnforcement?: boolean;
+  autoFallbackRouting?: boolean;
+};
+
+interface OrderAuditRow {
+  id: number;
+  orderId: string;
+  action: string;
+  result?: string | null;
+  message?: string | null;
+  createdAt?: string | null;
+  payload?: any;
+}
 
 interface Order {
   id: string;
@@ -149,6 +206,8 @@ interface Order {
   sellTRY?: number;
   profitTRY?: number;
   currencyTRY?: string;
+  fxUsdTryAtOrder?: number | null;
+  fxUsdTryAtApproval?: number | null;
 
   // 🔒 لقطات USD عند إنشاء الطلب
   sellUsdAtOrder?: number;
@@ -158,6 +217,14 @@ interface Order {
   providerId?: string | null;
   providerName?: string | null;
   externalOrderId?: string | null;
+
+  rootOrderId?: string | null;
+  chainPath?: ChainPath | null;
+  mode?: string | null;
+  costSource?: string | null;
+  costPriceUsd?: number | null;
+  costTryCurrent?: number | null;
+  hasFallbackNote?: boolean;
 
   status: OrderStatus;
   userIdentifier?: string | null;
@@ -173,16 +240,106 @@ interface Order {
 
 // تطبيع القيم المالية (USD / TRY) لضمان أن الربح بالليرة = فرق البيع والشراء بالليرة
 function normalizeFinancial(o: any) {
-  const costUSD = o.costUsdAtOrder != null ? Number(o.costUsdAtOrder)
-    : (o.costCurrency === 'USD' && o.costAmount != null ? Number(o.costAmount) : null);
-  const sellUSD = o.sellUsdAtOrder != null ? Number(o.sellUsdAtOrder) : null;
-  const costTRY = o.costTRY != null ? Number(o.costTRY)
-    : (o.costCurrency === 'TRY' && o.costAmount != null ? Number(o.costAmount) : null);
-  const sellTRY = o.sellTRY ?? o.sellPriceAmount ?? o.price ?? null;
-  const profitUSD = o.profitUsdAtOrder != null ? Number(o.profitUsdAtOrder)
-    : (sellUSD != null && costUSD != null ? sellUSD - costUSD : null);
-  const profitTRY = o.profitTRY != null ? Number(o.profitTRY)
-    : (sellTRY != null && costTRY != null ? Number(sellTRY) - Number(costTRY) : null);
+  const toNumber = (value: any): number | null => {
+    if (value === null || value === undefined) return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  const fxCandidate = o.fxUsdTryAtOrder ?? o.fxUsdTryAtApproval;
+  const fx = toNumber(fxCandidate);
+  let fxRate = fx && fx > 0 ? fx : null;
+
+  const quantity = Number(o.quantity ?? 1) || 1;
+
+  let costUSD = toNumber(o.costUsdAtOrder);
+  if (costUSD == null && o.costCurrency === 'USD' && o.costAmount != null) {
+    costUSD = toNumber(o.costAmount);
+  }
+  if (costUSD == null && o.costPriceUsd != null) {
+    let perUnit = toNumber(o.costPriceUsd);
+    if (perUnit != null) {
+      // Fix old manual orders: if value > 10 and we have FX rate, it's likely TRY stored as USD
+      if ((o.mode === 'MANUAL' || o.mode === 'manual') && perUnit > 10 && fxRate && fxRate > 30) {
+        perUnit = perUnit / fxRate;
+      }
+      costUSD = perUnit * quantity;
+    }
+  }
+  
+  // ENHANCED MANUAL COST DISPLAY: For manual orders, ensure cost is displayed
+  if (costUSD == null && (o.mode === 'MANUAL' || o.mode === 'manual') && o.costPriceUsd != null) {
+    const manualCost = toNumber(o.costPriceUsd);
+    if (manualCost != null) {
+      costUSD = manualCost * quantity;
+    }
+  }
+
+  let costTRY = toNumber(o.costTRY);
+  if (costTRY == null && o.costCurrency === 'TRY' && o.costAmount != null) {
+    costTRY = toNumber(o.costAmount);
+  }
+  if (costTRY == null && o.costTryCurrent != null) {
+    costTRY = toNumber(o.costTryCurrent);
+  }
+
+  if (!fxRate && costTRY != null && costUSD != null && costUSD !== 0) {
+    fxRate = costTRY / costUSD;
+  }
+
+  // Calculate conversions
+  // For manual orders: if costUSD still null but we have TRY, convert it
+  if (costUSD == null && costTRY != null && fxRate) {
+    costUSD = costTRY / fxRate;
+  }
+  // Don't calculate TRY from USD for manual orders (we only care about USD display)
+  if (costTRY == null && costUSD != null && fxRate && o.mode !== 'MANUAL' && o.mode !== 'manual') {
+    costTRY = costUSD * fxRate;
+  }
+
+  let sellUSD = toNumber(o.sellUsdAtOrder);
+  let sellTRY = toNumber(o.sellTRY);
+
+  if (sellTRY == null && o.sellPriceAmount != null && o.sellPriceCurrency === 'TRY') {
+    sellTRY = toNumber(o.sellPriceAmount);
+  }
+  if (sellUSD == null && o.sellPriceAmount != null && o.sellPriceCurrency === 'USD') {
+    sellUSD = toNumber(o.sellPriceAmount);
+  }
+  if (sellUSD == null && o.price != null) {
+    sellUSD = toNumber(o.price);
+  }
+
+  if (sellTRY == null && sellUSD != null && fxRate) {
+    sellTRY = sellUSD * fxRate;
+  }
+  if (sellUSD == null && sellTRY != null && fxRate) {
+    sellUSD = sellTRY / fxRate;
+  }
+
+  if (sellUSD == null && sellTRY != null && fxRate) {
+    sellUSD = sellTRY / fxRate;
+  }
+  if (sellTRY == null && sellUSD != null && fxRate) {
+    sellTRY = sellUSD * fxRate;
+  }
+
+  let profitUSD = toNumber(o.profitUsdAtOrder);
+  let profitTRY = toNumber(o.profitTRY);
+
+  if (profitUSD == null && sellUSD != null && costUSD != null) {
+    profitUSD = sellUSD - costUSD;
+  }
+  if (profitTRY == null && sellTRY != null && costTRY != null) {
+    profitTRY = sellTRY - costTRY;
+  }
+  if (profitUSD == null && profitTRY != null && fxRate) {
+    profitUSD = profitTRY / fxRate;
+  }
+  if (profitTRY == null && profitUSD != null && fxRate) {
+    profitTRY = profitUSD * fxRate;
+  }
+
   return { costUSD, sellUSD, costTRY, sellTRY, profitUSD, profitTRY };
 }
 
@@ -315,6 +472,7 @@ function Modal({
 /* ============== الصفحة ============== */
 export default function AdminOrdersPage() {
   const { show } = useToast();
+  const { t } = useTranslation();
   const [logos, setLogos] = useState<Record<string, string>>({});
 
   const productIdOf = (o: Order): string | null => {
@@ -604,6 +762,26 @@ export default function AdminOrdersPage() {
 
     const externalOrderId = firstOf<string>(x, 'externalOrderId') ?? null;
 
+    const rootOrderId = firstOf<string>(x, 'rootOrderId', 'root_order_id') ?? null;
+    const mode = firstOf<string>(x, 'mode') ?? null;
+    const costSource = firstOf<string>(x, 'costSource', 'cost_source') ?? null;
+    const costPriceUsdRaw = firstOf<number>(x, 'costPriceUsd', 'cost_price_usd');
+    const costTryCurrentRaw = firstOf<number>(x, 'costTryCurrent', 'cost_try_current');
+    const chainRaw = firstOf<any>(x, 'chainPath', 'chain_path');
+    const chainPath = normalizeChainPathPayload(chainRaw);
+
+    const notesRaw = firstOf<any>(x, 'notes');
+    const notesList = Array.isArray(notesRaw) ? notesRaw : [];
+    const hasFallbackNote = notesList.some((note) => {
+      if (!note) return false;
+      if (typeof note === 'string') return note.includes('AUTO_FALLBACK:');
+      if (typeof note === 'object') {
+        const text = String((note as any).text ?? '');
+        return text.includes('AUTO_FALLBACK:');
+      }
+      return false;
+    });
+
     // ✅ نوع التنفيذ (إن لم يرجعه السيرفر نستنتجه)
     const rawType =
       firstOf<string>(x, 'providerType', 'method', 'executionType', 'execution_type') || '';
@@ -620,6 +798,12 @@ export default function AdminOrdersPage() {
     if (!providerType) {
       providerType = externalOrderId ? 'external' : 'manual';
     }
+
+    const sellUsdAtOrderRaw = firstOf<number>(x, 'sellUsdAtOrder');
+    const costUsdAtOrderRaw = firstOf<number>(x, 'costUsdAtOrder');
+    const profitUsdAtOrderRaw = firstOf<number>(x, 'profitUsdAtOrder');
+    const fxUsdTryAtOrderRaw = firstOf<number>(x, 'fxUsdTryAtOrder', 'fx_usd_try_at_order');
+    const fxUsdTryAtApprovalRaw = firstOf<number>(x, 'fxUsdTryAtApproval', 'fx_usd_try_at_approval', 'fxUsdTryAtApproval');
 
     return {
       id,
@@ -659,17 +843,26 @@ export default function AdminOrdersPage() {
       // === قيم TRY ===
       costTRY:   costTRY   != null ? Number(costTRY)   : undefined,
       sellTRY:   sellTRY   != null ? Number(sellTRY)   : undefined,
-      profitTRY: profitTRY != null ? Number(profitTRY) : undefined,
-      currencyTRY: currencyTRY ?? undefined,
+    profitTRY: profitTRY != null ? Number(profitTRY) : undefined,
+    currencyTRY: currencyTRY ?? undefined,
 
-  // === لقطات USD ===
-  sellUsdAtOrder: firstOf<number>(x, 'sellUsdAtOrder') != null ? Number(firstOf<number>(x, 'sellUsdAtOrder')) : undefined,
-  costUsdAtOrder: firstOf<number>(x, 'costUsdAtOrder') != null ? Number(firstOf<number>(x, 'costUsdAtOrder')) : null,
-  profitUsdAtOrder: firstOf<number>(x, 'profitUsdAtOrder') != null ? Number(firstOf<number>(x, 'profitUsdAtOrder')) : null,
+    // === لقطات USD ===
+    sellUsdAtOrder: sellUsdAtOrderRaw != null ? Number(sellUsdAtOrderRaw) : undefined,
+    costUsdAtOrder: costUsdAtOrderRaw != null ? Number(costUsdAtOrderRaw) : null,
+    profitUsdAtOrder: profitUsdAtOrderRaw != null ? Number(profitUsdAtOrderRaw) : null,
+    fxUsdTryAtOrder: fxUsdTryAtOrderRaw != null ? Number(fxUsdTryAtOrderRaw) : null,
+    fxUsdTryAtApproval: fxUsdTryAtApprovalRaw != null ? Number(fxUsdTryAtApprovalRaw) : null,
 
       providerId,
       providerName,
       externalOrderId,
+  rootOrderId,
+  chainPath,
+  mode: mode ?? undefined,
+  costSource: costSource ?? undefined,
+  costPriceUsd: costPriceUsdRaw != null ? Number(costPriceUsdRaw) : undefined,
+  costTryCurrent: costTryCurrentRaw != null ? Number(costTryCurrentRaw) : undefined,
+  hasFallbackNote: hasFallbackNote || ((manualNote ?? '').includes('AUTO_FALLBACK:')),
       providerType, // ← مهم
 
       status,
@@ -804,10 +997,27 @@ export default function AdminOrdersPage() {
     };
   }, []);
 
+  const providersWithCodes = useMemo(() => {
+    const base = Array.isArray(providers) ? providers : [];
+    const seen = new Set<string>();
+    const normalized: Provider[] = [];
+    for (const entry of base) {
+      if (!entry) continue;
+      const id = String((entry as any).id ?? '').trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      normalized.push({ id, name: (entry as any).name ?? id });
+    }
+    if (!seen.has(CODES_PROVIDER_ID)) {
+      normalized.push({ id: CODES_PROVIDER_ID, name: t('orders.filters.method.internalCodes') });
+    }
+    return normalized;
+  }, [providers, t]);
+
   const providerNameOf = (provId?: string | null, fallback?: string | null) => {
     if (fallback) return fallback;
     if (!provId) return null;
-    const p = providers.find((x) => x.id === provId);
+    const p = providersWithCodes.find((x) => x.id === provId);
     return p?.name ?? null;
   };
 
@@ -957,7 +1167,6 @@ export default function AdminOrdersPage() {
       })()
     : '';
 
-  const { t } = useTranslation();
   if (!hasLoadedOnce && loading) {
     return <div className="p-4 text-text-primary">{t('orders.loading')}</div>;
   }
@@ -1078,7 +1287,7 @@ export default function AdminOrdersPage() {
               title={t('orders.bulk.provider.selectTitle')}
             >
               <option value="">{t('orders.bulk.provider.placeholder')}</option>
-              {(Array.isArray(providers) ? providers : []).map((p) => (
+              {providersWithCodes.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
@@ -1215,34 +1424,25 @@ export default function AdminOrdersPage() {
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
                     {(() => { const f = normalizeFinancial(o); return (
-                      <>
-                        <div className="text-sm font-medium text-text-secondary">
-                          {f.costUSD != null ? `$${f.costUSD.toFixed(2)}` : (f.costTRY != null ? '$-' : '-')}
-                        </div>
-                        <div className="text-base text-accent font-semibold">{f.costTRY != null ? money(f.costTRY, o.currencyTRY || 'TRY') : '—'}</div>
-                      </>
+                      <div className="text-base text-accent font-semibold">
+                        {f.costUSD != null ? `$${f.costUSD.toFixed(2)}` : '—'}
+                      </div>
                     ); })()}
                   </td>
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
                     {(() => { const f = normalizeFinancial(o); return (
-                      <>
-                        <div className="text-sm font-medium text-text-secondary">
-                          {f.sellUSD != null ? `$${f.sellUSD.toFixed(2)}` : (f.sellTRY != null ? '$-' : '-')}
-                        </div>
-                        <div className="text-base font-semibold">{f.sellTRY != null ? money(f.sellTRY, o.currencyTRY || o.sellPriceCurrency || 'TRY') : '—'}</div>
-                      </>
+                      <div className="text-base font-semibold">
+                        {f.sellUSD != null ? `$${f.sellUSD.toFixed(2)}` : '—'}
+                      </div>
                     ); })()}
                   </td>
 
                   <td className="text-center bg-bg-surface p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e leading-tight">
-                    {(() => { const f = normalizeFinancial(o); const color = f.profitTRY != null ? (f.profitTRY > 0 ? 'text-success' : f.profitTRY < 0 ? 'text-danger' : 'text-text-secondary') : 'text-text-secondary'; return (
-                      <>
-                        <div className={`text-sm font-medium ${f.profitUSD != null && f.profitUSD < 0 ? 'text-danger' : 'text-text-secondary'}`}>
-                          {f.profitUSD != null ? `${f.profitUSD < 0 ? '-' : ''}${Math.abs(f.profitUSD).toFixed(2)} $` : (f.profitTRY != null ? '$-' : '-')}
-                        </div>
-                        <div className={`text-base font-semibold ${color}`}>{f.profitTRY != null ? money(f.profitTRY, o.currencyTRY || 'TRY') : '—'}</div>
-                      </>
+                    {(() => { const f = normalizeFinancial(o); const color = f.profitUSD != null ? (f.profitUSD > 0 ? 'text-success' : f.profitUSD < 0 ? 'text-danger' : 'text-text-secondary') : 'text-text-secondary'; return (
+                      <div className={`text-base font-semibold ${color}`}>
+                        {f.profitUSD != null ? `$${Math.abs(f.profitUSD).toFixed(2)}` : '—'}
+                      </div>
                     ); })()}
                   </td>
 
@@ -1253,15 +1453,90 @@ export default function AdminOrdersPage() {
                     </div>
                   </td>
 
-                    <td className="text-center p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e bg-transparent">
-                      {o.providerType === 'external' ? (
-                        <span>{providerNameOf(o.providerId, o.providerName) ?? '(مزود محذوف)'}</span>
-                      ) : o.providerType === 'internal_codes' ? (
-                        <span className="text-success">{t('orders.table.internalCodes')}</span>
-                      ) : (
-                        <span className="text-danger">{t('orders.table.manualExecution')}</span>
-                      )}
-                    </td>
+        <td className="text-center p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e bg-transparent">
+            {(() => {
+                // PRIORITY 1: Check if this is a chain forwarding order
+                if (o.chainPath && o.chainPath.nodes && o.chainPath.nodes.length > 0) {
+                    // Get the next tenant in the chain (the one this order was forwarded to)
+                    const nextTenant = o.chainPath.nodes[0]; // First node is the next tenant
+                    if (nextTenant === "Forwarded") {
+                        // Show "Manual" instead of "تم التوجيه" for manual processing
+                        return <span className="text-info">Manual</span>;
+                    }
+                    return <span className="text-info">{nextTenant}</span>;
+                }
+                
+                // PRIORITY 2: Check if this is a forwarded order by looking at external_order_id
+                if (o.externalOrderId && o.externalOrderId.startsWith('stub-')) {
+                    // This is a forwarded order, show "Manual" instead of "تم التوجيه"
+                    return <span className="text-info">Manual</span>;
+                }
+                
+                // PRIORITY 3: Check if this order has a provider_id (dispatched to any provider)
+                if (o.providerId) {
+                    // This order was dispatched to a provider (external or internal)
+                    const providerName = providerNameOf(o.providerId, o.providerName);
+                    
+                    // Debug logging
+                    console.log('Provider Debug:', {
+                        providerId: o.providerId,
+                        providerName: o.providerName,
+                        providerType: o.providerType,
+                        resolvedName: providerName,
+                        providersCount: providers.length
+                    });
+                    
+                    if (providerName) {
+                        if (o.providerType === 'external') {
+                            return <span className="text-success">{providerName}</span>;
+                        } else {
+                            return <span className="text-info">{providerName}</span>;
+                        }
+                    }
+                    // Better fallback - try to use providerName from order data
+                    if (o.providerName) {
+                        if (o.providerType === 'external') {
+                            return <span className="text-success">{o.providerName}</span>;
+                        } else {
+                            return <span className="text-info">{o.providerName}</span>;
+                        }
+                    }
+                    // Final fallback based on provider type
+                    if (o.providerType === 'external') {
+                        return <span className="text-success">External Provider</span>;
+                    } else {
+                        return <span className="text-info">Internal Provider</span>;
+                    }
+                }
+                
+                // PRIORITY 3.5: Check if this order has a provider_id (forwarded to internal tenant)
+                if (o.providerId && (o.mode === 'MANUAL' || o.mode === 'CHAIN_FORWARD')) {
+                    // This is a manual order or chain forward order that was forwarded to a provider
+                    // For CHAIN_FORWARD, show the target tenant name instead of provider name
+                    if (o.mode === 'CHAIN_FORWARD') {
+                        return <span className="text-info">ShamTech</span>;
+                    }
+                    // Try to get the provider name for other cases
+                    const providerName = providerNameOf(o.providerId, o.providerName);
+                    if (providerName) {
+                        return <span className="text-info">{providerName}</span>;
+                    }
+                    // Show "Manual" instead of "تم التوجيه" for manual processing
+                    return <span className="text-info">Manual</span>;
+                }
+                
+                // PRIORITY 4: Original logic for non-chain orders
+                if (o.mode === 'MANUAL' || o.mode === 'manual') {
+                    return <span className="text-danger">{t('orders.table.manualExecution')}</span>;
+                } else if (o.providerType === 'internal_codes') {
+                    return <span className="text-success">{t('orders.table.internalCodes')}</span>;
+                } else if (o.providerType === 'external' && o.providerId) {
+                    return <span>{providerNameOf(o.providerId, o.providerName) ?? '(مزود محذوف)'}</span>;
+                } else {
+                    return <span className="text-muted">{t('orders.table.manualExecution')}</span>;
+                }
+            })()}
+        </td>
 
                 </tr>
               );

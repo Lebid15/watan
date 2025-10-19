@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from apps.users.permissions import RequireAdminRole
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
-from .models import ProductOrder
+from .models import ProductOrder, OrderDispatchLog
 from apps.providers.models import PackageRouting, PackageMapping, Integration
 from apps.providers.adapters import resolve_adapter_credentials
 from django.utils import timezone
@@ -48,6 +48,7 @@ from .services import (
     TenantMismatchError,
     LegacyUserMissingError,
     OverdraftExceededError,
+    _append_system_note,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,8 @@ try:
     from apps.tenants.models import TenantDomain  # type: ignore
 except Exception:
     TenantDomain = None
+
+CODES_PROVIDER_ID = '__CODES__'
 
 
 def _resolve_tenant_id(request) -> str | None:
@@ -249,13 +252,23 @@ class OrdersCreateView(APIView):
         responses={201: OrderListItemSerializer}
     )
     def post(self, request):
+        # Add detailed logging for debugging
+        print(f"Order creation request: {request.data}")
+        print(f"Headers: {dict(request.headers)}")
+        
         tenant_id = _resolve_tenant_id(request)
+        print(f"Resolved tenant_id: {tenant_id}")
+        
         if not tenant_id:
+            print("TENANT_ID_REQUIRED - tenant resolution failed")
             raise ValidationError('TENANT_ID_REQUIRED')
 
         serializer = OrderCreateRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            print(f"Serializer validation failed: {serializer.errors}")
+            raise ValidationError(serializer.errors)
         payload = serializer.validated_data
+        print(f"Serializer validation passed: {payload}")
 
         quantity_raw = payload.get('quantity') or 1
         try:
@@ -276,54 +289,91 @@ class OrdersCreateView(APIView):
         extra_field = (payload.get('extraField') or '').strip() or None
 
         request_user = request.user
+        print(f"Request user: {request_user}")
+        print(f"User authenticated: {request_user.is_authenticated}")
 
         with transaction.atomic():
+            print(f"Looking for legacy user for tenant: {tenant_uuid}")
             legacy_user = _resolve_legacy_user_for_request(request, request_user, tenant_uuid, required=True)
+            print(f"Legacy user found: {legacy_user}")
             if legacy_user is None:
+                print("ERROR: Legacy user not found")
                 raise NotFound('المستخدم غير موجود ضمن هذا المستأجر')
 
+            print(f"Looking for product: {product_id} in tenant: {tenant_uuid}")
             product = TenantProduct.objects.filter(id=product_id, tenant_id=tenant_uuid).first()
+            print(f"Product found: {product}")
             if not product:
+                print("ERROR: Product not found")
                 raise NotFound('المنتج غير موجود')
 
+            print(f"Looking for package: {package_id} in tenant: {tenant_uuid}")
             package = TenantProductPackage.objects.filter(id=package_id, tenant_id=tenant_uuid).first()
+            print(f"Package found: {package}")
             if not package:
+                print("ERROR: Package not found")
                 raise NotFound('الباقة غير موجودة')
 
+            print(f"Checking package belongs to product: {package.product_id} == {product.id}")
             if str(package.product_id) != str(product.id):
+                print("ERROR: Package does not belong to product")
                 raise ValidationError('الباقة لا تنتمي إلى هذا المنتج')
 
+            print(f"Resolving price group for user: {request_user}")
             price_group_id = _resolve_price_group_id(django_user=request_user, legacy_user=legacy_user)
+            print(f"Price group ID: {price_group_id}")
+            
+            print(f"Getting effective package price for package: {package.id}")
             unit_price_usd = _get_effective_package_price_usd(package, tenant_uuid, price_group_id)
+            print(f"Unit price USD: {unit_price_usd}")
             if unit_price_usd <= 0:
+                print("ERROR: Price not available for this package")
                 raise ValidationError('السعر غير متاح لهذه الباقة')
 
+            print(f"Quantizing unit price: {unit_price_usd}")
             price_quant = Decimal('0.0001')
             try:
                 unit_price_usd = unit_price_usd.quantize(price_quant, ROUND_HALF_UP)
+                print(f"Quantized unit price: {unit_price_usd}")
             except (InvalidOperation, AttributeError):
                 unit_price_usd = Decimal('0')
+                print(f"Error quantizing price, set to 0: {unit_price_usd}")
             if unit_price_usd <= 0:
+                print("ERROR: Unit price is 0 or negative")
                 raise ValidationError('السعر غير متاح لهذه الباقة')
 
+            print(f"Calculating total for quantity: {quantity}")
             quantity_dec = Decimal(quantity)
             total_usd = (unit_price_usd * quantity_dec).quantize(price_quant, ROUND_HALF_UP)
+            print(f"Total USD: {total_usd}")
 
+            print(f"Resolving currency for user: {legacy_user}")
             currency_code, currency_rate = _resolve_currency_for_user(tenant_uuid, legacy_user)
+            print(f"Currency: {currency_code}, Rate: {currency_rate}")
             total_user = (total_usd * currency_rate).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            print(f"Total user currency: {total_user}")
 
+            print(f"Locking legacy user for balance check: {legacy_user.id}")
             legacy_user_locked = LegacyUser.objects.select_for_update().get(id=legacy_user.id, tenant_id=tenant_uuid)
             available_user_balance = Decimal(legacy_user_locked.balance or 0) + Decimal(legacy_user_locked.overdraft_limit or 0)
+            print(f"Available user balance: {available_user_balance}")
+            print(f"Required amount: {total_user}")
             if total_user > available_user_balance:
+                print("ERROR: Insufficient balance")
                 raise ValidationError('الرصيد غير كافٍ لتنفيذ الطلب')
 
+            print(f"Updating legacy user balance")
             new_legacy_balance = (Decimal(legacy_user_locked.balance or 0) - total_user).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            print(f"New legacy balance: {new_legacy_balance}")
             legacy_user_locked.balance = new_legacy_balance
             legacy_user_locked.save(update_fields=['balance'])
 
+            print(f"Locking Django user for balance update: {request_user.id}")
             django_user_locked = DjangoUser.objects.select_for_update().get(id=request_user.id)
             django_balance = Decimal(django_user_locked.balance or 0)
+            print(f"Current Django balance: {django_balance}")
             new_django_balance = (django_balance - total_user).quantize(Decimal('0.000001'), ROUND_HALF_UP)
+            print(f"New Django balance: {new_django_balance}")
             django_user_locked.balance = new_django_balance
             django_user_locked.save(update_fields=['balance'])
             try:
@@ -348,6 +398,30 @@ class OrdersCreateView(APIView):
                 notes=[],
                 notes_count=0,
             )
+
+            if settings.FF_USD_COST_ENFORCEMENT:
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE product_orders
+                            SET sell_usd_at_order = %s,
+                                fx_usd_try_at_order = %s
+                            WHERE id = %s
+                            """,
+                            [float(total_usd), float(currency_rate or 1), str(order.id)],
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to persist initial sell snapshot",
+                        extra={"order_id": str(order.id), "error": str(exc)},
+                    )
+                else:
+                    try:
+                        order.sell_usd_at_order = total_usd
+                        order.fx_usd_try_at_order = currency_rate
+                    except Exception:
+                        pass
             
             # ✅ تسجيل المعاملة في المحفظة عند إنشاء الطلب (خصم فوري)
             from apps.users.wallet_helpers import record_wallet_transaction
@@ -379,18 +453,23 @@ class OrdersCreateView(APIView):
 
         # محاولة التوجيه التلقائي للمزود الخارجي (الآن بشكل غير متزامن - سريع!)
         from apps.orders.services import try_auto_dispatch_async
-        print(f"\n� Attempting ASYNC auto-dispatch for order: {order.id}")
+        print(f"\n[DEBUG] Order BEFORE auto-dispatch:")
+        print(f"  - Order ID: {order.id}")
+        print(f"  - Provider ID: {order.provider_id}")
+        print(f"  - External Order ID: {order.external_order_id}")
+        print(f"  - External Status: {order.external_status}")
+        print(f"\nAttempting ASYNC auto-dispatch for order: {order.id}")
         try:
             dispatch_result = try_auto_dispatch_async(str(order.id), str(tenant_uuid))
             if dispatch_result.get('dispatched'):
-                print(f"✅ Order dispatched in background - Task ID: {dispatch_result.get('task_id')}")
+                print(f"Order dispatched in background - Task ID: {dispatch_result.get('task_id')}")
             else:
-                print(f"⚠️ Order not dispatched: {dispatch_result.get('reason')}")
+                print(f"Order not dispatched: {dispatch_result.get('reason')}")
         except Exception as e:
             # لا نفشل الطلب إذا فشل التوجيه التلقائي
             import logging
             logger = logging.getLogger(__name__)
-            print(f"⚠️ Auto-dispatch exception caught in view: {type(e).__name__}: {str(e)}")
+            print(f"Auto-dispatch exception caught in view: {type(e).__name__}: {str(e)}")
             logger.warning("Auto-dispatch failed for order", extra={
                 "order_id": str(order.id),
                 "error": str(e)
@@ -503,7 +582,15 @@ class AdminOrdersListView(APIView):
         next_cursor = items[-1].created_at.isoformat() if has_more and items else None
 
         data = AdminOrderListItemSerializer(items, many=True).data
-        return Response({ 'items': data, 'pageInfo': { 'nextCursor': next_cursor, 'hasMore': has_more } })
+        meta = {
+            'features': {
+                'adminReroute': bool(getattr(settings, 'FF_ADMIN_REROUTE_UI', False)),
+                'chainStatusPropagation': bool(getattr(settings, 'FF_CHAIN_STATUS_PROPAGATION', False)),
+                'usdCostEnforcement': bool(getattr(settings, 'FF_USD_COST_ENFORCEMENT', False)),
+                'autoFallbackRouting': bool(getattr(settings, 'FF_AUTO_FALLBACK_ROUTING', False)),
+            }
+        }
+        return Response({ 'items': data, 'pageInfo': { 'nextCursor': next_cursor, 'hasMore': has_more }, 'meta': meta })
 
 
 class MyOrderDetailsView(APIView):
@@ -622,7 +709,15 @@ class AdminOrderDetailsView(APIView):
             'pinCode': o.pin_code,
             'notes': o.notes or [],
         }
-        return Response({ 'order': { **base, **details } })
+        meta = {
+            'features': {
+                'adminReroute': bool(getattr(settings, 'FF_ADMIN_REROUTE_UI', False)),
+                'chainStatusPropagation': bool(getattr(settings, 'FF_CHAIN_STATUS_PROPAGATION', False)),
+                'usdCostEnforcement': bool(getattr(settings, 'FF_USD_COST_ENFORCEMENT', False)),
+                'autoFallbackRouting': bool(getattr(settings, 'FF_AUTO_FALLBACK_ROUTING', False)),
+            }
+        }
+        return Response({ 'order': { **base, **details }, 'meta': meta })
 
     @extend_schema(
         tags=["Admin Orders"],
@@ -821,6 +916,73 @@ class AdminOrderRefreshStatusView(APIView):
         return Response({ 'ok': True, 'order': { 'id': str(o.id), 'externalStatus': o.external_status, 'pinCode': o.pin_code, 'providerMessage': o.provider_message, 'lastMessage': o.last_message } })
 
 
+class AdminOrderAuditLogView(APIView):
+    permission_classes = [IsAuthenticated, RequireAdminRole]
+    _ALLOWED_ACTIONS = {'DISPATCH', 'FALLBACK', 'FALLBACK_START', 'FALLBACK_SUCCESS', 'CHAIN_STATUS'}
+
+    def _assert_tenant(self, request, order: ProductOrder) -> None:
+        tenant_id = _resolve_tenant_id(request)
+        if not tenant_id:
+            raise ValidationError('TENANT_ID_REQUIRED')
+        if str(order.tenant_id or '') != str(tenant_id):
+            raise PermissionDenied('لا تملك صلاحية على هذا الطلب')
+
+    @extend_schema(tags=["Admin Orders"])
+    def get(self, request, id: str):
+        if not getattr(settings, 'FF_ADMIN_REROUTE_UI', False):
+            raise NotFound('FEATURE_DISABLED')
+
+        try:
+            order = ProductOrder.objects.get(id=id)
+        except ProductOrder.DoesNotExist:
+            raise NotFound('الطلب غير موجود')
+
+        self._assert_tenant(request, order)
+
+        actions_param = (request.query_params.get('actions') or '').strip()
+        if actions_param:
+            requested = {part.strip().upper() for part in actions_param.split(',') if part.strip()}
+            actions = requested & self._ALLOWED_ACTIONS
+            if not actions:
+                actions = self._ALLOWED_ACTIONS
+        else:
+            actions = self._ALLOWED_ACTIONS
+
+        try:
+            limit = int(request.query_params.get('limit') or 100)
+        except (TypeError, ValueError):
+            limit = 100
+        limit = max(1, min(limit, 500))
+
+        logs = (
+            OrderDispatchLog.objects
+            .filter(order_id=order.id, action__in=actions)
+            .order_by('-created_at')[:limit]
+        )
+
+        items: list[dict[str, object]] = []
+        for entry in logs:
+            created_at = getattr(entry, 'created_at', None)
+            items.append({
+                'id': entry.id,
+                'orderId': str(order.id),
+                'action': entry.action,
+                'result': entry.result,
+                'message': entry.message,
+                'createdAt': created_at.isoformat() if created_at else None,
+                'payload': entry.payload_snapshot,
+            })
+
+        return Response({
+            'orderId': str(order.id),
+            'items': items,
+            'filters': {
+                'actions': sorted(actions),
+                'limit': limit,
+            },
+        })
+
+
 class _AdminOrdersBulkBaseView(APIView):
     permission_classes = [IsAuthenticated, RequireAdminRole]
 
@@ -947,6 +1109,27 @@ class AdminOrdersBulkDispatchView(_AdminOrdersBulkBaseView):
         note = str(request.data.get('note') or '').strip()
         if not provider_id:
             raise ValidationError('providerId required')
+        from apps.orders.services import try_auto_dispatch
+        manual_placeholders = {'manual', 'manual_provider', 'manual-execution', 'manual_execution', 'manual-order', 'manualorder'}
+        manual_external_placeholders = manual_placeholders | {'', 'none', 'null', 'not_sent', 'pending', 'manual_external'}
+        provider_is_codes = provider_id == CODES_PROVIDER_ID
+        feature_enabled = bool(getattr(settings, 'FF_ADMIN_REROUTE_UI', False))
+
+        def merge_messages(*parts: str | None) -> str | None:
+            merged: list[str] = []
+            for part in parts:
+                if not part:
+                    continue
+                text = str(part).strip()
+                if not text:
+                    continue
+                if text in merged:
+                    continue
+                merged.append(text)
+            if not merged:
+                return None
+            return "\n".join(merged)
+
         results = []
         for oid in ids:
             try:
@@ -954,32 +1137,168 @@ class AdminOrdersBulkDispatchView(_AdminOrdersBulkBaseView):
             except ProductOrder.DoesNotExist:
                 results.append({ 'id': oid, 'success': False, 'message': 'not found' })
                 continue
-            # Only pending and not already dispatched
-            if o.status != 'pending' or o.provider_id or o.external_order_id:
+
+            existing_provider = (o.provider_id or '').strip()
+            existing_external = (o.external_order_id or '').strip()
+            is_manual_placeholder = existing_provider.lower() in manual_placeholders if existing_provider else False
+            is_manual_external_placeholder = existing_external.lower() in manual_external_placeholders if existing_external else True
+            had_real_provider = bool(existing_provider) and not is_manual_placeholder
+            had_real_external = bool(existing_external) and not existing_external.lower().startswith('stub-') and not is_manual_external_placeholder
+            
+            # Handle chain forwarded orders or orders with existing provider_id
+            is_chain_forwarded = existing_provider == 'CHAIN_FORWARD' or existing_external.startswith('stub-')
+            has_existing_provider = bool(existing_provider) and existing_provider != provider_id
+            
+            if is_chain_forwarded or has_existing_provider:
+                print(f"   [CLEAR] Order {oid} has existing provider info, clearing for manual dispatch")
+                print(f"   - Existing provider: {existing_provider}")
+                print(f"   - Target provider: {provider_id}")
+                print(f"   - Is chain forwarded: {is_chain_forwarded}")
+                print(f"   - Has existing provider: {has_existing_provider}")
+                
+                # Clear all provider info to allow manual dispatch
+                o.provider_id = None
+                o.external_order_id = None
+                o.provider_message = None
+                o.save(update_fields=['provider_id', 'external_order_id', 'provider_message'])
+                
+                # Reset variables after clearing
+                existing_provider = ''
+                existing_external = ''
+                had_real_provider = False
+                had_real_external = False
+
+            # Check status case-insensitive to support both 'pending' and 'PENDING'
+            current_status = (o.status or '').strip().lower()
+            if current_status not in ('pending', ''):
                 results.append({ 'id': oid, 'success': False, 'message': 'already processed' })
                 continue
-            # Simulate minimal dispatch by setting provider_id and external_order_id
-            o.provider_id = provider_id
-            o.external_order_id = f"stub-{o.id}"
-            o.external_status = 'sent'
-            o.sent_at = timezone.now()
-            if note:
-                o.provider_message = (note or '')[:500]
+
+            if feature_enabled and not provider_is_codes and had_real_provider and had_real_external and existing_provider == provider_id:
+                results.append({
+                    'id': oid,
+                    'success': True,
+                    'warning': 'already-dispatched',
+                    'message': 'Order already dispatched to selected provider',
+                })
+                continue
+
+            previous_assignment = None
+            if had_real_provider or had_real_external:
+                previous_assignment = f"redirected from provider {existing_provider or '-'} external {existing_external or '-'}"
+
+            existing_message = (o.provider_message or '').strip()
+            combined_admin_note = merge_messages(note, previous_assignment, existing_message)
+
             try:
-                o.save(update_fields=['provider_id','external_order_id','external_status','sent_at','provider_message'])
-            except Exception:
-                o.save()
-            
-            # محاولة التوجيه التلقائي للمزود الجديد (إذا كان لديه codes auto-dispatch)
-            try:
-                from apps.orders.services import try_auto_dispatch_async
-                dispatch_result = try_auto_dispatch_async(str(o.id), str(tid))
-                if dispatch_result.get('dispatched'):
-                    print(f"✅ Order {oid} auto-dispatched to codes provider")
-            except Exception as e:
-                # لا نفشل العملية إذا فشل التوجيه التلقائي
-                print(f"⚠️ Auto-dispatch failed for forwarded order {oid}: {e}")
-            
+                with transaction.atomic():
+                    routing = PackageRouting.objects.select_for_update().filter(package_id=o.package_id, tenant_id=tid).first()
+                    target_provider_type = 'internal_codes' if provider_is_codes else 'external'
+                    routing_changed_fields: list[str] = []
+                    original_routing: dict[str, object] = {}
+
+                    if routing:
+                        original_routing = {
+                            'mode': routing.mode,
+                            'provider_type': routing.provider_type,
+                            'primary_provider_id': routing.primary_provider_id,
+                        }
+
+                        if routing.mode != 'auto':
+                            routing.mode = 'auto'
+                            routing_changed_fields.append('mode')
+
+                        current_provider_type = (routing.provider_type or '').strip().lower()
+                        if current_provider_type != target_provider_type:
+                            routing.provider_type = target_provider_type
+                            routing_changed_fields.append('provider_type')
+
+                        if not provider_is_codes:
+                            desired_provider_id = provider_id
+                            if str(routing.primary_provider_id or '').strip() != desired_provider_id:
+                                routing.primary_provider_id = desired_provider_id
+                                routing_changed_fields.append('primary_provider_id')
+
+                        if routing_changed_fields:
+                            routing.save(update_fields=list(dict.fromkeys(routing_changed_fields)))
+                    elif provider_is_codes:
+                        results.append({ 'id': oid, 'success': False, 'message': 'code routing missing' })
+                        continue
+                    else:
+                        # No routing exists for non-codes provider - this will cause dispatch to fail
+                        results.append({ 'id': oid, 'success': False, 'message': 'PackageRouting not found for this package' })
+                        continue
+
+                    try:
+                        try_auto_dispatch(str(o.id), str(tid))
+                        
+                        # If auto-dispatch didn't set provider_id, set it manually
+                        refreshed_order = ProductOrder.objects.get(id=oid, tenant_id=tid)
+                        if not refreshed_order.provider_id and not provider_is_codes:
+                            print(f"   [FIX] Auto-dispatch didn't set provider_id, setting manually")
+                            refreshed_order.provider_id = provider_id
+                            refreshed_order.save(update_fields=['provider_id'])
+                        
+                    finally:
+                        if routing and routing_changed_fields:
+                            routing.mode = original_routing['mode']
+                            routing.provider_type = original_routing['provider_type']
+                            routing.primary_provider_id = original_routing['primary_provider_id']
+                            routing.save(update_fields=list(dict.fromkeys(routing_changed_fields)))
+            except Exception as exc:
+                error_msg = str(exc) if exc else 'dispatch failed'
+                # Include exception type for better debugging
+                if exc and type(exc).__name__ != 'Exception':
+                    error_msg = f'{type(exc).__name__}: {error_msg}'
+                # Log the full exception for debugging
+                logger.exception('AdminOrdersBulkDispatchView: dispatch failed', extra={'order_id': str(oid), 'provider_id': provider_id})
+                results.append({ 'id': oid, 'success': False, 'message': error_msg or 'dispatch failed' })
+                continue
+
+            refreshed = ProductOrder.objects.get(id=oid, tenant_id=tid)
+
+            if provider_is_codes:
+                success = refreshed.status == 'approved' and (refreshed.manual_note or '').strip()
+            else:
+                success = str(refreshed.provider_id or '').strip() == provider_id and bool((refreshed.external_order_id or '').strip())
+
+            if not success:
+                # Build detailed error message
+                error_details = []
+                if not str(refreshed.provider_id or '').strip():
+                    error_details.append('provider_id not set')
+                elif str(refreshed.provider_id or '').strip() != provider_id:
+                    error_details.append(f'provider_id mismatch: expected {provider_id}, got {refreshed.provider_id}')
+                if not bool((refreshed.external_order_id or '').strip()):
+                    error_details.append('external_order_id not set')
+                
+                # Check if there's a provider message with error
+                provider_msg = (refreshed.provider_message or '').strip()
+                if provider_msg and any(word in provider_msg.lower() for word in ['error', 'failed', 'فشل', 'خطأ']):
+                    error_details.append(f'provider error: {provider_msg[:100]}')
+                
+                error_message = 'dispatch failed: ' + ', '.join(error_details) if error_details else 'dispatch failed'
+                results.append({ 'id': oid, 'success': False, 'message': error_message })
+                continue
+
+            merged_message = merge_messages(combined_admin_note, refreshed.provider_message)
+            if merged_message and merged_message != (refreshed.provider_message or '').strip():
+                ProductOrder.objects.filter(id=oid).update(provider_message=merged_message[:500])
+
+            if feature_enabled:
+                marker_provider = provider_id if not provider_is_codes else CODES_PROVIDER_ID
+                marker_text = f"ADMIN_REROUTE:{marker_provider}"
+                notes_snapshot = list(getattr(refreshed, 'notes', []) or [])
+                marker_exists = any(
+                    marker_text in (entry.get('text') if isinstance(entry, dict) else str(entry))
+                    for entry in notes_snapshot
+                )
+                if not marker_exists:
+                    try:
+                        _append_system_note(refreshed, marker_text)
+                    except Exception:
+                        logger.warning('Failed to append ADMIN_REROUTE system note', extra={'order_id': str(refreshed.id)})
+
             results.append({ 'id': oid, 'success': True })
         ok_count = len([r for r in results if r.get('success')])
         return Response({ 'ok': True, 'count': ok_count, 'results': results })

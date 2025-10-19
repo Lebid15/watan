@@ -155,6 +155,7 @@ export const API_ROUTES = {
     base: `${EFFECTIVE_API_BASE_URL}/admin/orders`,
     list: `${EFFECTIVE_API_BASE_URL}/admin/orders`,
     byId: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/orders/${id}`,
+    audit: (id: string) => `${EFFECTIVE_API_BASE_URL}/admin/orders/${id}/audit`,
     bulkManual: `${EFFECTIVE_API_BASE_URL}/admin/orders/bulk/manual`,
     bulkDispatch: `${EFFECTIVE_API_BASE_URL}/admin/orders/bulk/dispatch`,
     bulkApprove: `${EFFECTIVE_API_BASE_URL}/admin/orders/bulk/approve`,
@@ -564,6 +565,20 @@ function addTenantHeaders(config: any): any {
     }
   }
 
+  // 1.c) Add X-Tenant-Id header for Django API compatibility
+  const tenantIdCookie = getCookie('tenant_id');
+  if (tenantIdCookie) {
+    config.headers['X-Tenant-Id'] = tenantIdCookie;
+  }
+  // Fallback to env-provided tenant ID when cookie missing
+  if (!config.headers['X-Tenant-Id']) {
+    const envTenantId = process.env.NEXT_PUBLIC_TENANT_ID;
+    if (envTenantId) {
+      config.headers['X-Tenant-Id'] = envTenantId;
+      try { if (typeof document !== 'undefined') document.cookie = `tenant_id=${envTenantId}; path=/`; } catch {}
+    }
+  }
+
   // 2) ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­: Ø§Ø³ØªØ®Ø±Ø¬ Ù…Ø¨Ø§ØšØ±Ø© Ù…Ù† window.host ÙˆØ­Ø¯Ø« Ø§Ù„ÙƒÙˆÙƒÙŠ Ù„Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù„Ø§Ø­Ù‚Ø§Ù‹
   if (typeof window !== 'undefined') {
     const currentHost = window.location.host;          // Ù…Ø«Ø§Ù„: saeed.localhost:3000
@@ -683,6 +698,22 @@ if (typeof window !== 'undefined' && !(window as { __TENANT_FETCH_PATCHED__?: bo
           headers.set('X-Tenant-Host', envTenant);
           try { document.cookie = `tenant_host=${envTenant}; path=/`; } catch {}
           console.log(`[FETCH] Setting X-Tenant-Host header (env): ${envTenant}`);
+        }
+      }
+    }
+
+    // Add X-Tenant-Id header for Django API compatibility
+    if (!headers.has('X-Tenant-Id')) {
+      const tenantIdCookie = getCookie('tenant_id');
+      if (tenantIdCookie) {
+        headers.set('X-Tenant-Id', tenantIdCookie);
+        console.log(`[FETCH] Setting X-Tenant-Id header (cookie): ${tenantIdCookie}`);
+      } else {
+        const envTenantId = process.env.NEXT_PUBLIC_TENANT_ID;
+        if (envTenantId) {
+          headers.set('X-Tenant-Id', envTenantId);
+          try { document.cookie = `tenant_id=${envTenantId}; path=/`; } catch {}
+          console.log(`[FETCH] Setting X-Tenant-Id header (env): ${envTenantId}`);
         }
       }
     }

@@ -21,7 +21,7 @@ def try_auto_dispatch_sync_internal(order_id: str, tenant_id: str) -> Dict[str, 
     from apps.orders.models import ProductOrder
     
     print(f"\n{'='*60}")
-    print(f"🚀 [Background Task] إرسال الطلب #{order_id[:8]}... إلى المزود الخارجي")
+    print(f"[Background Task] Sending order #{order_id[:8]}... to external provider")
     print(f"{'='*60}\n")
     
     try:
@@ -44,14 +44,14 @@ def try_auto_dispatch_sync_internal(order_id: str, tenant_id: str) -> Dict[str, 
         
         if dispatched:
             print(f"\n{'='*60}")
-            print(f"✅ [Background Task] تم إرسال الطلب بنجاح!")
+            print(f"[Background Task] Order sent successfully!")
             print(f"   - Status: {status_before} → {order_after.status}")
             print(f"   - Provider: {provider_before} → {order_after.provider_id}")
             print(f"   - Note: {'Updated' if note_changed else 'No change'}")
             print(f"{'='*60}\n")
         else:
             print(f"\n{'='*60}")
-            print(f"⚠️ [Background Task] لم يتم إرسال الطلب (لا يوجد تغيير)")
+            print(f"[Background Task] Order not sent (no changes)")
             print(f"   - Status: {status_before}")
             print(f"   - Provider: {provider_before}")
             print(f"{'='*60}\n")
@@ -59,7 +59,7 @@ def try_auto_dispatch_sync_internal(order_id: str, tenant_id: str) -> Dict[str, 
         return {'dispatched': dispatched}
         
     except Exception as e:
-        print(f"\n❌ [Background Task] خطأ في إرسال الطلب: {str(e)}")
+        print(f"\n[Background Task] Error sending order: {str(e)}")
         logger.exception(f"Error dispatching order {order_id}")
         raise
 
@@ -85,7 +85,7 @@ def send_order_to_provider_async(self, order_id: str, tenant_id: str):
         dict: نتيجة الإرسال
     """
     print(f"\n{'='*100}")
-    print(f"🚀 [Async Task] إرسال الطلب إلى المزود الخارجي...")
+    print(f"[Async Task] Sending order to external provider...")
     print(f"   Order ID: {order_id[:8]}...")
     print(f"   Tenant ID: {tenant_id[:8]}...")
     print(f"{'='*100}\n")
@@ -94,23 +94,23 @@ def send_order_to_provider_async(self, order_id: str, tenant_id: str):
         result = try_auto_dispatch_sync_internal(order_id, tenant_id)
         
         print(f"\n{'='*100}")
-        print(f"✅ [Async Task] تم إرسال الطلب بنجاح!")
+        print(f"[Async Task] Order sent successfully!")
         print(f"   Order ID: {order_id[:8]}...")
         print(f"   External Order ID: {result.get('externalOrderId', 'N/A')}")
         print(f"{'='*100}\n")
         
-        logger.info(f"✅ Async dispatch successful for order {order_id}")
+        logger.info(f"Async dispatch successful for order {order_id}")
         return result
         
     except Exception as exc:
         print(f"\n{'='*100}")
-        print(f"❌ [Async Task] خطأ في إرسال الطلب!")
+        print(f"[Async Task] Error sending order!")
         print(f"   Order ID: {order_id[:8]}...")
         print(f"   Error: {exc}")
-        print(f"   سيتم إعادة المحاولة...")
+        print(f"   Will retry...")
         print(f"{'='*100}\n")
         
-        logger.error(f"❌ Async dispatch failed for order {order_id}: {exc}")
+        logger.error(f"Async dispatch failed for order {order_id}: {exc}")
         
         # إعادة المحاولة تلقائياً
         raise self.retry(exc=exc, countdown=10)

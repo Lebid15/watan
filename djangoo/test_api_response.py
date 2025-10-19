@@ -1,44 +1,44 @@
+#!/usr/bin/env python
 import os
+import sys
 import django
 
+# Setup Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
-import json
-from apps.orders.views import AdminOrdersListView
-from django.test import RequestFactory
-from apps.users.models import User as DjangoUser
+from apps.orders.models import ProductOrder
+from apps.orders.serializers import AdminOrderListItemSerializer
 
-# Create a fake request
-factory = RequestFactory()
-request = factory.get('/api-dj/admin/orders/?limit=1')
+# Test API response for the order
+print("=== TESTING API RESPONSE ===")
 
-# Get a user to simulate authentication
-user = DjangoUser.objects.first()
-request.user = user
+order_id = "de08a056-9e14-4494-9797-e9aa9092d77f"
 
-# Add tenant header
-request.META['HTTP_X_TENANT_ID'] = str(user.tenant_id) if user else ''
+try:
+    order = ProductOrder.objects.get(id=order_id)
+    print(f"Order: {order.id}")
+    print(f"Chain Path (raw): {order.chain_path}")
+    
+    # Test serializer
+    serializer = AdminOrderListItemSerializer(order)
+    data = serializer.data
+    
+    print(f"Serialized chainPath: {data.get('chainPath')}")
+    print(f"Provider ID: {data.get('providerId')}")
+    print(f"External Order ID: {data.get('externalOrderId')}")
+    print(f"Mode: {data.get('mode')}")
+    
+    # Check if chainPath has nodes
+    chain_path = data.get('chainPath')
+    if chain_path and 'nodes' in chain_path:
+        print(f"Chain Path nodes: {chain_path['nodes']}")
+        if chain_path['nodes'] and len(chain_path['nodes']) > 0:
+            print(f"First node: {chain_path['nodes'][0]}")
+    else:
+        print("No chainPath nodes found")
+        
+except ProductOrder.DoesNotExist:
+    print("Order not found")
 
-# Call the view
-view = AdminOrdersListView()
-view.request = request
-response = view.get(request)
-
-# Print the response
-data = response.data
-if 'items' in data and len(data['items']) > 0:
-    first_order = data['items'][0]
-    print("=" * 80)
-    print("أول طلب في الـ API Response:")
-    print("=" * 80)
-    print(json.dumps(first_order, indent=2, ensure_ascii=False))
-    print("\n" + "=" * 80)
-    print("القيم المالية:")
-    print(f"  costTRY: {first_order.get('costTRY')}")
-    print(f"  sellTRY: {first_order.get('sellTRY')}")
-    print(f"  profitTRY: {first_order.get('profitTRY')}")
-    print(f"  currencyTRY: {first_order.get('currencyTRY')}")
-    print("=" * 80)
-else:
-    print("No orders found")
+print("\n=== COMPLETE ===")

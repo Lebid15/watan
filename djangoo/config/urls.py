@@ -14,12 +14,23 @@ from apps.users.views import (
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.core.views import health, public_latest_note, dev_maintenance_get, dev_maintenance_post
 from apps.products.dev_views import SeedGlobalProductsView
+from apps.orders.health_views import OrderTraceHealthView
 
 API_PREFIX = settings.API_PREFIX.strip("/")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path(f"{API_PREFIX}/health", health, name="health"),
+    path(
+        f"{API_PREFIX}/health/orders/<uuid:id>/trace",
+        OrderTraceHealthView.as_view(),
+        name="health-order-trace",
+    ),
+    path(
+        f"{API_PREFIX}/health/orders/<uuid:id>/trace/",
+        OrderTraceHealthView.as_view(),
+        name="health-order-trace-slash",
+    ),
     path(f"{API_PREFIX}/dev/notes/public/latest", public_latest_note, name="dev_notes_public_latest"),
     # Maintenance parity endpoints for frontend middleware
     path(f"{API_PREFIX}/dev-maintenance", dev_maintenance_get, name='dev-maintenance'),

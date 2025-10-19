@@ -32,6 +32,21 @@ USE_TZ = True
 
 API_PREFIX = "/api-dj"
 
+
+def _env_flag(name: str, default: str = "0") -> bool:
+    """Normalize boolean-ish environment flags (1/true/on/y/yes)."""
+    value = os.getenv(name, default)
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
+# Feature flags (Phase 0 scaffolding) – default to False/disabled
+FF_CHAIN_STATUS_PROPAGATION = _env_flag("FF_CHAIN_STATUS_PROPAGATION", "1")  # ✅ Enabled for chain wallet updates
+FF_USD_COST_ENFORCEMENT = _env_flag("FF_USD_COST_ENFORCEMENT", "0")
+FF_AUTO_FALLBACK_ROUTING = _env_flag("FF_AUTO_FALLBACK_ROUTING", "0")
+FF_ADMIN_REROUTE_UI = _env_flag("FF_ADMIN_REROUTE_UI", "0")
+
 INSTALLED_APPS = [
     "jazzmin",
     "django.contrib.admin",

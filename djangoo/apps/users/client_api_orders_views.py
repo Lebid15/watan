@@ -294,6 +294,53 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                     notes=[],
                     notes_count=0,
                 )
+                
+                # CHAIN FORWARDING COST CALCULATION: Compute cost for intermediate tenant before forwarding
+                try:
+                    from apps.orders.services import _compute_manual_cost_snapshot, _persist_cost_snapshot
+                    from django.conf import settings
+                    import json
+                    
+                    if getattr(settings, 'FF_USD_COST_ENFORCEMENT', False):
+                        print(f"💰 Computing intermediate cost for chain forwarding (Client API)...")
+                        cost_snapshot = _compute_manual_cost_snapshot(order)
+                        _persist_cost_snapshot(
+                            order_id=order.id,
+                            snapshot=cost_snapshot,
+                            quantity=order.quantity or 1,
+                            tenant_id=order.tenant_id,
+                            mode='MANUAL',
+                        )
+                        print(f"✅ Intermediate cost computed: {cost_snapshot.cost_price_usd} USD")
+                        
+                        # CHAIN PATH: Set chain path for forwarded orders
+                        from apps.tenants.models import Tenant
+                        try:
+                            # For forwarded orders (stub-), we need to determine the next tenant
+                            if order.external_order_id and order.external_order_id.startswith('stub-'):
+                                # This is a forwarded order, we need to find the next tenant
+                                # For now, we'll use a placeholder that indicates forwarding
+                                chain_path = ["Forwarded"]  # Indicates this order was forwarded
+                                order.chain_path = json.dumps(chain_path)
+                                order.save(update_fields=['chain_path'])
+                                print(f"✅ Chain path set for forwarded order: {chain_path}")
+                            else:
+                                # Regular order, set current tenant
+                                tenant = Tenant.objects.get(id=order.tenant_id)
+                                chain_path = [tenant.name]
+                                order.chain_path = json.dumps(chain_path)
+                                order.save(update_fields=['chain_path'])
+                                print(f"✅ Chain path set: {chain_path}")
+                        except Exception as exc:
+                            print(f"⚠️ Failed to set chain path: {exc}")
+                except Exception as exc:
+                    print(f"⚠️ Failed to compute intermediate cost for chain forwarding: {exc}")
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        "Failed to compute intermediate cost for chain forwarding (Client API)",
+                        extra={"order_id": str(order.id), "error": str(exc)}
+                    )
 
                 order_id_for_dispatch = str(order.id)
                 tenant_id_for_dispatch = str(tenant.id)

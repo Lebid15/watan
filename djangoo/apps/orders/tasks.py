@@ -12,7 +12,7 @@ from datetime import timedelta
 import logging
 
 from .models import ProductOrder
-from apps.providers.models import PackageRouting
+from apps.providers.models import PackageRouting, Integration
 from apps.providers.adapters import resolve_adapter_credentials
 from .services import (
     apply_order_status_change,
@@ -20,6 +20,7 @@ from .services import (
     TenantMismatchError,
     LegacyUserMissingError,
     OverdraftExceededError,
+    _propagate_chain_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,21 @@ _EXTERNAL_FINAL_STATUS_MAP = {
     'reject': 'failed',
     'cancelled': 'failed',
     'canceled': 'failed',
+}
+
+
+_MANUAL_PROVIDER_TOKENS = {
+    '',
+    'manual',
+    'manual_provider',
+    'manual-execution',
+    'manual_execution',
+    'manual-order',
+    'manualorder',
+    'manual_external',
+    'not_sent',
+    'pending',
+    '__codes__',
 }
 
 
@@ -75,9 +91,9 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         dict: Status information about the order
     """
     print(f"\n{'='*100}")
-    print(f"🔍 [محاولة #{attempt}] فحص حالة الطلب: {order_id[:8]}...")
+    print(f"[CHECK] [Attempt #{attempt}] Checking order status: {order_id[:8]}...")
     print(f"{'='*100}")
-    logger.info(f"🔍 [Attempt {attempt}] Checking status for order: {order_id}")
+    logger.info(f"[CHECK] [Attempt {attempt}] Checking status for order: {order_id}")
     
     try:
         # 1. Fetch the order
@@ -90,23 +106,39 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             logger.error(f"❌ Order {order_id} not found in database")
             return {'order_id': order_id, 'status': 'error', 'message': 'Order not found'}
         
-        # 2. Check if order is already in final state
+        # 1.5. Skip orders that haven't been sent yet (no external_order_id)
+        # We only track orders that have been dispatched to an external provider
+        # This handles scenarios 1, 2, and 6 from the requirements
+        if not order.external_order_id:
+            print(f"[SKIP] Order not sent yet (no external_order_id) - skipping")
+            print(f"   [INFO] This order has not been dispatched to external provider yet")
+            print(f"   [INFO] Tenant will review manually or dispatch later")
+            logger.info(f"⏭️  Order {order_id} not sent yet - skipping status check")
+            return {
+                'order_id': order_id,
+                'status': 'not_sent',
+                'message': 'Order not sent to external provider yet'
+            }
+        
+        # 2. Check if order is already in final state (case-insensitive)
         final_statuses = ['completed', 'delivered', 'cancelled', 'canceled', 'failed', 'rejected', 'done']
-        if order.external_status in final_statuses:
-            print(f"✅ الطلب في حالة نهائية: {order.external_status}")
-            print(f"   الحالة الداخلية: {order.status}")
+        if order.external_status and order.external_status.lower() in final_statuses:
+            print(f"[SUCCESS] Order in final status: {order.external_status}")
+            print(f"   Internal status: {order.status}")
             print(f"{'='*100}\n")
-            logger.info(f"✅ Order {order_id} already in final state: {order.external_status}")
+            logger.info(f"[SUCCESS] Order {order_id} already in final state: {order.external_status}")
             return {
                 'order_id': order_id,
                 'status': order.external_status,
                 'message': 'Already in final state'
             }
         
-        # 3. Check if order has exceeded 24-hour timeout
+        # 3. Check if order has exceeded 24-hour timeout (Scenario 7)
         if order.sent_at:
             time_since_sent = timezone.now() - order.sent_at
             if time_since_sent > timedelta(hours=24):
+                print(f"⏰ الطلب تجاوز 24 ساعة - سيتم وضع علامة فشل")
+                print(f"   ⏱️  الوقت المنقضي: {int(time_since_sent.total_seconds() / 3600)} ساعة")
                 logger.warning(f"⏰ Order {order_id} exceeded 24h, marking as failed")
                 from django.db import connection
                 with connection.cursor() as cursor:
@@ -121,6 +153,15 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                         timezone.now(),
                         str(order.id)
                     ])
+                
+                # Trigger chain propagation for timeout
+                try:
+                    order.refresh_from_db()
+                    _propagate_chain_status(order, origin="timeout", manual_note="Order timed out after 24 hours")
+                    print(f"   🔗 تم تفعيل سلسلة التحديث للطلب المنتهي الصلاحية")
+                except Exception as e:
+                    logger.exception(f"Failed to propagate chain status for timed out order {order_id}: {e}")
+                
                 return {
                     'order_id': order_id,
                     'status': 'failed',
@@ -142,20 +183,62 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         if not package:
             logger.error(f"❌ Order {order_id} has no package")
             return {'order_id': order_id, 'status': 'error', 'message': 'No package'}
-        
-        routing = PackageRouting.objects.using('default').filter(
-            package_id=package.id,
-            tenant_id=tenant_id
-        ).first()
-        
-        if not routing or not routing.primary_provider_id:
-            logger.error(f"❌ No routing found for order {order_id}")
-            return {'order_id': order_id, 'status': 'error', 'message': 'No routing'}
-        
-        # Get Integration from primary_provider_id
-        from apps.providers.models import Integration
-        integration = Integration.objects.get(id=routing.primary_provider_id)
-        
+        order_provider_id = (order.provider_id or '').strip()
+
+        print("   Provider ID on order:", order_provider_id or 'none')
+        print("   External order id:", order.external_order_id or 'none')
+        referans_debug = getattr(order, 'provider_referans', None) or 'none'
+        print("   Provider referans:", referans_debug)
+
+        provider_id = order_provider_id
+        integration = None
+        integration_source = None
+        routing = None
+
+        if provider_id and provider_id.lower() not in _MANUAL_PROVIDER_TOKENS:
+            try:
+                integration = Integration.objects.get(id=provider_id, tenant_id=tenant_id)
+                integration_source = 'order_provider'
+            except (Integration.DoesNotExist, ValueError) as exc:
+                print(f"   Warning: integration lookup failed for provider_id={provider_id}: {exc}")
+                logger.warning(
+                    "Provider from order not resolved, falling back to routing",
+                    extra={
+                        "order_id": order_id,
+                        "provider_id": provider_id,
+                        "error": str(exc),
+                    },
+                )
+                integration = None
+
+        if integration is None:
+            print("   Falling back to package routing for provider resolution")
+            routing = PackageRouting.objects.using('default').filter(
+                package_id=package.id,
+                tenant_id=tenant_id
+            ).first()
+
+            if not routing or not routing.primary_provider_id:
+                logger.error(f"❌ No routing found for order {order_id}")
+                return {'order_id': order_id, 'status': 'error', 'message': 'No routing'}
+
+            provider_id = str(routing.primary_provider_id)
+            print("   Routing primary_provider_id:", provider_id)
+            try:
+                integration = Integration.objects.get(id=routing.primary_provider_id, tenant_id=tenant_id)
+                integration_source = 'package_routing'
+            except (Integration.DoesNotExist, ValueError) as exc:
+                logger.error(
+                    "❌ Routing provider integration missing",
+                    extra={
+                        "order_id": order_id,
+                        "routing_provider_id": routing.primary_provider_id,
+                        "error": str(exc),
+                    },
+                )
+                return {'order_id': order_id, 'status': 'error', 'message': 'Integration missing'}
+
+        print(f"   Provider chosen for monitoring: {integration.name} ({integration.provider}) [{integration_source}]")
         # For internal provider, use order.id as reference (it's stored as providerReferans in target tenant)
         # For other providers, use external_order_id or provider_referans
         if integration.provider == 'internal':
@@ -283,11 +366,11 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                 old_status = order.external_status
                 canonical_external_status = order.external_status or canonical_external_status
                 
-                print(f"   ✅ نجح تحديث الحالة والرصيد")
+                print(f"   [SUCCESS] Status and balance updated successfully")
                 print(f"   الحالة النهائية: {order.status}")
                 
                 logger.info(
-                    "✅ apply_order_status_change succeeded",
+                    "[SUCCESS] apply_order_status_change succeeded",
                     extra={
                         "order_id": str(order.id),
                         "status": order.status,
@@ -377,6 +460,32 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                 rows_affected = cursor.rowcount
                 print(f"\n💾 تم تحديث قاعدة البيانات بنجاح ({rows_affected} صف)")
                 logger.info(f"✅ Order {order.id} updated successfully ({rows_affected} rows)")
+
+            if any('status = %s' in field or '"externalStatus"' in field for field in update_fields):
+                try:
+                    order.refresh_from_db()
+                except ProductOrder.DoesNotExist:
+                    logger.warning(
+                        "Order disappeared before chain propagation",
+                        extra={"order_id": order_id},
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to refresh order before chain propagation",
+                        extra={"order_id": order_id},
+                    )
+                else:
+                    try:
+                        print(f"   🔗 تفعيل سلسلة التحديث للطلب...")
+                        _propagate_chain_status(order, origin="status_poll", manual_note=message)
+                        print(f"   [SUCCESS] Chain update activated successfully")
+                        logger.info(f"[SUCCESS] Chain status propagation completed for order {order_id}")
+                    except Exception:
+                        logger.exception(
+                            "Chain status propagation failed after status poll",
+                            extra={"order_id": order_id},
+                        )
+                        print(f"   ⚠️ فشل في تفعيل سلسلة التحديث")
         else:
             print(f"\n⏸️  لا توجد تحديثات مطلوبة")
         
@@ -406,7 +515,7 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             countdown = 10
             raise self.retry(countdown=countdown, kwargs={'attempt': attempt + 1})
         
-        print(f"\n✅ اكتمل فحص الطلب - الحالة النهائية: {new_status or canonical_external_status}")
+        print(f"\n[SUCCESS] Order check completed - Final status: {new_status or canonical_external_status}")
         print(f"{'='*100}\n")
         
         return {
@@ -429,45 +538,63 @@ def check_pending_orders_batch():
     """
     Check a batch of pending orders (executed periodically every 5 minutes).
     
-    This task finds all orders that are in 'pending' or 'sent' status and have been
-    sent more than 1 minute ago but less than 24 hours ago, then schedules individual
+    This task finds all orders that have been dispatched to external providers
+    (have external_order_id) and are not in final state, then schedules individual
     check tasks for each order.
+    
+    Also includes lightweight notification for orders pending too long (5+ minutes).
     
     Returns:
         dict: Summary of checked orders
     """
     print(f"\n{'#'*100}")
-    print(f"🔍 بدء فحص دفعة الطلبات المعلقة...")
-    print(f"   الوقت: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[BATCH] Starting batch check for pending orders...")
+    print(f"   Time: {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'#'*100}")
     
-    logger.info("🔍 Starting batch check for pending orders...")
+    logger.info("[BATCH] Starting batch check for pending orders...")
     
     # Find pending orders that were sent more than 1 minute ago
     one_minute_ago = timezone.now() - timedelta(minutes=1)
+    five_minutes_ago = timezone.now() - timedelta(minutes=5)
     twenty_four_hours_ago = timezone.now() - timedelta(hours=24)
     
+    # CRITICAL FIX: Track ALL orders that have been sent to external providers
+    # regardless of mode (manual/auto) - what matters is they have external_order_id
+    # and are not in final state
+    from django.db.models import Q
+    
     pending_orders = ProductOrder.objects.using('default').filter(
-        external_status__in=['pending', 'sent', 'processing'],
+        # Must have been sent to external provider
+        external_order_id__isnull=False,
         sent_at__isnull=False,
         sent_at__lte=one_minute_ago,
         sent_at__gte=twenty_four_hours_ago
+    ).exclude(
+        # Exclude final states (case-insensitive)
+        Q(external_status__iexact='completed') |
+        Q(external_status__iexact='delivered') |
+        Q(external_status__iexact='done') |
+        Q(external_status__iexact='cancelled') |
+        Q(external_status__iexact='canceled') |
+        Q(external_status__iexact='failed') |
+        Q(external_status__iexact='rejected')
     )[:100]  # Limit to 100 orders per batch
     
     count = len(pending_orders)
     
-    print(f"\n📊 تم العثور على {count} طلب معلق للفحص")
+    print(f"\n[FOUND] Found {count} pending orders to check")
     if count > 0:
-        print(f"   سيتم جدولة فحص كل طلب بفاصل 0.05 ثانية")
-        print(f"\nالطلبات المعلقة:")
+        print(f"   Will schedule check for each order with 0.05s interval")
+        print(f"\nPending orders:")
         for i, order in enumerate(pending_orders, 1):
             time_waiting = timezone.now() - order.sent_at if order.sent_at else None
-            waiting_str = f"{int(time_waiting.total_seconds() / 60)} دقيقة" if time_waiting else "غير معروف"
-            print(f"   {i}. {str(order.id)[:8]}... | {order.external_status or 'N/A'} | انتظار: {waiting_str}")
+            waiting_str = f"{int(time_waiting.total_seconds() / 60)} minutes" if time_waiting else "unknown"
+            print(f"   {i}. {str(order.id)[:8]}... | {order.external_status or 'N/A'} | waiting: {waiting_str}")
     else:
-        print(f"   ✅ لا توجد طلبات معلقة للفحص")
+        print(f"   [SUCCESS] No pending orders to check")
     
-    logger.info(f"📊 Found {count} pending orders to check")
+    logger.info(f"[FOUND] Found {count} pending orders to check")
     
     # Schedule a check task for each order (distributed over 5 seconds)
     for i, order in enumerate(pending_orders):
@@ -476,10 +603,38 @@ def check_pending_orders_batch():
             countdown=i * 0.05  # Distribute: 0s, 0.05s, 0.1s, ...
         )
     
-    print(f"\n✅ تم جدولة فحص {count} طلب")
+    print(f"\n[SUCCESS] Scheduled check for {count} orders")
+    
+    # Lightweight notification for orders pending too long (5+ minutes)
+    # This handles the optional 5-minute alert requirement
+    long_pending_orders = ProductOrder.objects.using('default').filter(
+        external_order_id__isnull=False,
+        sent_at__isnull=False,
+        sent_at__lte=five_minutes_ago,
+        sent_at__gte=twenty_four_hours_ago
+    ).exclude(
+        Q(external_status__iexact='completed') |
+        Q(external_status__iexact='delivered') |
+        Q(external_status__iexact='done') |
+        Q(external_status__iexact='cancelled') |
+        Q(external_status__iexact='canceled') |
+        Q(external_status__iexact='failed') |
+        Q(external_status__iexact='rejected')
+    )[:20]  # Limit to 20 for notifications
+    
+    notification_count = len(long_pending_orders)
+    if notification_count > 0:
+        print(f"\n[NOTIFICATION] Long pending orders ({notification_count} orders):")
+        for i, order in enumerate(long_pending_orders, 1):
+            time_waiting = timezone.now() - order.sent_at if order.sent_at else None
+            waiting_str = f"{int(time_waiting.total_seconds() / 60)} minutes" if time_waiting else "unknown"
+            print(f"   {i}. {str(order.id)[:8]}... | waiting: {waiting_str}")
+            logger.info(f"[NOTIFICATION] Long pending order: {order.id} waiting {waiting_str}")
+    
     print(f"{'#'*100}\n")
     
     return {
         'checked': count,
+        'notifications': notification_count,
         'message': f'Scheduled {count} order checks'
     }
