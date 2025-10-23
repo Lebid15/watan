@@ -44,3 +44,6 @@ with connection.cursor() as cursor:
 print("\n" + "="*80)
 print("CHECK COMPLETE")
 print("="*80)
+
+
+

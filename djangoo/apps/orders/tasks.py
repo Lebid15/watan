@@ -90,9 +90,9 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
     Returns:
         dict: Status information about the order
     """
-    print(f"\n{'='*100}")
-    print(f"[CHECK] [Attempt #{attempt}] Checking order status: {order_id[:8]}...")
-    print(f"{'='*100}")
+    # Disable ALL verbose logging - only keep essential INFO logs
+    verbose = False  # Set to True for debugging
+    
     logger.info(f"[CHECK] [Attempt {attempt}] Checking status for order: {order_id}")
     
     try:
@@ -110,9 +110,12 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         # We only track orders that have been dispatched to an external provider
         # This handles scenarios 1, 2, and 6 from the requirements
         if not order.external_order_id:
-            print(f"[SKIP] Order not sent yet (no external_order_id) - skipping")
-            print(f"   [INFO] This order has not been dispatched to external provider yet")
-            print(f"   [INFO] Tenant will review manually or dispatch later")
+            if verbose:
+                print(f"[SKIP] Order not sent yet (no external_order_id) - skipping")
+            if verbose:
+                print(f"   [INFO] This order has not been dispatched to external provider yet")
+            if verbose:
+                print(f"   [INFO] Tenant will review manually or dispatch later")
             logger.info(f"⏭️  Order {order_id} not sent yet - skipping status check")
             return {
                 'order_id': order_id,
@@ -123,9 +126,12 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         # 2. Check if order is already in final state (case-insensitive)
         final_statuses = ['completed', 'delivered', 'cancelled', 'canceled', 'failed', 'rejected', 'done']
         if order.external_status and order.external_status.lower() in final_statuses:
-            print(f"[SUCCESS] Order in final status: {order.external_status}")
-            print(f"   Internal status: {order.status}")
-            print(f"{'='*100}\n")
+            if verbose:
+                print(f"[SUCCESS] Order in final status: {order.external_status}")
+            if verbose:
+                print(f"   Internal status: {order.status}")
+            if verbose:
+                print(f"{'='*100}\n")
             logger.info(f"[SUCCESS] Order {order_id} already in final state: {order.external_status}")
             return {
                 'order_id': order_id,
@@ -137,8 +143,10 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         if order.sent_at:
             time_since_sent = timezone.now() - order.sent_at
             if time_since_sent > timedelta(hours=24):
-                print(f"⏰ الطلب تجاوز 24 ساعة - سيتم وضع علامة فشل")
-                print(f"   ⏱️  الوقت المنقضي: {int(time_since_sent.total_seconds() / 3600)} ساعة")
+                if verbose:
+                    print(f"⏰ الطلب تجاوز 24 ساعة - سيتم وضع علامة فشل")
+                if verbose:
+                    print(f"   ⏱️  الوقت المنقضي: {int(time_since_sent.total_seconds() / 3600)} ساعة")
                 logger.warning(f"⏰ Order {order_id} exceeded 24h, marking as failed")
                 from django.db import connection
                 with connection.cursor() as cursor:
@@ -158,7 +166,8 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                 try:
                     order.refresh_from_db()
                     _propagate_chain_status(order, origin="timeout", manual_note="Order timed out after 24 hours")
-                    print(f"   🔗 تم تفعيل سلسلة التحديث للطلب المنتهي الصلاحية")
+                    if verbose:
+                        print(f"   🔗 تم تفعيل سلسلة التحديث للطلب المنتهي الصلاحية")
                 except Exception as e:
                     logger.exception(f"Failed to propagate chain status for timed out order {order_id}: {e}")
                 
@@ -185,10 +194,13 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             return {'order_id': order_id, 'status': 'error', 'message': 'No package'}
         order_provider_id = (order.provider_id or '').strip()
 
-        print("   Provider ID on order:", order_provider_id or 'none')
-        print("   External order id:", order.external_order_id or 'none')
+        if verbose:
+            print("   Provider ID on order:", order_provider_id or 'none')
+        if verbose:
+            print("   External order id:", order.external_order_id or 'none')
         referans_debug = getattr(order, 'provider_referans', None) or 'none'
-        print("   Provider referans:", referans_debug)
+        if verbose:
+            print("   Provider referans:", referans_debug)
 
         provider_id = order_provider_id
         integration = None
@@ -200,7 +212,8 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                 integration = Integration.objects.get(id=provider_id, tenant_id=tenant_id)
                 integration_source = 'order_provider'
             except (Integration.DoesNotExist, ValueError) as exc:
-                print(f"   Warning: integration lookup failed for provider_id={provider_id}: {exc}")
+                if verbose:
+                    print(f"   Warning: integration lookup failed for provider_id={provider_id}: {exc}")
                 logger.warning(
                     "Provider from order not resolved, falling back to routing",
                     extra={
@@ -212,18 +225,29 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                 integration = None
 
         if integration is None:
-            print("   Falling back to package routing for provider resolution")
+            if verbose:
+                print("   Falling back to package routing for provider resolution")
+            # ✅ FIX: Prefer external routing when multiple exist
             routing = PackageRouting.objects.using('default').filter(
                 package_id=package.id,
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
+                provider_type='external'
             ).first()
+            
+            # If no external routing, try any routing
+            if not routing:
+                routing = PackageRouting.objects.using('default').filter(
+                    package_id=package.id,
+                    tenant_id=tenant_id
+                ).first()
 
             if not routing or not routing.primary_provider_id:
                 logger.error(f"❌ No routing found for order {order_id}")
                 return {'order_id': order_id, 'status': 'error', 'message': 'No routing'}
 
             provider_id = str(routing.primary_provider_id)
-            print("   Routing primary_provider_id:", provider_id)
+            if verbose:
+                print("   Routing primary_provider_id:", provider_id)
             try:
                 integration = Integration.objects.get(id=routing.primary_provider_id, tenant_id=tenant_id)
                 integration_source = 'package_routing'
@@ -238,7 +262,8 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                 )
                 return {'order_id': order_id, 'status': 'error', 'message': 'Integration missing'}
 
-        print(f"   Provider chosen for monitoring: {integration.name} ({integration.provider}) [{integration_source}]")
+        if verbose:
+            print(f"   Provider chosen for monitoring: {integration.name} ({integration.provider}) [{integration_source}]")
         # For internal provider, use order.id as reference (it's stored as providerReferans in target tenant)
         # For other providers, use external_order_id or provider_referans
         if integration.provider == 'internal':
@@ -257,21 +282,28 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             logger.error(f"❌ Could not resolve adapter credentials for order {order_id}")
             return {'order_id': order_id, 'status': 'error', 'message': 'No credentials'}
         
-        print(f"\n📡 استعلام عن حالة الطلب من المزود: {integration.provider}")
-        print(f"   المرجع: {referans}")
-        print(f"   الحالة الحالية: {order.external_status or 'غير محددة'}")
+        if verbose:
+            print(f"\n📡 استعلام عن حالة الطلب من المزود: {integration.provider}")
+        if verbose:
+            print(f"   المرجع: {referans}")
+        if verbose:
+            print(f"   الحالة الحالية: {order.external_status or 'غير محددة'}")
         
         logger.info(f"📡 Fetching status from {integration.provider} for referans: {referans}")
         
         # 7. Call adapter to fetch status
         result = binding.adapter.fetch_status(creds, referans)
         
-        print(f"\n📥 استجابة المزود:")
-        print(f"   الحالة: {result.get('status', 'N/A')}")
+        if verbose:
+            print(f"\n📥 استجابة المزود:")
+        if verbose:
+            print(f"   الحالة: {result.get('status', 'N/A')}")
         if result.get('pinCode'):
-            print(f"   PIN Code: {result.get('pinCode')[:10]}...")
+            if verbose:
+                print(f"   PIN Code: {result.get('pinCode')[:10]}...")
         if result.get('message'):
-            print(f"   الرسالة: {result.get('message')}")
+            if verbose:
+                print(f"   الرسالة: {result.get('message')}")
         
         logger.info(f"📥 Provider response: {result}")
         
@@ -282,12 +314,18 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         pin_code = result.get('pinCode')
         message = result.get('message') or result.get('note')
         
-        print(f"\n📊 Current State:")
-        print(f"   - Current external_status: {old_status}")
-        print(f"   - Current order status: {old_order_status}")
-        print(f"   - New status from provider: {new_status}")
-        print(f"   - PIN Code from provider: {pin_code}")
-        print(f"   - Message from provider: {message}")
+        if verbose:
+            print(f"\n📊 Current State:")
+        if verbose:
+            print(f"   - Current external_status: {old_status}")
+        if verbose:
+            print(f"   - Current order status: {old_order_status}")
+        if verbose:
+            print(f"   - New status from provider: {new_status}")
+        if verbose:
+            print(f"   - PIN Code from provider: {pin_code}")
+        if verbose:
+            print(f"   - Message from provider: {message}")
         
         # Map external_status to order status
         order_status_map = {
@@ -305,8 +343,10 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             'canceled': 'rejected',  # US spelling
         }
         
-        print(f"\n🗺️ Status Mapping:")
-        print(f"   - Available mappings: {order_status_map}")
+        if verbose:
+            print(f"\n🗺️ Status Mapping:")
+        if verbose:
+            print(f"   - Available mappings: {order_status_map}")
         
         # Build update query
         from django.db import connection
@@ -316,16 +356,23 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         canonical_external_status = _normalize_external_status(new_status, old_status or 'processing')
         new_order_status = order_status_map.get((new_status or '').lower(), old_order_status)
 
-        print(f"\n🔄 معالجة الحالة:")
-        print(f"   📌 الحالة من المزود: {new_status or 'N/A'}")
-        print(f"   📌 الحالة المطبّعة: {canonical_external_status}")
-        print(f"   📌 الحالة الداخلية الجديدة: {new_order_status}")
-        print(f"   📊 الحالة الحالية: {old_order_status}")
+        if verbose:
+            print(f"\n🔄 معالجة الحالة:")
+        if verbose:
+            print(f"   📌 الحالة من المزود: {new_status or 'N/A'}")
+        if verbose:
+            print(f"   📌 الحالة المطبّعة: {canonical_external_status}")
+        if verbose:
+            print(f"   📌 الحالة الداخلية الجديدة: {new_order_status}")
+        if verbose:
+            print(f"   📊 الحالة الحالية: {old_order_status}")
         
         if new_status and new_status != old_status:
-            print(f"   ✨ تغيير في الحالة: {old_status} → {new_status}")
+            if verbose:
+                print(f"   ✨ تغيير في الحالة: {old_status} → {new_status}")
         else:
-            print(f"   ⏸️  لا تغيير في الحالة")
+            if verbose:
+                print(f"   ⏸️  لا تغيير في الحالة")
         
         status_transition_needed = new_order_status in ('approved', 'rejected') and new_order_status != old_order_status
 
@@ -341,9 +388,12 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                         cancellation_reason = " (failed)"
                         cancellation_reason_ar = " (فشل)"
                 
-                print(f"\n⚙️ تطبيق انتقال الحالة{cancellation_reason_ar}:")
-                print(f"   من: {old_order_status} → إلى: {new_order_status}")
-                print(f"   سيتم تحديث الرصيد...")
+                if verbose:
+                    print(f"\n⚙️ تطبيق انتقال الحالة{cancellation_reason_ar}:")
+                if verbose:
+                    print(f"   من: {old_order_status} → إلى: {new_order_status}")
+                if verbose:
+                    print(f"   سيتم تحديث الرصيد...")
                 
                 logger.info(
                     f"⚙️ Applying balance transition via apply_order_status_change{cancellation_reason}",
@@ -366,8 +416,10 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                 old_status = order.external_status
                 canonical_external_status = order.external_status or canonical_external_status
                 
-                print(f"   [SUCCESS] Status and balance updated successfully")
-                print(f"   الحالة النهائية: {order.status}")
+                if verbose:
+                    print(f"   [SUCCESS] Status and balance updated successfully")
+                if verbose:
+                    print(f"   الحالة النهائية: {order.status}")
                 
                 logger.info(
                     "[SUCCESS] apply_order_status_change succeeded",
@@ -378,8 +430,10 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                     },
                 )
             except (OrderStatusError, TenantMismatchError, LegacyUserMissingError, OverdraftExceededError) as status_exc:
-                print(f"   ⚠️ تعذر تطبيق الانتقال الكامل: {str(status_exc)}")
-                print(f"   سيتم التحديث المباشر بدلاً من ذلك")
+                if verbose:
+                    print(f"   ⚠️ تعذر تطبيق الانتقال الكامل: {str(status_exc)}")
+                if verbose:
+                    print(f"   سيتم التحديث المباشر بدلاً من ذلك")
                 
                 logger.warning(
                     "⚠️ apply_order_status_change could not complete, falling back to direct update",
@@ -406,7 +460,8 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             # Non-terminal change – persist the mapped external status only
             update_fields.append('"externalStatus" = %s')
             update_values.append(canonical_external_status)
-            print(f"\n🔄 تحديث الحالة الخارجية فقط: {old_status} → {canonical_external_status}")
+            if verbose:
+                print(f"\n🔄 تحديث الحالة الخارجية فقط: {old_status} → {canonical_external_status}")
             logger.info(f"🔄 External Status changed: {old_status} → {canonical_external_status}")
 
         # Ensure we persist the canonical external status when terminal transition already handled by apply()
@@ -414,16 +469,20 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             update_fields.append('"externalStatus" = %s')
             update_values.append(canonical_external_status)
         else:
-            print(f"\n⚠️ External status NOT changing:")
+            if verbose:
+                print(f"\n⚠️ External status NOT changing:")
             if not new_status:
-                print(f"   - Reason: No status in provider response")
+                if verbose:
+                    print(f"   - Reason: No status in provider response")
             elif new_status == old_status:
-                print(f"   - Reason: Same as current ({old_status})")
+                if verbose:
+                    print(f"   - Reason: Same as current ({old_status})")
         
         if pin_code and pin_code != order.pin_code:
             update_fields.append('"pinCode" = %s')
             update_values.append(pin_code)
-            print(f"🔑 استلام PIN Code: {pin_code[:10]}...")
+            if verbose:
+                print(f"🔑 استلام PIN Code: {pin_code[:10]}...")
             logger.info(f"🔑 PIN Code received: {pin_code[:10]}...")
         
         if message:
@@ -434,11 +493,13 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
             # ✅ تحديث manual_note دائماً بملاحظة المزود (ستظهر للجميع)
             update_fields.append('"manualNote" = %s')
             update_values.append(message[:500])
-            print(f"💬 تحديث manualNote: {message[:50]}...")
+            if verbose:
+                print(f"💬 تحديث manualNote: {message[:50]}...")
             
             update_fields.append('"providerMessage" = %s')
             update_values.append(message[:250])
-            print(f"💬 تحديث providerMessage: {message[:50]}...")
+            if verbose:
+                print(f"💬 تحديث providerMessage: {message[:50]}...")
         
         # Always update lastSyncAt
         update_fields.append('"lastSyncAt" = %s')
@@ -451,14 +512,18 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                 SET {', '.join(update_fields)}
                 WHERE id = %s
             """
-            print(f"\n💾 Database Update:")
-            print(f"   - SQL Query: {sql}")
-            print(f"   - Parameters: {update_values}")
+            if verbose:
+                print(f"\n💾 Database Update:")
+            if verbose:
+                print(f"   - SQL Query: {sql}")
+            if verbose:
+                print(f"   - Parameters: {update_values}")
             
             with connection.cursor() as cursor:
                 cursor.execute(sql, update_values)
                 rows_affected = cursor.rowcount
-                print(f"\n💾 تم تحديث قاعدة البيانات بنجاح ({rows_affected} صف)")
+                if verbose:
+                    print(f"\n💾 تم تحديث قاعدة البيانات بنجاح ({rows_affected} صف)")
                 logger.info(f"✅ Order {order.id} updated successfully ({rows_affected} rows)")
 
             if any('status = %s' in field or '"externalStatus"' in field for field in update_fields):
@@ -476,47 +541,59 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
                     )
                 else:
                     try:
-                        print(f"   🔗 تفعيل سلسلة التحديث للطلب...")
+                        if verbose:
+                            print(f"   🔗 تفعيل سلسلة التحديث للطلب...")
                         _propagate_chain_status(order, origin="status_poll", manual_note=message)
-                        print(f"   [SUCCESS] Chain update activated successfully")
+                        if verbose:
+                            print(f"   [SUCCESS] Chain update activated successfully")
                         logger.info(f"[SUCCESS] Chain status propagation completed for order {order_id}")
                     except Exception:
                         logger.exception(
                             "Chain status propagation failed after status poll",
                             extra={"order_id": order_id},
                         )
-                        print(f"   ⚠️ فشل في تفعيل سلسلة التحديث")
+                        if verbose:
+                            print(f"   ⚠️ فشل في تفعيل سلسلة التحديث")
         else:
-            print(f"\n⏸️  لا توجد تحديثات مطلوبة")
+            if verbose:
+                print(f"\n⏸️  لا توجد تحديثات مطلوبة")
         
         # 9. Determine if we should retry
         # Use canonical_external_status which includes normalization of cancelled/canceled -> failed
         normalized_status = canonical_external_status.lower() if canonical_external_status else ''
         if normalized_status not in final_statuses and (new_status or '').lower() not in final_statuses:
-            print(f"\n⏳ الطلب لا يزال قيد المعالجة")
-            print(f"   الحالة الحالية: {new_status or 'غير محددة'} → {canonical_external_status}")
+            if verbose:
+                print(f"\n⏳ الطلب لا يزال قيد المعالجة")
+            if verbose:
+                print(f"   الحالة الحالية: {new_status or 'غير محددة'} → {canonical_external_status}")
             
             # في وضع CELERY_TASK_ALWAYS_EAGER، لا نعمل retry لأنه غير مدعوم
             from django.conf import settings
             if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False):
-                print(f"   ⚠️ EAGER mode: skipping retry")
-                print(f"{'='*100}\n")
+                if verbose:
+                    print(f"   ⚠️ EAGER mode: skipping retry")
+                if verbose:
+                    print(f"{'='*100}\n")
                 return {
                     'order_id': order_id,
                     'status': new_status,
                     'message': 'Status check skipped (EAGER mode)'
                 }
             
-            print(f"   سيتم إعادة الفحص بعد 10 ثواني...")
-            print(f"{'='*100}\n")
+            if verbose:
+                print(f"   سيتم إعادة الفحص بعد 10 ثواني...")
+            if verbose:
+                print(f"{'='*100}\n")
             
             logger.info(f"⏳ Order {order_id} still pending (status: {new_status} -> {canonical_external_status}), will retry in 10 seconds...")
             # Fixed 10 seconds retry interval
             countdown = 10
             raise self.retry(countdown=countdown, kwargs={'attempt': attempt + 1})
         
-        print(f"\n[SUCCESS] Order check completed - Final status: {new_status or canonical_external_status}")
-        print(f"{'='*100}\n")
+        if verbose:
+            print(f"\n[SUCCESS] Order check completed - Final status: {new_status or canonical_external_status}")
+        if verbose:
+            print(f"{'='*100}\n")
         
         return {
             'order_id': order_id,
@@ -526,8 +603,10 @@ def check_order_status(self, order_id: str, tenant_id: str, attempt: int = 1):
         }
         
     except Exception as exc:
-        print(f"\n❌ خطأ في فحص الطلب: {str(exc)}")
-        print(f"{'='*100}\n")
+        if verbose:
+            print(f"\n❌ خطأ في فحص الطلب: {str(exc)}")
+        if verbose:
+            print(f"{'='*100}\n")
         logger.exception(f"❌ Error checking order {order_id}: {exc}")
         # Celery will automatically retry due to autoretry_for
         raise

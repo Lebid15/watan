@@ -1348,7 +1348,7 @@ export default function AdminOrdersPage() {
               <th className="p-2 text-center border-b border border-border">{t('orders.table.price')}</th>
               <th className="p-2 text-center border-b border border-border">{t('orders.table.profit')}</th>
               <th className="px-1.5 py-1 text-center border-b border border-border">{t('orders.table.status')}</th>
-              <th className="p-2 text-center border-b border border-border">{t('orders.table.api')}</th>
+              <th className="p-2 text-center border-b border border-border">جهة API</th>
             </tr>
           </thead>
           <tbody className="bg-bg-surface">
@@ -1455,86 +1455,58 @@ export default function AdminOrdersPage() {
 
         <td className="text-center p-1 border-y border-l border-border first:rounded-s-md last:rounded-e-md first:border-s last:border-e bg-transparent">
             {(() => {
-                // PRIORITY 1: Check if this is a chain forwarding order
-                if (o.chainPath && o.chainPath.nodes && o.chainPath.nodes.length > 0) {
-                    // Get the next tenant in the chain (the one this order was forwarded to)
-                    const nextTenant = o.chainPath.nodes[0]; // First node is the next tenant
-                    if (nextTenant === "Forwarded") {
-                        // Show "Manual" instead of "تم التوجيه" for manual processing
-                        return <span className="text-info">Manual</span>;
-                    }
-                    return <span className="text-info">{nextTenant}</span>;
-                }
-                
-                // PRIORITY 2: Check if this is a forwarded order by looking at external_order_id
-                if (o.externalOrderId && o.externalOrderId.startsWith('stub-')) {
-                    // This is a forwarded order, show "Manual" instead of "تم التوجيه"
-                    return <span className="text-info">Manual</span>;
-                }
-                
-                // PRIORITY 3: Check if this order has a provider_id (dispatched to any provider)
+                // PRIORITY 1: Check if this order has a provider_id (dispatched to a provider)
                 if (o.providerId) {
                     // This order was dispatched to a provider (external or internal)
                     const providerName = providerNameOf(o.providerId, o.providerName);
                     
-                    // Debug logging
-                    console.log('Provider Debug:', {
+                    // Enhanced debug logging
+                    console.log('🔍 Provider Debug:', {
+                        orderId: o.id,
                         providerId: o.providerId,
                         providerName: o.providerName,
                         providerType: o.providerType,
                         resolvedName: providerName,
-                        providersCount: providers.length
+                        providersCount: providers.length,
+                        mode: o.mode,
+                        chainPath: o.chainPath
                     });
                     
+                    // Level 1: Use resolved provider name from providers array
                     if (providerName) {
                         if (o.providerType === 'external') {
-                            return <span className="text-success">{providerName}</span>;
+                            return <span className="text-success" title={`External Provider: ${providerName}`}>{providerName}</span>;
                         } else {
-                            return <span className="text-info">{providerName}</span>;
+                            return <span className="text-info" title={`Internal Provider: ${providerName}`}>{providerName}</span>;
                         }
                     }
-                    // Better fallback - try to use providerName from order data
+                    
+                    // Level 2: Use providerName from order data
                     if (o.providerName) {
                         if (o.providerType === 'external') {
-                            return <span className="text-success">{o.providerName}</span>;
+                            return <span className="text-success" title={`External Provider: ${o.providerName}`}>{o.providerName}</span>;
                         } else {
-                            return <span className="text-info">{o.providerName}</span>;
+                            return <span className="text-info" title={`Internal Provider: ${o.providerName}`}>{o.providerName}</span>;
                         }
                     }
-                    // Final fallback based on provider type
+                    
+                    // Level 3: Smart fallback based on provider type and mode
                     if (o.providerType === 'external') {
-                        return <span className="text-success">External Provider</span>;
+                        return <span className="text-success" title={`External Provider (ID: ${o.providerId})`}>External Provider</span>;
+                    } else if (o.providerType === 'internal_codes') {
+                        return <span className="text-success" title="Internal Codes Provider">أكواد داخلية</span>;
                     } else {
-                        return <span className="text-info">Internal Provider</span>;
+                        return <span className="text-info" title={`Internal Provider (ID: ${o.providerId})`}>Internal Provider</span>;
                     }
                 }
                 
-                // PRIORITY 3.5: Check if this order has a provider_id (forwarded to internal tenant)
-                if (o.providerId && (o.mode === 'MANUAL' || o.mode === 'CHAIN_FORWARD')) {
-                    // This is a manual order or chain forward order that was forwarded to a provider
-                    // For CHAIN_FORWARD, show the target tenant name instead of provider name
-                    if (o.mode === 'CHAIN_FORWARD') {
-                        return <span className="text-info">ShamTech</span>;
-                    }
-                    // Try to get the provider name for other cases
-                    const providerName = providerNameOf(o.providerId, o.providerName);
-                    if (providerName) {
-                        return <span className="text-info">{providerName}</span>;
-                    }
-                    // Show "Manual" instead of "تم التوجيه" for manual processing
-                    return <span className="text-info">Manual</span>;
-                }
-                
-                // PRIORITY 4: Original logic for non-chain orders
+                // PRIORITY 2: Manual orders
                 if (o.mode === 'MANUAL' || o.mode === 'manual') {
                     return <span className="text-danger">{t('orders.table.manualExecution')}</span>;
-                } else if (o.providerType === 'internal_codes') {
-                    return <span className="text-success">{t('orders.table.internalCodes')}</span>;
-                } else if (o.providerType === 'external' && o.providerId) {
-                    return <span>{providerNameOf(o.providerId, o.providerName) ?? '(مزود محذوف)'}</span>;
-                } else {
-                    return <span className="text-muted">{t('orders.table.manualExecution')}</span>;
                 }
+                
+                // PRIORITY 3: Default fallback
+                return <span className="text-muted">{t('orders.table.manualExecution')}</span>;
             })()}
         </td>
 

@@ -20,3 +20,6 @@ print(f"\nTotal tenants: {tenants.count()}")
 
 
 
+
+
+

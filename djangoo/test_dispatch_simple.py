@@ -1,24 +1,45 @@
-#!/usr/bin/env python
-import os
-import sys
-import django
+import os#!/usr/bin/env python
 
-# Setup Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+import djangoimport os
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'djangoo.settings')import sys
+
+django.setup()import django
+
+
+
+from apps.orders.models import ProductOrder# Setup Django
+
+from apps.orders.services import try_auto_dispatchos.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+
 django.setup()
 
-from apps.orders.models import ProductOrder
+# Find order 2C6994
+
+order_id = '2c6994d7-bdf1-4a41-8b02-4dc3727cf638'from apps.orders.models import ProductOrder
+
 from apps.providers.models import Integration, PackageRouting, PackageMapping
-from apps.tenants.models import Tenant
+
+# Now try auto-dispatchfrom apps.tenants.models import Tenant
+
+print("CALLING try_auto_dispatch()...")
 
 # Find and dispatch order F43942
-print("=== FINDING AND DISPATCHING ORDER F43942 ===")
 
-# Find the order
-try:
-    # Try to find by external_order_id containing F43942
-    order = ProductOrder.objects.get(external_order_id__icontains='F43942')
-    print(f"Found order by external_order_id: {order.id}")
+try:print("=== FINDING AND DISPATCHING ORDER F43942 ===")
+
+    result = try_auto_dispatch(str(order_id))
+
+    print(f"\n✅ Auto-dispatch result: {result}")# Find the order
+
+except Exception as e:try:
+
+    print(f"\n❌ Error: {e}")    # Try to find by external_order_id containing F43942
+
+    import traceback    order = ProductOrder.objects.get(external_order_id__icontains='F43942')
+
+    traceback.print_exc()    print(f"Found order by external_order_id: {order.id}")
+
 except ProductOrder.DoesNotExist:
     try:
         # Try to find by id containing F43942

@@ -17,27 +17,113 @@ from apps.orders.models import ProductOrder
 from apps.orders.services import try_auto_dispatch_async
 from apps.currencies.models import Currency
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
 
+def _normalize_chain_path(raw_path):
+    """Return list of order ID strings from stored chain_path value."""
+    if not raw_path:
+        return []
+
+    if isinstance(raw_path, list):
+        return [str(item) for item in raw_path if item]
+
+    if isinstance(raw_path, str):
+        cleaned = raw_path.strip()
+        if not cleaned:
+            return []
+
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed if item]
+        except json.JSONDecodeError:
+            pass
+
+        if cleaned.startswith('[') and cleaned.endswith(']'):
+            cleaned = cleaned[1:-1]
+
+        items: list[str] = []
+        for piece in cleaned.split(','):
+            piece = piece.strip().strip("'\"")
+            if piece:
+                items.append(piece)
+        return items
+
+    return []
+
+
+def _set_order_manual(order_obj: ProductOrder, note_text: str, *, log_prefix: str = "[AUTO→MANUAL]") -> None:
+    """Force order into manual mode and append a note."""
+    if not order_obj:
+        return
+
+    try:
+        notes = order_obj.notes or []
+        if not isinstance(notes, list):
+            notes = [str(notes)] if notes else []
+
+        full_note = f"{log_prefix} {note_text}" if note_text else log_prefix
+        notes.append(full_note)
+
+        order_obj.notes = notes
+        order_obj.notes_count = len(notes)
+        order_obj.status = 'pending'
+        order_obj.external_status = 'manual_required'
+        order_obj.provider_id = None
+        order_obj.mode = 'MANUAL'
+        order_obj.provider_message = note_text
+        order_obj.last_message = note_text
+        order_obj.save(update_fields=[
+            'notes',
+            'notes_count',
+            'status',
+            'external_status',
+            'provider_id',
+            'mode',
+            'provider_message',
+            'last_message',
+        ])
+    except Exception as exc:
+        logger.warning(
+            'Failed to switch order to manual mode',
+            extra={'order_id': str(getattr(order_obj, 'id', 'unknown')), 'error': str(exc)}
+        )
+
+
+def _order_is_manual(order_obj: ProductOrder | None) -> bool:
+    if not order_obj:
+        return False
+
+    provider_flag = (getattr(order_obj, 'provider_id', None) or '').strip().upper()
+    external_status = (getattr(order_obj, 'external_status', '') or '').lower()
+    status = (getattr(order_obj, 'status', '') or '').lower()
+
+    if provider_flag in ('', 'MANUAL', None) and external_status == 'manual_required':
+        return True
+
+    if status == 'pending' and provider_flag in ('', 'MANUAL', None) and external_status in ('manual_required', 'not_sent'):
+        return True
+
+    return False
+
+
 class ClientApiAuthMixin:
     """
-    Mixin for authenticating Client API requests
-    Checks for 'api-token' header and validates it
+    Mixin for authenticating Client API requests.
+    Checks for 'api-token' header and validates it.
     """
+
     def authenticate_client_api(self, request):
-        """
-        Authenticate using api-token header
-        Returns: (tenant, user) tuple or raises exception
-        """
+        """Authenticate using api-token header."""
         api_token = request.headers.get('api-token')
-        
+
         if not api_token:
             return None, None
-        
+
         try:
-            # Find user with this token
             user = User.objects.get(
                 api_token=api_token,
                 api_enabled=True,
@@ -50,7 +136,6 @@ class ClientApiAuthMixin:
             logger.warning('Client API authentication failed: user has no tenant_id')
             return None, None
 
-        # Ensure host tenant matches token owner when middleware resolves it
         request_tenant = getattr(request, 'tenant', None)
         resolved_tenant_id = getattr(request_tenant, 'id', None)
         if resolved_tenant_id and str(resolved_tenant_id) != str(user.tenant_id):
@@ -63,7 +148,6 @@ class ClientApiAuthMixin:
 
         tenant_slug = None
         try:
-            # Legacy tenant model provides code/name for logging (managed=False)
             LegacyTenant = import_string('apps.tenants.models.Tenant')
             legacy_obj = LegacyTenant.objects.filter(id=user.tenant_id).only('code', 'name').first()
             if legacy_obj:
@@ -274,6 +358,39 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                     except Exception:
                         pass
 
+                # Build chain_path for the new order
+                parent_order_id = order_uuid  # The order_uuid is the parent order ID from another tenant
+                parent_chain_ids: list[str] = []
+                parent_order_obj = None
+                new_chain_path = []
+                if parent_order_id:
+                    try:
+                        parent_order = parent_order_obj or ProductOrder.objects.filter(id=parent_order_id).first()
+                        if parent_order and str(parent_order.tenant_id) != str(tenant.id):
+                            # Inherit chain_path from parent and add parent to it
+                            if not parent_chain_ids:
+                                for oid in _normalize_chain_path(parent_order.chain_path):
+                                    prev_order = ProductOrder.objects.filter(id=oid).first()
+                                    if prev_order and not _order_is_manual(prev_order):
+                                        parent_chain_ids.append(str(prev_order.id))
+                            new_chain_path = parent_chain_ids + [str(parent_order.id)]
+                    except Exception:
+                        pass
+
+                # Determine provider_id for the new order (for API column display)
+                # Get the routing configuration to see what provider this order will use
+                order_provider_id = None
+                try:
+                    from apps.providers.models import PackageRouting
+                    routing = PackageRouting.objects.filter(
+                        tenant_id=tenant.id,
+                        package_id=package.id
+                    ).first()
+                    if routing:
+                        order_provider_id = routing.primary_provider_id
+                except Exception:
+                    pass
+
                 order = ProductOrder.objects.create(
                     id=uuid.uuid4(),
                     tenant_id=tenant.id,
@@ -290,9 +407,11 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                     sell_price_currency=currency_code or 'USD',
                     external_order_id=order_uuid or None,
                     provider_referans=order_uuid or None,
+                    provider_id=order_provider_id,  # Set provider from routing
                     created_at=timezone.now(),
                     notes=[],
                     notes_count=0,
+                    chain_path=json.dumps(new_chain_path) if new_chain_path else None,
                 )
                 
                 # CHAIN FORWARDING COST CALCULATION: Compute cost for intermediate tenant before forwarding
@@ -313,26 +432,8 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                         )
                         print(f"✅ Intermediate cost computed: {cost_snapshot.cost_price_usd} USD")
                         
-                        # CHAIN PATH: Set chain path for forwarded orders
-                        from apps.tenants.models import Tenant
-                        try:
-                            # For forwarded orders (stub-), we need to determine the next tenant
-                            if order.external_order_id and order.external_order_id.startswith('stub-'):
-                                # This is a forwarded order, we need to find the next tenant
-                                # For now, we'll use a placeholder that indicates forwarding
-                                chain_path = ["Forwarded"]  # Indicates this order was forwarded
-                                order.chain_path = json.dumps(chain_path)
-                                order.save(update_fields=['chain_path'])
-                                print(f"✅ Chain path set for forwarded order: {chain_path}")
-                            else:
-                                # Regular order, set current tenant
-                                tenant = Tenant.objects.get(id=order.tenant_id)
-                                chain_path = [tenant.name]
-                                order.chain_path = json.dumps(chain_path)
-                                order.save(update_fields=['chain_path'])
-                                print(f"✅ Chain path set: {chain_path}")
-                        except Exception as exc:
-                            print(f"⚠️ Failed to set chain path: {exc}")
+                        # Keep chain_path as order ID history only; no additional writes here
+                        pass
                 except Exception as exc:
                     print(f"⚠️ Failed to compute intermediate cost for chain forwarding: {exc}")
                     import logging
@@ -363,7 +464,7 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                 
                 logger.info(f'✅ Client API order created: {order.id} for tenant {tenant.slug}')
                 
-                return Response({
+                response_payload = {
                     'orderId': str(order.id),
                     'status': order.status,
                     'createdAt': order.created_at.isoformat() if order.created_at else None,
@@ -376,7 +477,9 @@ class ClientApiNewOrderView(ClientApiAuthMixin, APIView):
                     'walletBalance': str(proposed_legacy_balance),
                     'walletCurrency': currency_code or 'USD',
                     'unitPriceWallet': str(unit_price_user),
-                }, status=status.HTTP_201_CREATED)
+                }
+
+                return Response(response_payload, status=status.HTTP_201_CREATED)
                 
         except Exception as e:
             logger.exception(f'Failed to create Client API order')

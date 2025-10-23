@@ -176,33 +176,53 @@ export default function OrdersPage() {
 
   // ========== جلب أوّل دفعة ==========
   useEffect(() => {
-    // الافتراضي: فلترة اليوم
+    // الافتراضي: إظهار كل الطلبات (بدون فلترة بالتاريخ)
     const today = toLocalYMD();
     setDateFromDraft(today); setDateToDraft(today);
-    setDateFrom(today);      setDateTo(today);
+    // لا نطبق فلترة التاريخ افتراضياً - نترك dateFrom و dateTo فارغين
+    // setDateFrom(today);      setDateTo(today);
 
     const fetchOrders = async () => {
+      console.log('[OrdersPage] Starting to fetch orders...');
       setLoading(true); setError('');
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      if (!token) { setLoading(false); setError('الرجاء تسجيل الدخول أولاً'); return; }
+      console.log('[OrdersPage] Token exists:', !!token, 'Token length:', token?.length);
+      if (!token) { 
+        console.log('[OrdersPage] No token found, showing error');
+        setLoading(false); 
+        setError('الرجاء تسجيل الدخول أولاً'); 
+        return; 
+      }
 
       const candidates = [API_ROUTES.orders.mine, ...(API_ROUTES.orders as any)._alts ?? []];
+      console.log('[OrdersPage] API candidates:', candidates);
       let lastErr: any = null;
       for (const url of candidates) {
+        console.log(`[OrdersPage] Trying URL: ${url}`);
         try {
           const res = await api.get<OrdersPageResponse>(url, { params: { limit: PAGE_LIMIT } });
+          console.log('[OrdersPage] Response received:', res.status, 'Data type:', typeof res.data, 'Is array:', Array.isArray(res.data));
           if (Array.isArray(res.data)) {
+            console.log('[OrdersPage] Array response, count:', res.data.length);
             setOrders(res.data || []); setNextCursor(null); setHasMore(false);
           } else {
             const items = res.data.items ?? [];
             const page: PageInfo = res.data.pageInfo ?? {};
+            console.log('[OrdersPage] Object response, items count:', items.length, 'hasMore:', page.hasMore);
             setOrders(items); setNextCursor(page.nextCursor ?? null); setHasMore(Boolean(page.hasMore));
           }
-          setLoading(false); return;
+          setLoading(false); 
+          console.log('[OrdersPage] Orders set successfully');
+          return;
         } catch (e: any) {
           lastErr = e;
           const status = e?.response?.status;
-          if (status === 401) { setError('انتهت الجلسة، الرجاء تسجيل الدخول مجددًا'); setLoading(false); return; }
+          console.error(`[OrdersPage] Error fetching from ${url}:`, status, e?.response?.data);
+          if (status === 401) { 
+            setError('انتهت الجلسة، الرجاء تسجيل الدخول مجددًا'); 
+            setLoading(false); 
+            return; 
+          }
           if (status !== 404) break;
         }
       }

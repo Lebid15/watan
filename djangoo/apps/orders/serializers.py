@@ -463,9 +463,10 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         try:
             from apps.providers.models import Integration
 
+            # Search across all tenants (cross-tenant support)
             name = (
                 Integration.objects
-                .filter(id=provider_id, tenant_id=getattr(obj, 'tenant_id', None))
+                .filter(id=provider_id)
                 .values_list('name', flat=True)
                 .first()
             )
@@ -639,6 +640,18 @@ class AdminOrderListItemSerializer(serializers.ModelSerializer):
         ):
             return 'internal_codes'
         elif obj.provider_id:
+            # ✅ FIX: Check if order was created with auto-routing or manually
+            # Look at the 'mode' field to determine the original dispatch method
+            mode = getattr(obj, 'mode', None)
+            
+            # If mode is explicitly MANUAL, it means:
+            # - Order was created without auto-routing
+            # - May have been manually forwarded later
+            # In this case, we should show 'manual' NOT 'external'
+            if mode == 'MANUAL':
+                return 'manual'
+            
+            # For auto-dispatched orders or chain forwards, show external
             return 'external'
         else:
             return 'manual'

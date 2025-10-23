@@ -165,12 +165,14 @@ class ExternalOrdersCreateView(ExternalAuthGuard):
                 pass
 
         # Minimal required fields — pull tenant from token, set defaults
+        # ✅ FIX: Set mode='MANUAL' for orders created via External API
+        # This indicates the order was received without auto-routing configured
         now = timezone.now()
         with connection.cursor() as c:
             c.execute(
                 """
-                INSERT INTO product_orders (id, "tenantId", status, quantity, "sellPriceCurrency", "sellPriceAmount", price, "createdAt", "externalStatus")
-                VALUES (gen_random_uuid(), %s, 'pending', 1, 'USD', 0, 0, %s, 'not_sent')
+                INSERT INTO product_orders (id, "tenantId", status, quantity, "sellPriceCurrency", "sellPriceAmount", price, "createdAt", "externalStatus", mode)
+                VALUES (gen_random_uuid(), %s, 'pending', 1, 'USD', 0, 0, %s, 'not_sent', 'MANUAL')
                 RETURNING id
                 """,
                 [str(t.tenant_id), now]

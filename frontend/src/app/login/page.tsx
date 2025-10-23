@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/utils/api';
 import TotpVerification from '@/components/TotpVerification';
@@ -15,6 +15,30 @@ type LoginPayload = {
   requiresTotp?: boolean;
 };
 
+const HOST_TENANT_OVERRIDES: Record<string, string> = {
+  'shamtech.localhost': 'fd0a6cce-f6e7-4c67-aa6c-a19fcac96536',
+  'alsham.localhost': '7d37f00a-22f3-4e61-88d7-2a97b79d86fb',
+};
+
+const normalizeHost = (value?: string | null): string | null => {
+  if (!value) return null;
+  const trimmed = String(value).trim().toLowerCase();
+  if (!trimmed) return null;
+  const withoutPort = trimmed.split(':')[0];
+  return withoutPort || null;
+};
+
+const readCookieValue = (name: string): string | null => {
+  if (typeof document === 'undefined') return null;
+  const pattern = `${name}=`;
+  return document.cookie
+    .split(';')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .find(chunk => chunk.startsWith(pattern))
+    ?.slice(pattern.length) || null;
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const [identifier, setIdentifier] = useState('');
@@ -24,6 +48,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [totpPhase, setTotpPhase] = useState<'none' | 'verify'>('none');
   const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const pendingTenantIdRef = useRef<string | null>(null);
   const { t, i18n: i18nextInstance } = useTranslation('common');
   const [namespaceReady, setNamespaceReady] = useState(false);
   const activeLocale = i18nextInstance.language || i18nextInstance.resolvedLanguage || 'ar';
@@ -134,6 +159,72 @@ export default function LoginPage() {
     try { router.push(nextDest || '/'); } catch { window.location.href = nextDest || '/'; }
   }, [router, t]);
 
+  const ensureTenantContext = useCallback(async (token: string, fallbackTenantId?: string | null) => {
+    if (!token) return null;
+    let resolvedTenantId: string | null = null;
+
+    const candidateHosts = new Set<string>();
+    try {
+      if (typeof window !== 'undefined') {
+        const host = normalizeHost(window.location.hostname);
+        if (host) candidateHosts.add(host);
+      }
+    } catch {}
+    const cookieHost = normalizeHost(readCookieValue('tenant_host'));
+    if (cookieHost) candidateHosts.add(cookieHost);
+
+    for (const host of candidateHosts) {
+      const override = host ? HOST_TENANT_OVERRIDES[host] : null;
+      if (override) {
+        resolvedTenantId = override;
+        break;
+      }
+    }
+
+    // أولاً حاول الحصول على المعرّف من /tenants/current لأنها تستخدم الـ host لحل التينانت الحالي
+    if (!resolvedTenantId) {
+      try {
+        const currentTenantRes = await api.get('/tenants/current', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const tenantIdFromCurrent = (currentTenantRes?.data as any)?.tenantId || (currentTenantRes?.data as any)?.tenant_id;
+        if (tenantIdFromCurrent) {
+          resolvedTenantId = String(tenantIdFromCurrent);
+        }
+      } catch (err) {
+        console.warn('Failed to resolve tenant via /tenants/current', err);
+      }
+    }
+
+    // إذا لم ننجح فاستخرج من ملف التعريف (قد يُرجع tenant المرتبط بالمستخدم)
+    if (!resolvedTenantId) {
+      try {
+        const profileRes = await api.get('/users/profile-with-currency', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = profileRes?.data ?? {};
+        resolvedTenantId =
+          payload?.tenant?.id ??
+          payload?.tenantId ??
+          payload?.tenant_id ??
+          payload?.user?.tenant?.id ??
+          payload?.user?.tenantId ??
+          payload?.user?.tenant_id ??
+          null;
+      } catch (err) {
+        console.warn('Failed to resolve tenant via profile endpoint', err);
+      }
+    }
+
+    const finalTenantId = (resolvedTenantId || fallbackTenantId || '').trim();
+    if (finalTenantId) {
+      try { localStorage.setItem('tenant_id', finalTenantId); } catch {}
+      try { document.cookie = `tenant_id=${finalTenantId}; Path=/; Max-Age=${60*60*24*7}`; } catch {}
+      return finalTenantId;
+    }
+    return null;
+  }, []);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); 
@@ -157,6 +248,8 @@ export default function LoginPage() {
       }
       
   const token = (res.data as any).token || (res.data as any).access_token;
+  const tenantIdFromResponse = (res.data as any)?.user?.tenantId || (res.data as any)?.user?.tenant_id || null;
+      pendingTenantIdRef.current = tenantIdFromResponse || null;
       
       if (!token) {
         throw new Error(t('login.error.tokenMissing'));
@@ -186,6 +279,12 @@ export default function LoginPage() {
         localStorage.setItem('token', token);
         document.cookie = `access_token=${token}; Path=/; Max-Age=${60*60*24*7}`;
       } catch {}
+      try {
+        await ensureTenantContext(token, tenantIdFromResponse);
+      } catch (err) {
+        console.warn('Unable to persist tenant context after login', err);
+      }
+      pendingTenantIdRef.current = null;
       finalizeNavigation(token);
       
     } catch (error) {
@@ -271,10 +370,18 @@ export default function LoginPage() {
       {totpPhase === 'verify' && (
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-5">
-            <TotpVerification
-              onSuccess={(finalTok) => {
+              <TotpVerification
+              onSuccess={async (finalTok) => {
                 // finalTok هنا هو رمز التحقق المدخل، نحتاج أخذ التوكن النهائي من localStorage بعد ترقية TotpVerification
                 const promoted = localStorage.getItem('token') || pendingToken || '';
+                if (promoted) {
+                  try {
+                    await ensureTenantContext(promoted, pendingTenantIdRef.current);
+                  } catch (err) {
+                    console.warn('Failed to ensure tenant after TOTP', err);
+                  }
+                }
+                pendingTenantIdRef.current = null;
                 setTotpPhase('none');
                 finalizeNavigation(promoted);
               }}

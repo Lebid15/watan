@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import json
 import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Iterable
 
 from django.conf import settings
 from django.db import transaction, connection
@@ -73,6 +73,45 @@ class CostSnapshot:
 
 LEGACY_QUANT = Decimal("0.01")
 DJANGO_QUANT = Decimal("0.000001")
+
+
+def _normalize_chain_path_value(raw_path: Any) -> list[str]:
+    """Normalize stored chain_path value into a list of order ID strings."""
+    if not raw_path:
+        return []
+
+    if isinstance(raw_path, list):
+        return [str(item) for item in raw_path if item]
+
+    if isinstance(raw_path, str):
+        cleaned = raw_path.strip()
+        if not cleaned:
+            return []
+
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed if item]
+        except json.JSONDecodeError:
+            pass
+
+        if cleaned.startswith('[') and cleaned.endswith(']'):
+            cleaned = cleaned[1:-1]
+
+        items: list[str] = []
+        for piece in cleaned.split(','):
+            piece = piece.strip().strip("'\"")
+            if piece:
+                items.append(piece)
+        return items
+
+    return []
+
+
+def _serialize_chain_path(order_ids: Iterable[str]) -> Optional[str]:
+    """Serialize chain path IDs into JSON suitable for storage."""
+    items = [str(item) for item in order_ids if item]
+    return json.dumps(items) if items else None
 
 
 def _usd_enforcement_enabled() -> bool:
@@ -840,10 +879,20 @@ def _apply_chain_updates(
         target.external_status = child_external_status
         updated_fields.append("external_status")
 
-    child_provider_id = getattr(source, "provider_id", None)
-    if propagate_provider_details and child_provider_id and getattr(target, "provider_id", None) != child_provider_id:
-        target.provider_id = child_provider_id
-        updated_fields.append("provider_id")
+    # 🔒 FIX: Do NOT propagate provider_id from child to parent!
+    # The API column should show the FIRST provider the order was routed to,
+    # not the final downstream provider. When halil creates an order and it's
+    # forwarded to diana (internal), then diana forwards to alayaZnet (external),
+    # the API column should show "diana", not "alayaZnet".
+    # 
+    # Propagating provider_id was causing the API column to change after a few seconds
+    # when check_order_status task runs and propagates status from child orders.
+    #
+    # REMOVED:
+    # child_provider_id = getattr(source, "provider_id", None)
+    # if propagate_provider_details and child_provider_id and getattr(target, "provider_id", None) != child_provider_id:
+    #     target.provider_id = child_provider_id
+    #     updated_fields.append("provider_id")
 
     child_completed_at = getattr(source, "completed_at", None)
     if propagate_status and child_completed_at and getattr(target, "completed_at", None) != child_completed_at:
@@ -988,6 +1037,7 @@ def _create_chain_forward_order(
     target_tenant_id: str,
     target_package_id: str,
     target_user_id: str,
+    target_product_id: Optional[str] = None,
 ) -> Optional[ProductOrder]:
     """
     إنشاء طلب جديد في المستأجر التالي للتوجيه متعدد المراحل.
@@ -1008,28 +1058,59 @@ def _create_chain_forward_order(
         print(f"   Target Package: {target_package_id}")
         print(f"   Target User: {target_user_id}")
         
+        # بناء chain_path للطلب الجديد
+        chain_path_ids = _normalize_chain_path_value(source_order.chain_path)
+        
         # إنشاء الطلب الجديد
+        # تحديث chain_path لإضافة الطلب الحالي
+        new_chain_path = chain_path_ids + [str(source_order.id)]
+        
+        # تحديد بيانات الباقة والمنتج في المستأجر الهدف
+        from apps.products.models import ProductPackage
+
+        try:
+            tenant_uuid = uuid.UUID(str(target_tenant_id))
+            package_uuid = uuid.UUID(str(target_package_id))
+            user_uuid = uuid.UUID(str(target_user_id))
+        except (ValueError, TypeError) as exc:
+            print(f"   [ERROR] Invalid UUID for tenant/package/user: {exc}")
+            return None
+
+        package_row = ProductPackage.objects.filter(id=package_uuid, tenant_id=tenant_uuid).first()
+        if not package_row:
+            print("   [ERROR] Target package not found in tenant; aborting chain forward")
+            return None
+
+        resolved_product_id = target_product_id or str(package_row.product_id)
+        try:
+            product_uuid = uuid.UUID(str(resolved_product_id))
+        except (ValueError, TypeError) as exc:
+            print(f"   [ERROR] Invalid target product UUID: {exc}")
+            return None
+
+        # استخدم نفس user_identifier/extra_field من الطلب الأصلي للحفاظ على بيانات اللاعب
+        target_user_identifier = (source_order.user_identifier or source_order.extra_field or '').strip() or None
+        
         new_order = ProductOrder.objects.create(
             id=uuid.uuid4(),
-            tenant_id=target_tenant_id,
-            user_id=target_user_id,
-            product_id=source_order.product_id,  # نفس المنتج
-            package_id=target_package_id,  # الباقة في المستأجر الجديد
+            tenant_id=tenant_uuid,
+            user_id=user_uuid,
+            product_id=product_uuid,
+            package_id=package_uuid,
             quantity=source_order.quantity,
             status='pending',
             price=source_order.price,  # نفس السعر
             sell_price_currency=source_order.sell_price_currency,
             sell_price_amount=source_order.sell_price_amount,
             created_at=timezone.now(),
-            user_identifier=source_order.user_identifier,
+            user_identifier=target_user_identifier,
             extra_field=source_order.extra_field,
-            notes=[],
-            notes_count=0,
+            notes={},  # Empty JSON object, not array
             # إعدادات التوجيه متعدد المراحل
             root_order_id=source_order.root_order_id or source_order.id,
             mode='CHAIN_FORWARD',
             external_order_id=f"stub-{source_order.id}",  # علامة التوجيه
-            chain_path=source_order.chain_path or [str(source_order.id)],
+            chain_path=_serialize_chain_path(new_chain_path),  # السلسلة المحدثة
         )
         
         print(f"   [OK] Chain forward order created: {new_order.id}")
@@ -1045,8 +1126,8 @@ def _create_chain_forward_order(
             "Failed to create chain forward order",
             extra={
                 "source_order_id": str(source_order.id),
-                "target_tenant_id": target_tenant_id,
-                "target_package_id": target_package_id,
+                "target_tenant_id": str(target_tenant_id),
+                "target_package_id": str(target_package_id),
                 "error": str(exc)
             }
         )
@@ -1056,7 +1137,7 @@ def _create_chain_forward_order(
 def _determine_next_tenant_in_chain(
     current_tenant_id: str,
     package_id: str,
-) -> Optional[tuple[str, str, str]]:
+) -> Optional[tuple[str, str, str, Optional[str]]]:
     """
     تحديد المستأجر التالي في السلسلة بناءً على إعدادات التوجيه.
     
@@ -1065,22 +1146,21 @@ def _determine_next_tenant_in_chain(
         package_id: معرّف الباقة
         
     Returns:
-        tuple (target_tenant_id, target_package_id, target_user_id) أو None
+        tuple (target_tenant_id, target_package_id, target_user_id, target_product_id) أو None
     """
     try:
         print(f"\n[SEARCH] Determining next tenant in chain...")
         print(f"   Current Tenant: {current_tenant_id}")
         print(f"   Package ID: {package_id}")
         
-        # خريطة التوجيه الثابتة (معطلة حالياً - يتم التوجيه المباشر إلى المزود بدلاً من ذلك)
-        # DISABLED: Chain forwarding is now handled differently for manual routing
+        # ✅ ENABLED: Chain forwarding mapping for multi-tenant routing
         chain_mapping = {
-            # Al-Sham → ShamTech (Diana) - DISABLED
-            # "7d37f00a-22f3-4e61-88d7-2a97b79d86fb": {  # Al-Sham tenant ID
-            #     "target_tenant": "7d677574-21be-45f7-b520-22e0fe36b860",  # ShamTech tenant ID
-            #     "target_package": "same",  # نفس الباقة
-            #     "target_user": "7a73edd8-183f-4fbd-a07b-6863b3f6b842",  # مستخدم موجود
-            # },
+            # Al-Sham → ShamTech (Diana) - ENABLED
+            "7d37f00a-22f3-4e61-88d7-2a97b79d86fb": {  # Al-Sham tenant ID
+                "target_tenant": "fd0a6cce-f6e7-4c67-aa6c-a19fcac96536",  # ShamTech tenant ID
+                "target_package": "same",  # نفس الباقة
+                "target_user": "auto",  # سيتم البحث تلقائياً عن مستخدم في tenant الهدف
+            },
             # يمكن إضافة المزيد من التوجيهات هنا
         }
         
@@ -1088,15 +1168,94 @@ def _determine_next_tenant_in_chain(
         if current_tenant_id in chain_mapping:
             config = chain_mapping[current_tenant_id]
             target_tenant_id = config["target_tenant"]
-            target_package_id = package_id if config["target_package"] == "same" else config["target_package"]
-            target_user_id = config["target_user"]
+
+            from apps.products.models import ProductPackage
+
+            # Resolve source package/public_code for mapping
+            source_pkg = ProductPackage.objects.filter(
+                id=package_id,
+                tenant_id=current_tenant_id,
+            ).first()
+            if not source_pkg:
+                print("   [ERROR] Source package not found for mapping; skipping chain forward")
+                return None
+
+            target_package_id: Optional[str]
+            resolved_product_id: Optional[str] = None
+
+            if config["target_package"] == "same":
+                search_filters = {
+                    "tenant_id": target_tenant_id,
+                }
+
+                if source_pkg.public_code is not None:
+                    search_filters["public_code"] = source_pkg.public_code
+                    print(f"   [INFO] Matching target package by publicCode={source_pkg.public_code}")
+                else:
+                    print("   [INFO] Source package missing publicCode; falling back to name match")
+                    search_filters["name"] = source_pkg.name
+
+                target_pkg = ProductPackage.objects.filter(**search_filters).order_by('-is_active').first()
+                if not target_pkg and source_pkg.name:
+                    target_pkg = ProductPackage.objects.filter(
+                        tenant_id=target_tenant_id,
+                        name=source_pkg.name,
+                    ).first()
+
+                if not target_pkg:
+                    print("   [ERROR] Could not match target package in tenant; skipping chain forward")
+                    return None
+
+                target_package_id = str(target_pkg.id)
+                resolved_product_id = str(target_pkg.product_id)
+            else:
+                target_package_id = config["target_package"]
+                pkg_row = ProductPackage.objects.filter(
+                    id=target_package_id,
+                    tenant_id=target_tenant_id,
+                ).first()
+                if pkg_row:
+                    resolved_product_id = str(pkg_row.product_id)
+                else:
+                    print("   [WARNING] Target package configured but not found in tenant")
+            
+            # إذا كان target_user = "auto"، نبحث عن أول مستخدم نشط في tenant الهدف
+            if config["target_user"] == "auto":
+                try:
+                    # نبحث عن diana_shamtech تحديداً في شام تيك
+                    shamtech_tenant_id = 'fd0a6cce-f6e7-4c67-aa6c-a19fcac96536'
+                    if str(target_tenant_id) == shamtech_tenant_id:
+                        # للشام تيك، جرّب مستخدم diana_shamtech ثم diana وأخيراً أي مستخدم متاح
+                        legacy_user = (
+                            LegacyUser.objects.filter(tenant_id=target_tenant_id, username='diana_shamtech').first()
+                            or LegacyUser.objects.filter(tenant_id=target_tenant_id, username='diana').first()
+                            or LegacyUser.objects.filter(tenant_id=target_tenant_id).first()
+                        )
+                    else:
+                        # لباقي المستأجرين، خذ أول مستخدم
+                        legacy_user = LegacyUser.objects.filter(
+                            tenant_id=target_tenant_id
+                        ).first()
+                    
+                    if legacy_user:
+                        target_user_id = str(legacy_user.id)  # UUID كـ string
+                        print(f"   [AUTO] Found target user UUID: {target_user_id} (username: {legacy_user.username})")
+                    else:
+                        print(f"   [ERROR] No user found in target tenant!")
+                        return None
+                            
+                except Exception as e:
+                    print(f"   [ERROR] Failed to find target user: {e}")
+                    return None
+            else:
+                target_user_id = config["target_user"]
             
             print(f"   [OK] Found chain mapping:")
             print(f"   - Target Tenant: {target_tenant_id}")
             print(f"   - Target Package: {target_package_id}")
             print(f"   - Target User: {target_user_id}")
             
-            return (target_tenant_id, target_package_id, target_user_id)
+            return (target_tenant_id, target_package_id, target_user_id, resolved_product_id)
         
         print(f"   [WARNING] No chain mapping found for tenant: {current_tenant_id}")
         return None
@@ -1157,10 +1316,14 @@ def _propagate_forward_completion(child_order: ProductOrder, manual_note: Option
             source_order.status = "approved"
             updated_fields.append("status")
 
-        child_provider_id = getattr(child_order, "provider_id", None)
-        if child_provider_id and source_order.provider_id != child_provider_id:
-            source_order.provider_id = child_provider_id
-            updated_fields.append("provider_id")
+        # 🔒 FIX: Do NOT propagate provider_id from child to source!
+        # Same reason as in _apply_chain_updates - the API column should show
+        # the first provider the order was routed to, not the final provider.
+        # REMOVED:
+        # child_provider_id = getattr(child_order, "provider_id", None)
+        # if child_provider_id and source_order.provider_id != child_provider_id:
+        #     source_order.provider_id = child_provider_id
+        #     updated_fields.append("provider_id")
 
         child_external_status = getattr(child_order, "external_status", None)
         if child_external_status and source_order.external_status != child_external_status:
@@ -1797,7 +1960,6 @@ def freeze_fx_on_approval(order_id: str) -> None:
                     currency_row = Currency.objects.filter(
                         code=cost_currency.upper(),
                         tenant_id=tenant_id,
-                        is_active=True
                     ).first()
                     
                     if currency_row and currency_row.rate and Decimal(str(currency_row.rate)) > 0:
@@ -2035,10 +2197,21 @@ def try_auto_dispatch_async(order_id: str, tenant_id: Optional[str] = None) -> d
         
         # 2. فحص سريع: هل التوجيه مفعّل؟
         try:
-            routing = PackageRouting.objects.get(
+            # ✅ FIX: Prefer external routing when multiple exist
+            routing = PackageRouting.objects.filter(
                 package_id=order.package_id,
-                tenant_id=order.tenant_id
-            )
+                tenant_id=order.tenant_id,
+                provider_type='external'
+            ).first()
+            
+            if not routing:
+                routing = PackageRouting.objects.filter(
+                    package_id=order.package_id,
+                    tenant_id=order.tenant_id
+                ).first()
+            
+            if not routing:
+                raise PackageRouting.DoesNotExist("No routing found")
         except PackageRouting.DoesNotExist:
             print(f"   [SKIP] No routing config, skipping")
             
@@ -2268,7 +2441,7 @@ def try_auto_dispatch(
     is_stub_forward = order.external_order_id and order.external_order_id.startswith('stub-')
     
     # الشرط الأساسي: إذا كان provider_id موجود والطلب تم إرساله فعلياً
-    if not is_stub_forward and order.provider_id and order.status != 'pending':
+    if not is_stub_forward and order.provider_id and order.status.upper() != 'PENDING':
         print(f"   [WARNING] Order already dispatched or not pending - SKIPPING")
         print(f"   - Status: {order.status}")
         print(f"   - Provider ID: {order.provider_id}")
@@ -2308,14 +2481,67 @@ def try_auto_dispatch(
     print(f"   - Package ID: {order.package_id}")
     print(f"   - Tenant ID: {effective_tenant_id}")
     try:
-        routing = PackageRouting.objects.get(
+        # ✅ ENHANCED FIX: Smart routing selection with priority and validation
+        # Priority 1: External providers (highest priority)
+        routing = PackageRouting.objects.filter(
             package_id=order.package_id,
-            tenant_id=effective_tenant_id
-        )
+            tenant_id=effective_tenant_id,
+            provider_type='external',
+        ).first()
+        
+        # Priority 2: Internal codes providers
+        if not routing:
+            routing = PackageRouting.objects.filter(
+                package_id=order.package_id,
+                tenant_id=effective_tenant_id,
+                provider_type__in=['codes', 'internal_codes'],
+            ).first()
+        
+        # Priority 3: Any active routing
+        if not routing:
+            routing = PackageRouting.objects.filter(
+                package_id=order.package_id,
+                tenant_id=effective_tenant_id,
+            ).first()
+        
+        # Priority 4: Any routing (including inactive)
+        if not routing:
+            routing = PackageRouting.objects.filter(
+                package_id=order.package_id,
+                tenant_id=effective_tenant_id
+            ).first()
+        
+        if not routing:
+            raise PackageRouting.DoesNotExist("No routing found")
+            
         print(f"   [OK] PackageRouting found!")
         print(f"   - Mode: {routing.mode}")
         print(f"   - Provider Type: {routing.provider_type}")
         print(f"   - Primary Provider ID: {routing.primary_provider_id}")
+        
+        # ✅ ENHANCED: Validate routing configuration before proceeding
+        validation_errors = []
+        
+        # Check for routing conflicts
+        if routing.mode == 'auto' and routing.provider_type == 'manual':
+            validation_errors.append("Auto mode cannot be used with manual provider type")
+        
+        if routing.mode == 'auto' and routing.provider_type == 'external' and not routing.primary_provider_id:
+            validation_errors.append("Auto external routing requires primary provider")
+        
+        if routing.mode == 'auto' and routing.provider_type in ('codes', 'internal_codes') and not routing.code_group_id:
+            validation_errors.append("Auto codes routing requires code group")
+        
+        if validation_errors:
+            print(f"   [WARNING] Routing validation issues: {validation_errors}")
+            logger.warning(
+                "Routing configuration has validation issues",
+                extra={
+                    "order_id": order_id,
+                    "routing_id": str(routing.id),
+                    "errors": validation_errors
+                }
+            )
     except PackageRouting.DoesNotExist:
         print(f"   [ERROR] No PackageRouting configured - SKIPPING")
         logger.debug("Auto-dispatch: No routing configured", extra={
@@ -2436,7 +2662,7 @@ def try_auto_dispatch(
     )
     
     if chain_info:
-        target_tenant_id, target_package_id, target_user_id = chain_info
+        target_tenant_id, target_package_id, target_user_id, target_product_id = chain_info
         print(f"   [REFRESH] Chain forwarding detected!")
         print(f"   - Target Tenant: {target_tenant_id}")
         print(f"   - Target Package: {target_package_id}")
@@ -2447,7 +2673,8 @@ def try_auto_dispatch(
             source_order=order,
             target_tenant_id=target_tenant_id,
             target_package_id=target_package_id,
-            target_user_id=target_user_id
+            target_user_id=target_user_id,
+            target_product_id=target_product_id,
         )
         
         if new_order:
@@ -2458,28 +2685,25 @@ def try_auto_dispatch(
             
             # تحديث الطلب الأصلي ليعكس التوجيه
             order.external_order_id = f"stub-{new_order.id}"
-            order.provider_id = "CHAIN_FORWARD"
+            # Set provider_id to the routing integration for UI display
+            if not order.provider_id and routing and routing.primary_provider_id:
+                order.provider_id = routing.primary_provider_id
             order.external_status = "forwarded"
             order.provider_message = f"Forwarded to tenant {target_tenant_id}"
             order.last_message = f"Chain forwarded to {target_tenant_id}"
             order.mode = "CHAIN_FORWARD"
             
             # تحديث chain_path
-            import json
-            if order.chain_path:
-                try:
-                    current_path = json.loads(order.chain_path) if isinstance(order.chain_path, str) else order.chain_path
-                except (json.JSONDecodeError, TypeError):
-                    current_path = [str(order.id)]
-            else:
+            current_path = _normalize_chain_path_value(order.chain_path)
+            if not current_path:
                 current_path = [str(order.id)]
             
             if str(new_order.id) not in current_path:
                 current_path.append(str(new_order.id))
-            order.chain_path = json.dumps(current_path)
+            order.chain_path = _serialize_chain_path(current_path)
             
             order.save(update_fields=[
-                'external_order_id', 'provider_id', 'external_status', 
+                'external_order_id', 'external_status', 'provider_id',
                 'provider_message', 'last_message', 'mode', 'chain_path'
             ])
             
@@ -2740,15 +2964,35 @@ def try_auto_dispatch(
         if fallback_already_marked:
             print(f"   [WARNING] Fallback already attempted previously (marker present) - will not auto-reroute again")
     
-    # 5. جلب معلومات الـ mapping
+    # 5. Load Integration first (cross-tenant support)
+    print(f"\n[PLUG] Step 5.5: Loading Integration details (cross-tenant)...")
+    print(f"   - Provider ID: {provider_id}")
+    try:
+        # Search Integration WITHOUT tenant filter (cross-tenant support)
+        integration = Integration.objects.get(id=provider_id)
+        print(f"   [OK] Integration found!")
+        print(f"   - Name: {integration.name}")
+        print(f"   - Provider: {integration.provider}")
+        print(f"   - Tenant ID: {integration.tenant_id}")
+    except Integration.DoesNotExist:
+        print(f"   [ERROR] Integration not found - CANNOT DISPATCH!")
+        logger.warning("Auto-dispatch: Integration not found", extra={
+            "order_id": order_id,
+            "provider_id": provider_id
+        })
+        return
+    
+    # 6. Load PackageMapping using Integration's tenant_id
     print(f"\n[CHAIN] Step 6: Loading PackageMapping...")
     print(f"   - Our Package ID: {order.package_id}")
     print(f"   - Provider ID: {provider_id}")
+    print(f"   - Integration Tenant ID: {integration.tenant_id}")
     try:
+        # Use Integration's tenant_id (not order's tenant_id)
         mapping = PackageMapping.objects.get(
             our_package_id=order.package_id,
             provider_api_id=provider_id,
-            tenant_id=effective_tenant_id
+            tenant_id=integration.tenant_id  # ✅ Use Integration's tenant!
         )
         print(f"   [OK] PackageMapping found!")
         print(f"   - Provider Package ID: {mapping.provider_package_id}")
@@ -2757,28 +3001,12 @@ def try_auto_dispatch(
         logger.warning("Auto-dispatch: No mapping found", extra={
             "order_id": order_id,
             "package_id": str(order.package_id),
-            "provider_id": provider_id
+            "provider_id": provider_id,
+            "integration_tenant_id": str(integration.tenant_id)
         })
         return
     
     provider_package_id = mapping.provider_package_id
-    
-    # 6. جلب معلومات Integration للمزود
-    print(f"\n[PLUG] Step 7: Loading Integration details...")
-    try:
-        integration = Integration.objects.get(id=provider_id, tenant_id=effective_tenant_id)
-        print(f"   [OK] Integration found!")
-        print(f"   - Provider: {integration.provider}")
-        print(f"   - Base URL: {integration.base_url}")
-        print(f"   - Has kod: {bool(getattr(integration, 'kod', None))}")
-        print(f"   - Has sifre: {bool(getattr(integration, 'sifre', None))}")
-    except Integration.DoesNotExist:
-        print(f"   [ERROR] Integration not found - CANNOT DISPATCH!")
-        logger.warning("Auto-dispatch: Integration not found", extra={
-            "order_id": order_id,
-            "provider_id": provider_id
-        })
-        return
     
     # 7. إعداد الـ adapter والـ credentials
     print(f"\n[KEY] Step 8: Resolving adapter credentials...")
@@ -3248,7 +3476,6 @@ def try_auto_dispatch(
                         currency_row = Currency.objects.filter(
                             code=final_cost_currency,
                             tenant_id=effective_tenant_id,
-                            is_active=True
                         ).first()
 
                         if currency_row and currency_row.rate:
@@ -3295,7 +3522,6 @@ def try_auto_dispatch(
                             currency_row = Currency.objects.filter(
                                 code=final_cost_currency,
                                 tenant_id=effective_tenant_id,
-                                is_active=True
                             ).first()
 
                             if currency_row and currency_row.rate and Decimal(str(currency_row.rate)) > 0:
@@ -3362,7 +3588,6 @@ def try_auto_dispatch(
                 currency_try = Currency.objects.filter(
                     tenant_id=effective_tenant_id,
                     code__iexact='TRY',
-                    is_active=True
                 ).first()
                 if currency_try and currency_try.rate:
                     fx_usd_try = Decimal(str(currency_try.rate))

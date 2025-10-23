@@ -397,13 +397,15 @@ class ZnetAdapter:
             status = 'failed'
         
         # Return original_order_id for tracking in our system
+        # ✅ FIX: Always include costCurrency for Znet since all costs are in TRY
         return { 
             'externalOrderId': original_order_id,  # Use original UUID for tracking
             'providerReferans': referans,  # Store provider's numeric referans
             'status': status, 
             'note': note, 
             'balance': balance, 
-            'cost': cost 
+            'cost': cost,
+            'costCurrency': 'TRY'  # Znet always returns costs in TRY
         }
 
     def fetch_status(self, creds: ZnetCredentials, referans: str):

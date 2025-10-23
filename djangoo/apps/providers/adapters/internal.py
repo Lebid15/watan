@@ -301,7 +301,7 @@ class InternalAdapter:
             data = response.json()
             
             logger.info(f'   ✅ Parsed Response: {data}')
-            
+
             # Client API returns: {orderId, status, pin, message, ...}
             order_id = data.get('orderId') or data.get('id')
             status = str(data.get('status', 'pending') or 'pending')
