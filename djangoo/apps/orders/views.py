@@ -49,6 +49,7 @@ from .services import (
     LegacyUserMissingError,
     OverdraftExceededError,
     _append_system_note,
+    try_auto_dispatch_async,
 )
 
 logger = logging.getLogger(__name__)
@@ -1344,3 +1345,194 @@ class AdminOrdersBulkDispatchView(_AdminOrdersBulkBaseView):
             results.append({ 'id': oid, 'success': True })
         ok_count = len([r for r in results if r.get('success')])
         return Response({ 'ok': True, 'count': ok_count, 'results': results })
+
+
+class InternalDispatchView(APIView):
+    """
+    Internal tenant dispatch endpoint for receiving orders from other tenants.
+    
+    This endpoint is used when tenant A (alsham) forwards an order to tenant B (shamtech).
+    The sender tenant creates an API user (like diana) in the receiver tenant, generates
+    a token, and uses this endpoint to create orders.
+    
+    Authentication: Bearer token from API user in receiver tenant
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        tags=["Orders - Internal"],
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'parent_order_id': {'type': 'string', 'format': 'uuid', 'description': 'Source order ID from sender tenant'},
+                    'package_mapping_id': {'type': 'string', 'format': 'uuid', 'description': 'Package mapping ID'},
+                    'package_id': {'type': 'string', 'format': 'uuid', 'description': 'Package ID in receiver tenant'},
+                    'product_id': {'type': 'string', 'format': 'uuid', 'description': 'Product ID in receiver tenant'},
+                    'user_identifier': {'type': 'string', 'description': 'Game user identifier'},
+                    'extra_field': {'type': 'string', 'description': 'Extra field (optional)'},
+                    'quantity': {'type': 'integer', 'description': 'Order quantity'},
+                    'sell_price': {'type': 'number', 'description': 'Sell price in USD'},
+                },
+                'required': ['parent_order_id', 'package_id', 'product_id', 'user_identifier', 'quantity']
+            }
+        },
+        responses={
+            201: {
+                'type': 'object',
+                'properties': {
+                    'order_id': {'type': 'string', 'format': 'uuid'},
+                    'status': {'type': 'string'},
+                    'accepted_at': {'type': 'string', 'format': 'date-time'},
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Authentication required'},
+            404: {'description': 'Package or product not found'},
+        }
+    )
+    def post(self, request):
+        """
+        Create an order in the receiver tenant from an internal dispatch.
+        """
+        logger.info(f"[InternalDispatch] Request from user: {request.user}")
+        
+        # Resolve tenant ID for receiver
+        tenant_id = _resolve_tenant_id(request)
+        if not tenant_id:
+            logger.error("[InternalDispatch] TENANT_ID_REQUIRED")
+            raise ValidationError('TENANT_ID_REQUIRED')
+        
+        try:
+            tenant_uuid = uuid.UUID(str(tenant_id))
+        except (ValueError, TypeError):
+            logger.error(f"[InternalDispatch] TENANT_ID_INVALID: {tenant_id}")
+            raise ValidationError('TENANT_ID_INVALID')
+        
+        parent_order_id = request.data.get('parent_order_id')
+        package_id = request.data.get('package_id')
+        product_id = request.data.get('product_id')
+        user_identifier = request.data.get('user_identifier')
+        extra_field = request.data.get('extraField') or request.data.get('extra_field')
+        quantity = request.data.get('quantity', 1)
+        sell_price = request.data.get('sell_price')
+        
+        if not parent_order_id:
+            raise ValidationError({'parent_order_id': 'This field is required'})
+        if not package_id:
+            raise ValidationError({'package_id': 'This field is required'})
+        if not product_id:
+            raise ValidationError({'product_id': 'This field is required'})
+        if not user_identifier:
+            raise ValidationError({'user_identifier': 'This field is required'})
+        
+        try:
+            quantity = int(quantity)
+            if quantity <= 0:
+                raise ValueError()
+        except (TypeError, ValueError):
+            raise ValidationError({'quantity': 'Must be a positive integer'})
+        
+        logger.info(f"[InternalDispatch] Creating order in tenant {tenant_uuid}")
+        logger.info(f"[InternalDispatch] parent_order_id={parent_order_id}, package_id={package_id}, product_id={product_id}")
+        
+        with transaction.atomic():
+            # Resolve legacy user for the API user (diana)
+            legacy_user = _resolve_legacy_user_for_request(request, request.user, tenant_uuid, required=True)
+            if legacy_user is None:
+                logger.error(f"[InternalDispatch] Legacy user not found for {request.user}")
+                raise NotFound('API user not found in receiver tenant')
+            
+            logger.info(f"[InternalDispatch] Resolved legacy user: {legacy_user.username}")
+            
+            product = TenantProduct.objects.filter(id=product_id, tenant_id=tenant_uuid).first()
+            if not product:
+                logger.error(f"[InternalDispatch] Product not found: {product_id}")
+                raise NotFound('Product not found in receiver tenant')
+            
+            package = TenantProductPackage.objects.filter(id=package_id, tenant_id=tenant_uuid).first()
+            if not package:
+                logger.error(f"[InternalDispatch] Package not found: {package_id}")
+                raise NotFound('Package not found in receiver tenant')
+            
+            if str(package.product_id) != str(product.id):
+                logger.error(f"[InternalDispatch] Package {package_id} does not belong to product {product_id}")
+                raise ValidationError('Package does not belong to specified product')
+            
+            price_group_id = _resolve_price_group_id(django_user=request.user, legacy_user=legacy_user)
+            unit_price_usd = _get_effective_package_price_usd(package, tenant_uuid, price_group_id)
+            
+            if unit_price_usd <= 0:
+                logger.error(f"[InternalDispatch] Price not available for package {package_id}")
+                raise ValidationError('Price not available for this package')
+            
+            price_quant = Decimal('0.0001')
+            try:
+                unit_price_usd = unit_price_usd.quantize(price_quant, ROUND_HALF_UP)
+            except (InvalidOperation, AttributeError):
+                unit_price_usd = Decimal('0')
+            
+            if unit_price_usd <= 0:
+                raise ValidationError('Price not available for this package')
+            
+            quantity_dec = Decimal(quantity)
+            total_usd = (unit_price_usd * quantity_dec).quantize(price_quant, ROUND_HALF_UP)
+            
+            # Resolve currency for the API user
+            currency_code, currency_rate = _resolve_currency_for_user(tenant_uuid, legacy_user)
+            total_user = (total_usd * currency_rate).quantize(Decimal('0.01'), ROUND_HALF_UP)
+            
+            legacy_user_locked = LegacyUser.objects.select_for_update().get(id=legacy_user.id, tenant_id=tenant_uuid)
+            available_balance = Decimal(legacy_user_locked.balance or 0) + Decimal(legacy_user_locked.overdraft_limit or 0)
+            
+            if total_user > available_balance:
+                logger.error(f"[InternalDispatch] Insufficient balance: required={total_user}, available={available_balance}")
+                raise ValidationError('Insufficient balance in receiver tenant')
+            
+            new_balance = Decimal(legacy_user_locked.balance or 0) - total_user
+            legacy_user_locked.balance = new_balance
+            legacy_user_locked.save(update_fields=['balance'])
+            
+            logger.info(f"[InternalDispatch] Deducted {total_user} from user balance, new balance: {new_balance}")
+            
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COALESCE(MAX(\"orderNo\"), 0) + 1 FROM product_orders WHERE \"tenantId\" = %s",
+                    [str(tenant_uuid)]
+                )
+                next_order_no = cursor.fetchone()[0]
+            
+            order = ProductOrder(
+                id=uuid.uuid4(),
+                tenant_id=tenant_uuid,
+                order_no=next_order_no,
+                user_id=legacy_user.id,
+                product_id=product.id,
+                package_id=package.id,
+                quantity=quantity,
+                user_identifier=user_identifier,
+                extra_field=extra_field,
+                status='pending',
+                sell_price_currency='USD',
+                sell_price_amount=total_usd,
+                price=total_usd,
+                created_at=timezone.now(),
+                mode='AUTO',  # Internal orders are auto-dispatched
+                root_order_id=parent_order_id,  # Link to source order
+                chain_path=f'["{parent_order_id}"]',  # Track chain
+            )
+            order.save()
+            
+            logger.info(f"[InternalDispatch] Order created: {order.id}, order_no: {order.order_no}")
+            
+            try:
+                result = try_auto_dispatch_async(str(order.id), str(tenant_uuid))
+                logger.info(f"[InternalDispatch] Auto-dispatch triggered: {result}")
+            except Exception as exc:
+                logger.warning(f"[InternalDispatch] Failed to trigger auto-dispatch: {exc}")
+            
+            return Response({
+                'order_id': str(order.id),
+                'status': order.status,
+                'accepted_at': order.created_at.isoformat(),
+            }, status=201)

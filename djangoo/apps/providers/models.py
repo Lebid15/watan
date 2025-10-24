@@ -91,6 +91,7 @@ class PackageRouting(models.Model):
         choices=[
             ('manual', 'يدوي'),
             ('external', 'خارجي'),
+            ('internal', 'مستأجر داخلي'),
             ('internal_codes', 'أكواد داخلية'),
             ('codes', 'أكواد'),  # للتوافق مع الإصدارات القديمة
         ],
@@ -120,6 +121,21 @@ class PackageRouting(models.Model):
         blank=True,
         db_column='codeGroupId',
         help_text='معرف مجموعة الأكواد للمزود الداخلي'
+    )
+    
+    # إعدادات المستأجر الداخلي
+    internal_tenant_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_column='internalTenantId',
+        help_text='معرف المستأجر الداخلي للتوجيه بين المستأجرين'
+    )
+    
+    internal_api_user_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_column='internalApiUserId',
+        help_text='معرف مستخدم API في المستأجر الداخلي (مثل diana)'
     )
     
     # حقول إضافية للتحسين

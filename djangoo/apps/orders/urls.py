@@ -9,6 +9,7 @@ from .views import (
     AdminOrderSyncExternalView,
     AdminOrderRefreshStatusView,
     AdminOrderAuditLogView,
+    InternalDispatchView,
 )
 
 urlpatterns = [
@@ -18,6 +19,8 @@ urlpatterns = [
     path('orders/', OrdersCreateView.as_view(), name='orders-create-slash'),
     path('orders/<uuid:id>', MyOrderDetailsView.as_view(), name='orders-details'),
     path('orders/<uuid:id>/', MyOrderDetailsView.as_view(), name='orders-details-slash'),
+    path('orders/internal/dispatch', InternalDispatchView.as_view(), name='orders-internal-dispatch'),
+    path('orders/internal/dispatch/', InternalDispatchView.as_view(), name='orders-internal-dispatch-slash'),
 ]
 
 # Admin routes are included at root include with prefix 'admin/' in config urls

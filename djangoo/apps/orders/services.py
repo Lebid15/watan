@@ -2643,8 +2643,8 @@ def try_auto_dispatch(
         return
     print(f"   [OK] Mode is 'auto'")
     
-    if routing_provider_type not in ('external', 'codes', 'internal_codes'):
-        print(f"   [WARNING] Provider type is '{routing.provider_type}' (not 'external' or 'codes') - SKIPPING")
+    if routing_provider_type not in ('external', 'codes', 'internal_codes', 'internal'):
+        print(f"   [WARNING] Provider type is '{routing.provider_type}' (not 'external', 'codes', or 'internal') - SKIPPING")
         logger.debug("Auto-dispatch: Provider type not supported", extra={
             "order_id": order_id,
             "provider_type": routing.provider_type
@@ -2752,6 +2752,294 @@ def try_auto_dispatch(
             return
     else:
         print(f"   [SKIP] No chain forwarding configured for this tenant")
+
+    if routing_provider_type == 'internal':
+        print(f"\n[LINK] Step 5.6: Processing INTERNAL provider (tenant-to-tenant)...")
+        
+        internal_tenant_id = getattr(routing, 'internal_tenant_id', None)
+        internal_api_user_id = getattr(routing, 'internal_api_user_id', None)
+        
+        if not internal_tenant_id:
+            print(f"   [ERROR] No internal_tenant_id configured - CANNOT DISPATCH!")
+            logger.error("Auto-dispatch: No internal tenant ID configured", extra={
+                "order_id": order_id,
+                "routing_id": str(routing.id)
+            })
+            # Fallback to manual
+            order.status = 'pending'
+            order.mode = 'MANUAL'
+            order.save(update_fields=['status', 'mode'])
+            return
+        
+        print(f"   - Internal Tenant ID: {internal_tenant_id}")
+        print(f"   - Internal API User ID: {internal_api_user_id}")
+        
+        try:
+            mapping = PackageMapping.objects.filter(
+                our_package_id=order.package_id,
+                tenant_id=effective_tenant_id
+            ).first()
+            
+            if not mapping:
+                print(f"   [ERROR] No package mapping found for internal routing - CANNOT DISPATCH!")
+                logger.error("Auto-dispatch: No package mapping for internal routing", extra={
+                    "order_id": order_id,
+                    "package_id": str(order.package_id)
+                })
+                # Fallback to manual
+                order.status = 'pending'
+                order.mode = 'MANUAL'
+                order.save(update_fields=['status', 'mode'])
+                return
+            
+            target_package_id = mapping.provider_package_id
+            print(f"   - Target Package ID: {target_package_id}")
+            
+            from apps.products.models import ProductPackage
+            target_pkg = ProductPackage.objects.filter(
+                id=target_package_id,
+                tenant_id=internal_tenant_id
+            ).first()
+            
+            if not target_pkg:
+                print(f"   [ERROR] Target package not found in internal tenant - CANNOT DISPATCH!")
+                logger.error("Auto-dispatch: Target package not found", extra={
+                    "order_id": order_id,
+                    "target_package_id": target_package_id,
+                    "internal_tenant_id": str(internal_tenant_id)
+                })
+                # Fallback to manual
+                order.status = 'pending'
+                order.mode = 'MANUAL'
+                order.save(update_fields=['status', 'mode'])
+                return
+            
+            target_product_id = str(target_pkg.product_id)
+            print(f"   - Target Product ID: {target_product_id}")
+            
+            if not internal_api_user_id:
+                print(f"   [ERROR] No internal API user configured - CANNOT DISPATCH!")
+                logger.error("Auto-dispatch: No internal API user configured", extra={
+                    "order_id": order_id,
+                    "routing_id": str(routing.id)
+                })
+                # Fallback to manual
+                order.status = 'pending'
+                order.mode = 'MANUAL'
+                order.save(update_fields=['status', 'mode'])
+                return
+            
+            integration = Integration.objects.filter(
+                tenant_id=effective_tenant_id,
+                provider='internal',
+                scope='tenant'
+            ).first()
+            
+            if not integration or not integration.api_token:
+                print(f"   [ERROR] No API token found for internal routing - CANNOT DISPATCH!")
+                logger.error("Auto-dispatch: No API token for internal routing", extra={
+                    "order_id": order_id,
+                    "internal_tenant_id": str(internal_tenant_id)
+                })
+                # Fallback to manual
+                order.status = 'pending'
+                order.mode = 'MANUAL'
+                order.save(update_fields=['status', 'mode'])
+                return
+            
+            api_token = integration.api_token
+            print(f"   - API Token: {api_token[:10]}...")
+            
+            import requests
+            from django.conf import settings
+            
+            try:
+                from apps.tenants.models import TenantDomain
+                tenant_domain = TenantDomain.objects.filter(
+                    tenant_id=internal_tenant_id,
+                    is_primary=True
+                ).first()
+                
+                if not tenant_domain:
+                    tenant_domain = TenantDomain.objects.filter(
+                        tenant_id=internal_tenant_id
+                    ).first()
+                
+                if not tenant_domain:
+                    print(f"   [ERROR] No domain found for internal tenant - CANNOT DISPATCH!")
+                    logger.error("Auto-dispatch: No domain for internal tenant", extra={
+                        "order_id": order_id,
+                        "internal_tenant_id": str(internal_tenant_id)
+                    })
+                    # Fallback to manual
+                    order.status = 'pending'
+                    order.mode = 'MANUAL'
+                    order.save(update_fields=['status', 'mode'])
+                    return
+                
+                base_url = f"https://{tenant_domain.domain}" if not settings.DEBUG else f"http://{tenant_domain.domain}:3000"
+                internal_dispatch_url = f"{base_url}/api-dj/orders/internal/dispatch"
+                
+                print(f"   - Internal Dispatch URL: {internal_dispatch_url}")
+                
+                payload = {
+                    'parent_order_id': str(order.id),
+                    'package_id': target_package_id,
+                    'product_id': target_product_id,
+                    'user_identifier': order.user_identifier,
+                    'extra_field': order.extra_field,
+                    'quantity': order.quantity,
+                    'sell_price': float(order.sell_price_amount or 0),
+                }
+                
+                headers = {
+                    'Authorization': f'Bearer {api_token}',
+                    'Content-Type': 'application/json',
+                    'X-Tenant-Host': tenant_domain.domain,
+                    'X-Tenant-Id': str(internal_tenant_id),
+                }
+                
+                print(f"   [SEND] Sending order to internal tenant...")
+                response = requests.post(
+                    internal_dispatch_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=30
+                )
+                
+                if response.status_code == 201:
+                    result = response.json()
+                    internal_order_id = result.get('order_id')
+                    
+                    print(f"   [OK] Order dispatched to internal tenant successfully!")
+                    print(f"   - Internal Order ID: {internal_order_id}")
+                    
+                    order.provider_id = str(integration.id)
+                    order.external_order_id = internal_order_id
+                    order.external_status = 'sent'
+                    order.status = 'sent'
+                    order.mode = 'INTERNAL'
+                    order.provider_message = f"Forwarded to internal tenant {internal_tenant_id}"
+                    order.last_message = f"Sent to internal tenant"
+                    order.sent_at = timezone.now()
+                    order.save(update_fields=[
+                        'provider_id', 'external_order_id', 'external_status',
+                        'status', 'mode', 'provider_message', 'last_message', 'sent_at'
+                    ])
+                    
+                    # Calculate cost from internal tenant pricing
+                    if enforcement_enabled:
+                        try:
+                            # Cost is the price charged by the internal tenant (diana's price group)
+                            # This will be retrieved from the internal tenant's PackagePrice
+                            from apps.products.models import PackagePrice
+                            from apps.users.legacy_models import LegacyUser
+                            
+                            diana_user = LegacyUser.objects.filter(
+                                id=internal_api_user_id,
+                                tenant_id=internal_tenant_id
+                            ).first()
+                            
+                            if diana_user:
+                                diana_price_group_id = getattr(diana_user, 'price_group_id', None)
+                                
+                                price_row = None
+                                if diana_price_group_id:
+                                    price_row = PackagePrice.objects.filter(
+                                        tenant_id=internal_tenant_id,
+                                        package_id=target_package_id,
+                                        price_group_id=diana_price_group_id
+                                    ).first()
+                                
+                                if not price_row:
+                                    price_row = PackagePrice.objects.filter(
+                                        tenant_id=internal_tenant_id,
+                                        package_id=target_package_id
+                                    ).first()
+                                
+                                if price_row:
+                                    unit_cost_usd = Decimal(str(price_row.unit_price or price_row.price or 0))
+                                    
+                                    cost_snapshot = CostSnapshot(
+                                        source="internal_tenant_price",
+                                        unit_cost_usd=unit_cost_usd,
+                                        original_amount=unit_cost_usd,
+                                        original_currency="USD",
+                                        fx_rate=Decimal("1"),
+                                    )
+                                    
+                                    _persist_cost_snapshot(
+                                        order_id=order.id,
+                                        snapshot=cost_snapshot,
+                                        quantity=order.quantity or 1,
+                                        tenant_id=order.tenant_id,
+                                        mode='INTERNAL',
+                                    )
+                                    
+                                    _write_dispatch_log(
+                                        order.id,
+                                        action='INTERNAL_DISPATCH',
+                                        result='success',
+                                        message=f'Dispatched to internal tenant {internal_tenant_id}',
+                                        payload={
+                                            'internal_order_id': internal_order_id,
+                                            'internal_tenant_id': str(internal_tenant_id),
+                                            'cost': cost_snapshot.as_log_payload(),
+                                        },
+                                    )
+                                    
+                                    print(f"   [MONEY] Cost calculated from internal tenant: {unit_cost_usd} USD per unit")
+                        except Exception as exc:
+                            print(f"   [WARNING] Failed to calculate cost from internal tenant: {exc}")
+                            logger.warning(
+                                "Failed to calculate cost from internal tenant",
+                                extra={"order_id": str(order.id), "error": str(exc)}
+                            )
+                    
+                    logger.info("Auto-dispatch: Internal provider completed", extra={
+                        "order_id": order_id,
+                        "internal_tenant_id": str(internal_tenant_id),
+                        "internal_order_id": internal_order_id
+                    })
+                    return
+                else:
+                    print(f"   [ERROR] Internal dispatch failed with status {response.status_code}")
+                    print(f"   - Response: {response.text}")
+                    logger.error("Auto-dispatch: Internal dispatch failed", extra={
+                        "order_id": order_id,
+                        "status_code": response.status_code,
+                        "response": response.text
+                    })
+                    # Fallback to manual
+                    order.status = 'pending'
+                    order.mode = 'MANUAL'
+                    order.last_message = f"Internal dispatch failed: {response.status_code}"
+                    order.save(update_fields=['status', 'mode', 'last_message'])
+                    return
+                    
+            except Exception as exc:
+                print(f"   [ERROR] Exception during internal dispatch: {exc}")
+                logger.exception("Auto-dispatch: Internal dispatch exception", extra={
+                    "order_id": order_id,
+                    "internal_tenant_id": str(internal_tenant_id)
+                })
+                # Fallback to manual
+                order.status = 'pending'
+                order.mode = 'MANUAL'
+                order.last_message = f"Internal dispatch error: {str(exc)}"
+                order.save(update_fields=['status', 'mode', 'last_message'])
+                return
+                
+        except Exception as exc:
+            print(f"   [ERROR] Exception during internal routing setup: {exc}")
+            logger.exception("Auto-dispatch: Internal routing setup exception", extra={
+                "order_id": order_id
+            })
+            # Fallback to manual
+            order.status = 'pending'
+            order.mode = 'MANUAL'
+            order.save(update_fields=['status', 'mode'])
+            return
 
     fallback_provider_id_raw = getattr(routing, 'fallback_provider_id', None)
     fallback_provider_id = str(fallback_provider_id_raw).strip() if fallback_provider_id_raw else None
