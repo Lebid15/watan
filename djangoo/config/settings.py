@@ -43,8 +43,8 @@ def _env_flag(name: str, default: str = "0") -> bool:
 
 # Feature flags (Phase 0 scaffolding) – default to False/disabled
 FF_CHAIN_STATUS_PROPAGATION = _env_flag("FF_CHAIN_STATUS_PROPAGATION", "1")  # ✅ Enabled for chain wallet updates
-FF_USD_COST_ENFORCEMENT = _env_flag("FF_USD_COST_ENFORCEMENT", "0")
-FF_AUTO_FALLBACK_ROUTING = _env_flag("FF_AUTO_FALLBACK_ROUTING", "0")
+FF_USD_COST_ENFORCEMENT = _env_flag("FF_USD_COST_ENFORCEMENT", "1")  # ✅ Enabled for cost resolution from providers
+FF_AUTO_FALLBACK_ROUTING = _env_flag("FF_AUTO_FALLBACK_ROUTING", "1")  # ✅ Enabled for automatic fallback to Manual on failures
 FF_ADMIN_REROUTE_UI = _env_flag("FF_ADMIN_REROUTE_UI", "0")
 
 INSTALLED_APPS = [
