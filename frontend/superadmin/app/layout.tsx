@@ -11,7 +11,7 @@ const cairo = Cairo({
 });
 
 export const metadata = {
-  title: 'SuperAdmin - Watan Store',
+  title: 'SuperAdmin - Ahla Store',
   description: 'لوحة تحكم المدير العام',
 };
 

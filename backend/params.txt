@@ -1,0 +1,111 @@
+t -> t(b, user_app_id, additional) -> t()(manual, auto(AHLA, zdk, znet, u_codes))(rejected, done, in progress)
+
+order (product, user_app_id, additional info, user, wallet_before, wallet_after)
+->
+o()(manual, auto(AHLA, zdk, znet, u_codes))(rejected, done, in_progress)
+
+product -> baka -> b(name, price, app_user_id, additional)
+p(logo, name, )
+
+p(logo, name, display_name, code, available(), customizable(bool), pre_paid_codes_per_user, zdk_balance, znet_bakiye)
+
+baka(product, name, display_name, cost_usd, cost_tyl, available, min_max(), zdk_id, znet_adi_name, znet_fiyat_price, znet_oyun, zdnet_kupur, AHLA_id, quantity, unit_price_usd, unit_price_tyl, dest, znet_bilgi_id)
+
+zdnet_something
+zdnet_
+
+dest_type(zdnet, zdk, AHLA, own_codes)
+
+dest(
+    type,
+    display_name,
+    link,
+    active,
+    wallet,
+    znet_debt,
+    dest_currency,
+    products,
+    token,
+    phone_number,
+    password,
+    code_product,
+    codes
+)
+
+responses(codes,AHLA,znet,zdk)
+
+dest_code(
+    serial,
+    pin,
+    product,
+    date_time_added,
+    used,
+    cost,
+)
+
+dest_znet(
+    base_url,
+    kod(phone_number),
+    sifre(pass),
+    balance,
+
+)
+
+
+
+
+scraper
+
+wallet(transactions, base_currency, currency_list, exchange_rates)
+
+transaction(transfer_amount, transfer_currency, user, payment_rails, state(in_progress, accepted, rejected), id, date_time, wallet_before, wallet_after, date_time, )
+
+payment_rails(trust_fund, bank_account, cash, Binance, hawala, other)
+
+trust_fund(name, note)
+bank_account(name, card_holder_name, IBAN, note)
+cash(agent_name, note)
+binance(IBAN, network, note)
+hawala(recepient, destination, agent, note)
+other(name, note, additional_info)
+
+exchange_rate_changes()
+
+notifications(title, content, date_time)
+
+instructions(text)
+
+
+who_are_we(text)
+
+final_user(
+    orders,
+    wallet,
+    transaction,
+    email,
+    display_name,
+    credit_line,
+    price_group,
+    phone_number,
+    api_token,
+
+)
+
+price_groups
+
+tenant_user(
+ ads,
+ products(can select from master list, changes do not affect master list),
+ prodcut(cost(own_manual_),
+ price_groups(
+    product, own_cost, (I, II, III, IV, VI), name, users_under)
+    currency, exchange_rate_dollar,
+
+
+ )
+
+
+)
+
+ads_to_tenant(title, text, date_time)
+

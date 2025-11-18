@@ -14,9 +14,10 @@ const themes = [
 interface Props {
   onLogout: () => void | Promise<void>;
   onToggleMobileMenu?: () => void;
+  currentUserName?: string;
 }
 
-export default function SuperAdminTopBar({ onLogout, onToggleMobileMenu }: Props) {
+export default function SuperAdminTopBar({ onLogout, onToggleMobileMenu, currentUserName }: Props) {
   const [pending, setPending] = useState(false);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [currentTheme, setCurrentTheme] = useState('dark1');
@@ -138,7 +139,13 @@ export default function SuperAdminTopBar({ onLogout, onToggleMobileMenu }: Props
         </div>
 
         {/* اليسار: زر الخروج */}
-        <div className="flex-1 flex justify-end">
+        <div className="flex-1 flex items-center justify-end gap-3">
+          {currentUserName && (
+            <div className="hidden md:flex flex-col text-right">
+              <span className="text-sm font-semibold text-text-primary">{currentUserName}</span>
+              <span className="text-xs text-text-secondary">مدير المنصة</span>
+            </div>
+          )}
           <button
             onClick={handleLogoutClick}
             disabled={pending}

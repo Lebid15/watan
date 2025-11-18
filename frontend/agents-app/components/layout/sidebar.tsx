@@ -23,26 +23,26 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { routing } from "@/i18n/routing";
+import { useBackendSession } from "@/context/auth-session";
 
 interface SidebarProps {
-  className?: string;
   mobileMenuOpen?: boolean;
   onMobileMenuClose?: () => void;
   onCollapsedChange?: (collapsed: boolean) => void;
   initialCollapsed?: boolean;
-  // Optional current wallet balance in USD; positive -> green, negative -> red
-  balance?: number;
+  balanceValue?: number | null;
 }
 
-export function Sidebar({ className, mobileMenuOpen = false, onMobileMenuClose, onCollapsedChange, initialCollapsed = false, balance = 5000 }: SidebarProps) {
+export function Sidebar({ mobileMenuOpen = false, onMobileMenuClose, onCollapsedChange, initialCollapsed = false, balanceValue }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
-  const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
   const t = useTranslations("sidebar");
   const locale = useLocale();
   const pathname = usePathname();
   const isRTL = locale === "ar";
-  const isPositive = balance >= 0;
+  const { user, status, connect } = useBackendSession();
+  const hasBalance = typeof balanceValue === "number" && !Number.isNaN(balanceValue);
+  const isPositive = (balanceValue ?? 0) >= 0;
 
   // Always format with English numerals regardless of locale
   const formatCurrency = (value: number) => {
@@ -58,15 +58,13 @@ export function Sidebar({ className, mobileMenuOpen = false, onMobileMenuClose, 
   };
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
     // Notify parent about collapse state
     if (onCollapsedChange) {
       onCollapsedChange(isCollapsed);
     }
   }, [isCollapsed, onCollapsedChange]);
+
+  const mounted = typeof window !== "undefined";
 
   const handleToggleCollapse = () => {
     const newState = !isCollapsed;
@@ -177,15 +175,26 @@ export function Sidebar({ className, mobileMenuOpen = false, onMobileMenuClose, 
           )}
         >
           <h3 className="font-bold text-lg text-sidebar-foreground">
-            {locale === "ar" ? "أحمد علي" : locale === "tr" ? "Ahmet Ali" : "Ahmed Ali"}
+            {user?.name || user?.email || t("guest")}
           </h3>
-          <p className="text-sm text-muted-foreground">#66521</p>
+          <p className="text-sm text-muted-foreground">{user?.tenantId ?? "tenant"}</p>
           
           {/* Wallet Balance */}
-          <div className="flex items-center gap-2 mt-3 bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/40">
+          {hasBalance ? (
+            <div className="flex items-center gap-2 mt-3 bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/40">
             <Wallet className="h-6 w-6 text-primary flex-shrink-0 drop-shadow-[0_0_12px_rgba(241,149,8,0.4)]" />
-            <span className={cn("font-bold text-sm", isPositive ? "text-emerald-400" : "text-red-500")}>{formatCurrency(balance)}</span>
-          </div>
+              <span className={cn("font-bold text-sm", isPositive ? "text-emerald-400" : "text-red-500")}>{formatCurrency(balanceValue ?? 0)}</span>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              className="mt-3 w-full border-primary/60 text-primary"
+              onClick={() => connect()}
+              disabled={status === "connecting"}
+            >
+              {status === "connecting" ? t("connecting") : t("connectAccount")}
+            </Button>
+          )}
         </div>
       </div>
 

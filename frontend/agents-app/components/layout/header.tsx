@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocale } from "next-intl";
-import { Menu, X, Languages } from "lucide-react";
+import { Menu, X, Languages, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,8 +11,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
-import { useRouter, usePathname } from "@/i18n/routing";
-import { useState } from "react";
+import { routing, useRouter, usePathname } from "@/i18n/routing";
+import { useMemo } from "react";
+import { useBackendSession } from "@/context/auth-session";
 
 interface HeaderProps {
   sidebarCollapsed: boolean;
@@ -25,9 +26,20 @@ export function Header({ sidebarCollapsed, mobileMenuOpen, onMobileMenuToggle }:
   const isRTL = locale === "ar";
   const router = useRouter();
   const pathname = usePathname();
+  const { status, connect, logout, user } = useBackendSession();
+  const connecting = status === "connecting";
+  const loggedIn = status === "ready" && !!user;
 
-  const changeLocale = (newLocale: string) => {
-    router.replace(pathname, { locale: newLocale as any });
+  const loginLabel = useMemo(() => {
+    if (connecting) return locale === "ar" ? "جاري الاتصال" : locale === "tr" ? "Bağlanıyor" : "Connecting";
+    if (loggedIn) return user?.name || user?.email || "";
+    return locale === "ar" ? "تسجيل الدخول" : locale === "tr" ? "Giriş" : "Sign in";
+  }, [connecting, locale, loggedIn, user]);
+
+  type SupportedLocale = (typeof routing)["locales"][number];
+
+  const changeLocale = (newLocale: SupportedLocale) => {
+    router.replace(pathname, { locale: newLocale });
   };
 
   return (
@@ -63,6 +75,16 @@ export function Header({ sidebarCollapsed, mobileMenuOpen, onMobileMenuToggle }:
 
       {/* Logo and Brand Name */}
       <div className="flex items-center gap-3">
+        <Button
+          variant={loggedIn ? "default" : "secondary"}
+          className="hidden md:flex items-center gap-2"
+          onClick={loggedIn ? () => logout() : () => connect()}
+          disabled={connecting}
+        >
+          {loggedIn ? <LogOut className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+          <span className="text-xs font-semibold">{loginLabel}</span>
+        </Button>
+
         {/* Language Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

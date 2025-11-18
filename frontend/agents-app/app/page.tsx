@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Gamepad2, LogIn, ArrowRight } from "lucide-react";
+import { Gamepad2, ArrowRight } from "lucide-react";
 
 export default function HomePage() {
   return (

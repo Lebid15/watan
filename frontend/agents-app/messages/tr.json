@@ -9,7 +9,10 @@
     "api": "API",
     "about": "Hakkımızda",
     "toggleTheme": "Tema Değiştir",
-    "settings": "Ayarlar"
+    "settings": "Ayarlar",
+    "guest": "Misafir",
+    "connectAccount": "Hesabı bağla",
+    "connecting": "Bağlanıyor..."
   },
   "header": {
     "username": "Ahmet Ali",

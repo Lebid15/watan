@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FiLock, FiUser, FiShield } from 'react-icons/fi';
+import { extractErrorMessage, setSuperAdminToken, superadminApi } from '@/lib/superadminApi';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,17 +19,17 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // TODO: استدعاء API للتحقق من بيانات الدخول
-      // const response = await api.post('/auth/login', { email, password });
-      // localStorage.setItem('token', response.data.token);
-      
-      // مؤقتاً: تخزين بيانات وهمية للتطوير
-      localStorage.setItem('token', 'demo-token-superadmin');
-      
+      const res = await superadminApi.login(email.trim(), password);
+      setSuperAdminToken(res.token);
+      try {
+        localStorage.setItem('superadminProfile', JSON.stringify(res.super_admin));
+      } catch {
+        // ignore profile cache errors
+      }
       const next = searchParams.get('next') || '/dashboard';
       router.replace(next);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'فشل تسجيل الدخول. تحقق من البيانات.');
+    } catch (err) {
+      setError(extractErrorMessage(err, 'فشل تسجيل الدخول. تحقق من البيانات.'));
     } finally {
       setLoading(false);
     }
@@ -70,7 +71,8 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   className="w-full pr-10 pl-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-primary transition-colors text-white placeholder-gray-500"
-                  placeholder="admin@watan.com"
+                  placeholder="admin@ahla.com"
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -89,6 +91,7 @@ export default function LoginPage() {
                   required
                   className="w-full pr-10 pl-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-primary transition-colors text-white placeholder-gray-500"
                   placeholder="••••••••"
+                  autoComplete="current-password"
                 />
               </div>
             </div>
@@ -127,7 +130,7 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="mt-6 text-center">
           <p className="text-gray-500 text-sm">
-            Watan Store SuperAdmin Panel v1.0
+            Ahla Store SuperAdmin Panel v1.0
           </p>
         </div>
       </div>

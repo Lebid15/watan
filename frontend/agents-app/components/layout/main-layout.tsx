@@ -6,6 +6,8 @@ import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { BottomNav } from "./bottom-nav";
 import { cn } from "@/lib/utils";
+import { useZNetData } from "@/hooks/useZNetData";
+import { useProviderCredentialContext } from "@/hooks/useProviderCredentials";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -17,6 +19,8 @@ export function MainLayout({ children, initialSidebarCollapsed = false }: MainLa
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const locale = useLocale();
   const isRTL = locale === "ar";
+  const { selectedCredentialId } = useProviderCredentialContext();
+  const { balance } = useZNetData(true, selectedCredentialId);
 
   const handleSidebarCollapsedChange = async (collapsed: boolean) => {
     setSidebarCollapsed(collapsed);
@@ -31,6 +35,7 @@ export function MainLayout({ children, initialSidebarCollapsed = false }: MainLa
         onMobileMenuClose={() => setMobileMenuOpen(false)}
         onCollapsedChange={handleSidebarCollapsedChange}
         initialCollapsed={initialSidebarCollapsed}
+        balanceValue={balance?.balance ?? null}
       />
       <Header 
         sidebarCollapsed={sidebarCollapsed}

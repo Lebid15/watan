@@ -8,7 +8,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ar" dir="rtl" data-theme="dark1" suppressHydrationWarning>
       <head>
-        <title>Watan Store</title>
+        <title>Ahla Store</title>
         {/* Viewport: standard responsive for agents */}
         <script
           dangerouslySetInnerHTML={{

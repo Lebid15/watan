@@ -1,48 +1,57 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { Toaster } from 'react-hot-toast';
 import SuperAdminSidebar from './SuperAdminSidebar';
 import SuperAdminTopBar from './SuperAdminTopBar';
-import api from '@/utils/api';
+import {
+  clearSuperAdminToken,
+  getSuperAdminToken,
+  superadminApi,
+  type SuperAdminProfile,
+} from '@/lib/superadminApi';
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
+  const [profile, setProfile] = useState<SuperAdminProfile | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
-  // التحقق من تسجيل الدخول - معطل مؤقتاً للتطوير
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        // TODO: إضافة التحقق من التوكن والصلاحيات عند الربط مع الـ Backend
-        // const token = localStorage.getItem('token');
-        // if (!token) {
-        //   router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-        //   return;
-        // }
-        
-        // مؤقتاً: السماح بالدخول مباشرة للتطوير
-        if (mounted) setAuthReady(true);
-      } catch {
-        if (!mounted) return;
-        // router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-        if (mounted) setAuthReady(true);
+    let cancelled = false;
+    const nextTarget = () => {
+      if (typeof window === 'undefined') return pathname;
+      return window.location.pathname + window.location.search;
+    };
+    async function bootstrap() {
+      const token = getSuperAdminToken();
+      if (!token) {
+        router.replace(`/login?next=${encodeURIComponent(nextTarget())}`);
+        return;
       }
-    })();
-    return () => { mounted = false; };
+      try {
+        const me = await superadminApi.profile();
+        if (!cancelled) {
+          setProfile(me);
+          setAuthReady(true);
+        }
+      } catch (error) {
+        clearSuperAdminToken();
+        if (!cancelled) {
+          router.replace(`/login?next=${encodeURIComponent(nextTarget())}`);
+        }
+      }
+    }
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, [router, pathname]);
 
   const handleLogout = async () => {
-    try {
-      await api.post('/auth/logout');
-    } catch {}
-    try {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('userPriceGroupId');
-    } catch {}
+    clearSuperAdminToken();
+    setProfile(null);
     router.replace('/login');
   };
 
@@ -79,6 +88,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
         <SuperAdminTopBar 
           onLogout={handleLogout}
           onToggleMobileMenu={toggleMobileMenu}
+          currentUserName={profile?.display_name || profile?.email}
         />
         
         {/* Page Content */}
@@ -86,6 +96,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
           {children}
         </main>
       </div>
+      <Toaster position="top-center" toastOptions={{ duration: 4000 }} />
     </div>
   );
 }

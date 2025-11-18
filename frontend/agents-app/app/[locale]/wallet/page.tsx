@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { ArrowDown, ArrowUp, Plus, Minus } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState } from "react";
 
 export default function WalletPage() {

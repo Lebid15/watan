@@ -39,12 +39,12 @@ GET {baseUrl}/servis/bakiye_kontrol.php?kod={kod}&sifre={sifre}
 
 **Response (Text):**
 ```
-OK|43.55
+OK|43.55|20.50|note
 ```
 
 **Format:**
 ```
-OK|{balance}
+OK|{balance}|{borc}|{not}
 ```
 
 **Normalized Response:**

@@ -1,0 +1,30 @@
+{
+  email {$CADDY_EMAIL}
+  acme_ca {$CADDY_ACME_CA}
+}
+
+{$APP_DOMAIN}, www.{$APP_DOMAIN} {
+  encode zstd gzip
+  @api path /api* /health* /swagger*
+  handle @api {
+    reverse_proxy api:8080
+  }
+
+  handle {
+    reverse_proxy agents:3000
+  }
+
+  log {
+    output stdout
+    format console
+  }
+}
+
+api.{$APP_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy api:8080
+  log {
+    output stdout
+    format console
+  }
+}

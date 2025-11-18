@@ -1,520 +1,411 @@
 'use client';
 
-import { useState } from 'react';
 import {
-  FiPlus,
-  FiSearch,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
+import {
   FiEdit2,
-  FiTrash2,
-  FiCheckCircle,
-  FiXCircle,
   FiGlobe,
-  FiCalendar,
-  FiDollarSign,
+  FiMail,
+  FiPlus,
+  FiRefreshCw,
+  FiSearch,
   FiX,
-  FiUpload,
-  FiImage,
 } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import { useDebounce } from '@/utils/format';
+import {
+  extractErrorMessage,
+  superadminApi,
+  type TenantDTO,
+  type TenantPayload,
+  type TenantStatus,
+} from '@/lib/superadminApi';
 
-interface Tenant {
-  id: string;
-  subdomain: string;
-  name: string;
-  status: 'active' | 'suspended' | 'expired';
-  plan: string;
-  createdAt: string;
-  expiresAt: string;
-  revenue: string;
-}
+const STATUS_LABELS: Record<TenantStatus, string> = {
+  active: 'نشط',
+  pending: 'بانتظار التفعيل',
+  suspended: 'معلق',
+};
 
-export default function SubdomainsPage() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [formData, setFormData] = useState({
-    username: '',
-    password: '',
-    fullName: '',
-    displayName: '',
-    countryCode: '+963',
-    phone: '',
-    subdomain: '',
-    taxNumber: '',
-    address: '',
-  });
-  const [uploadedImages, setUploadedImages] = useState<File[]>([]);
-  
-  const [tenants, setTenants] = useState<Tenant[]>([
-    {
-      id: '1',
-      subdomain: 'shop1',
-      name: 'المتجر الأول',
-      status: 'active',
-      plan: 'Pro',
-      createdAt: '2024-01-15',
-      expiresAt: '2025-01-15',
-      revenue: '$2,400',
-    },
-    {
-      id: '2',
-      subdomain: 'store2',
-      name: 'متجر التقنية',
-      status: 'active',
-      plan: 'Business',
-      createdAt: '2024-02-20',
-      expiresAt: '2025-02-20',
-      revenue: '$5,800',
-    },
-    {
-      id: '3',
-      subdomain: 'gaming',
-      name: 'متجر الألعاب',
-      status: 'suspended',
-      plan: 'Starter',
-      createdAt: '2024-03-10',
-      expiresAt: '2024-12-10',
-      revenue: '$890',
-    },
-  ]);
+const STATUS_STYLES: Record<TenantStatus, string> = {
+  active: 'bg-green-500/10 text-green-500 border-green-500/20',
+  pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+  suspended: 'bg-red-500/10 text-red-500 border-red-500/20',
+};
 
-  const filteredTenants = tenants.filter(
-    (tenant) =>
-      tenant.subdomain.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tenant.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+const EMPTY_FORM: TenantPayload = {
+  name: '',
+  display_name: '',
+  subdomain: '',
+  contact_email: '',
+  logo_url: '',
+  status: 'active',
+};
 
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      active: 'bg-green-500/10 text-green-500 border-green-500/20',
-      suspended: 'bg-red-500/10 text-red-500 border-red-500/20',
-      expired: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+type StatusFilter = 'all' | TenantStatus;
+
+export default function TenantsPage() {
+  const [tenants, setTenants] = useState<TenantDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState<TenantPayload>(EMPTY_FORM);
+  const [editingTenant, setEditingTenant] = useState<TenantDTO | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchTenants() {
+      setLoading(true);
+      try {
+        const items = await superadminApi.tenants.list({
+          q: debouncedSearch || undefined,
+          status: statusFilter === 'all' ? undefined : statusFilter,
+        });
+        if (!cancelled) {
+          setTenants(items);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(extractErrorMessage(error, 'تعذر تحميل قائمة المستأجرين'));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+    fetchTenants();
+    return () => {
+      cancelled = true;
     };
-    const labels = {
-      active: 'نشط',
-      suspended: 'معلق',
-      expired: 'منتهي',
-    };
-    return (
-      <span className={`px-3 py-1 rounded-full text-xs font-medium border ${styles[status as keyof typeof styles]}`}>
-        {labels[status as keyof typeof labels]}
-      </span>
-    );
+  }, [debouncedSearch, statusFilter]);
+
+  const stats = useMemo(() => {
+    const total = tenants.length;
+    const active = tenants.filter((tenant) => tenant.status === 'active').length;
+    const pending = tenants.filter((tenant) => tenant.status === 'pending').length;
+    return { total, active, pending };
+  }, [tenants]);
+
+  const filteredTenants = useMemo(() => {
+    if (statusFilter === 'all') return tenants;
+    return tenants.filter((tenant) => tenant.status === statusFilter);
+  }, [tenants, statusFilter]);
+
+  const resetFilters = () => {
+    setStatusFilter('all');
+    setSearch('');
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (uploadedImages.length + files.length <= 3) {
-      setUploadedImages([...uploadedImages, ...files]);
+  const openModal = (tenant?: TenantDTO) => {
+    if (tenant) {
+      setEditingTenant(tenant);
+      setForm({
+        name: tenant.name,
+        display_name: tenant.display_name,
+        subdomain: tenant.subdomain,
+        contact_email: tenant.contact_email,
+        logo_url: tenant.logo_url || '',
+        status: tenant.status,
+      });
     } else {
-      alert('يمكنك رفع 3 صور كحد أقصى');
+      setEditingTenant(null);
+      setForm(EMPTY_FORM);
+    }
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingTenant(null);
+    setForm(EMPTY_FORM);
+  };
+
+  const handleFormChange = (field: keyof TenantPayload, event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const value = event.target.value;
+    setForm((prev) => ({
+      ...prev,
+      [field]: field === 'subdomain' ? value.replace(/\s+/g, '-').toLowerCase() : value,
+    }));
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    const payload: TenantPayload = {
+      name: form.name.trim(),
+      display_name: form.display_name?.trim(),
+      subdomain: form.subdomain.trim(),
+      contact_email: form.contact_email.trim(),
+      logo_url: form.logo_url?.trim() || undefined,
+      status: form.status || 'active',
+    };
+
+    try {
+      if (editingTenant) {
+        const updated = await superadminApi.tenants.update(editingTenant.id, payload);
+        setTenants((prev) => prev.map((tenant) => (tenant.id === updated.id ? updated : tenant)));
+        toast.success('تم تحديث بيانات المستأجر');
+      } else {
+        const created = await superadminApi.tenants.create(payload);
+        setTenants((prev) => [created, ...prev]);
+        toast.success('تم إنشاء المستأجر بنجاح');
+      }
+      closeModal();
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'تعذر حفظ بيانات المستأجر'));
+    } finally {
+      setSaving(false);
     }
   };
 
-  const removeImage = (index: number) => {
-    setUploadedImages(uploadedImages.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // TODO: إضافة المنطق لإرسال البيانات للـ Backend
-    console.log('Form Data:', formData);
-    console.log('Images:', uploadedImages);
-    setShowAddModal(false);
-    // إعادة تعيين النموذج
-    setFormData({
-      username: '',
-      password: '',
-      fullName: '',
-      displayName: '',
-      countryCode: '+963',
-      phone: '',
-      subdomain: '',
-      taxNumber: '',
-      address: '',
-    });
-    setUploadedImages([]);
-  };
-
-  const countries = [
-    { code: '+963', name: 'سوريا', flag: '🇸🇾' },
-    { code: '+966', name: 'السعودية', flag: '🇸🇦' },
-    { code: '+971', name: 'الإمارات', flag: '🇦🇪' },
-    { code: '+20', name: 'مصر', flag: '🇪🇬' },
-    { code: '+962', name: 'الأردن', flag: '🇯🇴' },
-    { code: '+961', name: 'لبنان', flag: '🇱🇧' },
-    { code: '+970', name: 'فلسطين', flag: '🇵🇸' },
-    { code: '+964', name: 'العراق', flag: '🇮🇶' },
-    { code: '+965', name: 'الكويت', flag: '🇰🇼' },
-    { code: '+968', name: 'عمان', flag: '🇴🇲' },
-    { code: '+974', name: 'قطر', flag: '🇶🇦' },
-    { code: '+973', name: 'البحرين', flag: '🇧🇭' },
-  ];
-
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-bold text-text-primary">
-            إدارة المستأجرين
-          </h1>
+          <h1 className="text-2xl font-bold text-text-primary">إدارة المستأجرين</h1>
+          <p className="text-sm text-text-secondary">إدارة المتاجر، النطاقات، وحالات التفعيل من مكان واحد</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-3 rounded-lg hover:bg-primary/90 transition-all font-medium cursor-pointer"
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => openModal()}
+            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-white transition hover:bg-primary/90"
+          >
+            <FiPlus size={16} /> مستأجر جديد
+          </button>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-text-secondary transition hover:bg-bg-surface-hover"
+          >
+            <FiRefreshCw size={16} /> إعادة التصفية
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <StatCard title="إجمالي المستأجرين" value={stats.total} icon={<FiGlobe />} />
+        <StatCard title="النشطون" value={stats.active} icon={<FiGlobe />} accent="text-green-500" />
+        <StatCard title="بانتظار التفعيل" value={stats.pending} icon={<FiGlobe />} accent="text-yellow-500" />
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-bg-surface p-4 lg:flex-row lg:items-center">
+        <div className="relative flex-1">
+          <FiSearch className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="ابحث باسم المتجر أو النطاق"
+            className="w-full rounded-lg border border-border bg-bg-base py-2 pl-4 pr-10 text-sm focus:border-primary focus:outline-none"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+          className="rounded-lg border border-border bg-bg-base px-4 py-2 text-sm focus:border-primary focus:outline-none"
         >
-          <FiPlus size={20} />
-          إضافة مستأجر
-        </button>
+          <option value="all">كل الحالات</option>
+          <option value="active">نشط</option>
+          <option value="pending">بانتظار التفعيل</option>
+          <option value="suspended">معلق</option>
+        </select>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-bg-surface border border-border rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-text-secondary text-sm">إجمالي المستأجرين</p>
-              <p className="text-3xl font-bold text-text-primary mt-1">{tenants.length}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-blue-500/10">
-              <FiGlobe className="text-blue-500" size={28} />
-            </div>
-          </div>
-        </div>
-        <div className="bg-bg-surface border border-border rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-text-secondary text-sm">المستأجرون النشطون</p>
-              <p className="text-3xl font-bold text-text-primary mt-1">
-                {tenants.filter((t) => t.status === 'active').length}
-              </p>
-            </div>
-            <div className="p-3 rounded-lg bg-green-500/10">
-              <FiCheckCircle className="text-green-500" size={28} />
-            </div>
-          </div>
-        </div>
-        <div className="bg-bg-surface border border-border rounded-xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-text-secondary text-sm">إجمالي الإيرادات</p>
-              <p className="text-3xl font-bold text-text-primary mt-1">
-                $
-                {tenants
-                  .reduce((sum, t) => sum + parseFloat(t.revenue.replace('$', '').replace(',', '')), 0)
-                  .toLocaleString()}
-              </p>
-            </div>
-            <div className="p-3 rounded-lg bg-purple-500/10">
-              <FiDollarSign className="text-purple-500" size={28} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="bg-bg-surface border border-border rounded-xl p-4">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
-            <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary" size={20} />
-            <input
-              type="text"
-              placeholder="ابحث عن مستأجر..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pr-10 pl-4 py-3 bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-            />
-          </div>
-          <select className="px-4 py-3 bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary">
-            <option>جميع الحالات</option>
-            <option>نشط</option>
-            <option>معلق</option>
-            <option>منتهي</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Tenants Table */}
-      <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-bg-surface">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-bg-surface-alt border-b border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-bg-surface-alt text-text-secondary">
               <tr>
-                <th className="text-right px-6 py-4 text-sm font-medium text-text-secondary">Subdomain</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-text-secondary">الاسم</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-text-secondary">الحالة</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-text-secondary">الباقة</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-text-secondary">تاريخ الإنشاء</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-text-secondary">الإيرادات</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-text-secondary">الإجراءات</th>
+                <th className="px-4 py-3 text-right font-semibold">المتجر</th>
+                <th className="px-4 py-3 text-right font-semibold">النطاق</th>
+                <th className="px-4 py-3 text-right font-semibold">التواصل</th>
+                <th className="px-4 py-3 text-right font-semibold">الحالة</th>
+                <th className="px-4 py-3 text-right font-semibold">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filteredTenants.map((tenant) => (
-                <tr key={tenant.id} className="hover:bg-bg-surface-hover transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <FiGlobe className="text-primary" />
-                      <span className="font-mono text-sm text-text-primary">{tenant.subdomain}.watan.com</span>
-                    </div>
+                <tr key={tenant.id} className="transition hover:bg-bg-surface-hover">
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-text-primary">{tenant.display_name || tenant.name}</p>
+                    <p className="text-xs text-text-secondary">{tenant.name}</p>
                   </td>
-                  <td className="px-6 py-4 text-text-primary font-medium">{tenant.name}</td>
-                  <td className="px-6 py-4">{getStatusBadge(tenant.status)}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
-                      {tenant.plan}
+                  <td className="px-4 py-3 font-mono text-xs text-text-primary">{tenant.subdomain}</td>
+                  <td className="px-4 py-3 text-text-secondary">
+                    <span className="inline-flex items-center gap-2">
+                      <FiMail size={14} />
+                      {tenant.contact_email}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-text-secondary text-sm">
-                    <div className="flex items-center gap-1">
-                      <FiCalendar size={14} />
-                      {tenant.createdAt}
-                    </div>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_STYLES[tenant.status]}`}>
+                      {STATUS_LABELS[tenant.status]}
+                    </span>
                   </td>
-                  <td className="px-6 py-4 text-text-primary font-medium">{tenant.revenue}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="p-2 rounded-lg hover:bg-blue-500/10 text-blue-500 transition-colors"
-                        title="تعديل"
-                      >
-                        <FiEdit2 size={18} />
-                      </button>
-                      <button
-                        className="p-2 rounded-lg hover:bg-red-500/10 text-red-500 transition-colors"
-                        title="حذف"
-                      >
-                        <FiTrash2 size={18} />
-                      </button>
-                    </div>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => openModal(tenant)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-text-secondary transition hover:border-primary hover:text-primary"
+                    >
+                      <FiEdit2 size={14} /> تعديل
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {!loading && filteredTenants.length === 0 && (
+          <div className="p-6 text-center text-sm text-text-secondary">لا توجد نتائج مطابقة</div>
+        )}
+        {loading && <div className="p-6 text-center text-sm text-text-secondary">جارٍ تحميل المستأجرين...</div>}
       </div>
 
-      {/* Add Tenant Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bg-surface border border-border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <h2 className="text-lg font-bold text-text-primary">إضافة مستأجر جديد</h2>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="p-2 rounded-lg hover:bg-bg-surface-hover transition-colors"
-              >
-                <FiX size={20} className="text-text-secondary" />
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="flex w-full max-w-2xl max-h-[90vh] flex-col rounded-2xl border border-border bg-bg-surface shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">
+                  {editingTenant ? 'تعديل بيانات المستأجر' : 'إنشاء مستأجر جديد'}
+                </h2>
+                <p className="text-sm text-text-secondary">
+                  {editingTenant ? editingTenant.display_name : 'أدخل بيانات المتجر والنطاق'}
+                </p>
+              </div>
+              <button type="button" onClick={closeModal} className="rounded-lg p-2 text-text-secondary hover:bg-bg-surface-hover">
+                <FiX size={20} />
               </button>
             </div>
-
-            {/* Modal Body - Scrollable */}
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar">
-              <div className="p-6 space-y-4">
-                {/* Username */}
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <FormField
+                  label="الاسم الداخلي"
+                  value={form.name}
+                  required
+                  onChange={(event) => handleFormChange('name', event)}
+                />
+                <FormField
+                  label="الاسم الظاهر"
+                  value={form.display_name || ''}
+                  required
+                  onChange={(event) => handleFormChange('display_name', event)}
+                />
+                <FormField
+                  label="النطاق الفرعي"
+                  value={form.subdomain}
+                  placeholder="example"
+                  helpText="سيظهر كـ example.domain.com"
+                  required
+                  onChange={(event) => handleFormChange('subdomain', event)}
+                />
+                <FormField
+                  label="البريد الإلكتروني"
+                  type="email"
+                  value={form.contact_email}
+                  required
+                  onChange={(event) => handleFormChange('contact_email', event)}
+                />
+                <FormField
+                  label="رابط الشعار"
+                  value={form.logo_url || ''}
+                  placeholder="https://..."
+                  onChange={(event) => handleFormChange('logo_url', event)}
+                />
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    اسم المستخدم
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-                    placeholder="أدخل اسم المستخدم"
-                  />
-                </div>
-
-                {/* Password */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    كلمة السر
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-                    placeholder="أدخل كلمة السر"
-                  />
-                </div>
-
-                {/* Full Name */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    الاسم الكامل
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-                    placeholder="أدخل الاسم الكامل"
-                  />
-                </div>
-
-                {/* Display Name */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    الاسم الظاهر
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.displayName}
-                    onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-                    placeholder="أدخل الاسم الظاهر"
-                  />
-                </div>
-
-                {/* Phone with Country Code */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    رقم الجوال
-                  </label>
-                  <div className="flex gap-2">
-                    <select
-                      value={formData.countryCode}
-                      onChange={(e) => setFormData({ ...formData, countryCode: e.target.value })}
-                      className="w-32 px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-                    >
-                      {countries.map((country) => (
-                        <option key={country.code} value={country.code}>
-                          {country.flag} {country.code}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="tel"
-                      required
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="flex-1 px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-                      placeholder="123456789"
-                    />
-                  </div>
-                </div>
-
-                {/* Subdomain */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    رابط الساب دومين
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={formData.subdomain}
-                      onChange={(e) => setFormData({ ...formData, subdomain: e.target.value })}
-                      className="flex-1 px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-                      placeholder="mystore"
-                    />
-                    <span className="text-sm text-text-secondary">.watan.store</span>
-                  </div>
-                </div>
-
-                {/* Tax Number */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    الرقم الضريبي
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.taxNumber}
-                    onChange={(e) => setFormData({ ...formData, taxNumber: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary"
-                    placeholder="أدخل الرقم الضريبي (اختياري)"
-                  />
-                </div>
-
-                {/* Address */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    العنوان الكامل
-                  </label>
-                  <textarea
-                    required
-                    rows={3}
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-bg-base border border-border rounded-lg focus:outline-none focus:border-primary transition-colors text-text-primary resize-none"
-                    placeholder="أدخل العنوان الكامل"
-                  />
-                </div>
-
-                {/* Image Upload */}
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">
-                    إضافة صور (حد أقصى 3)
-                  </label>
-                  <div className="space-y-3">
-                    {/* Upload Button */}
-                    {uploadedImages.length < 3 && (
-                      <label className="flex items-center justify-center gap-2 px-4 py-3 bg-bg-base border-2 border-dashed border-border rounded-lg hover:border-primary transition-colors cursor-pointer">
-                        <FiUpload size={20} className="text-text-secondary" />
-                        <span className="text-sm text-text-secondary">اضغط لرفع صورة</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                          multiple
-                        />
-                      </label>
-                    )}
-
-                    {/* Preview Images */}
-                    {uploadedImages.length > 0 && (
-                      <div className="grid grid-cols-3 gap-3">
-                        {uploadedImages.map((file, index) => (
-                          <div key={index} className="relative group">
-                            <div className="aspect-square bg-bg-base border border-border rounded-lg overflow-hidden">
-                              <img
-                                src={URL.createObjectURL(file)}
-                                alt={`Preview ${index + 1}`}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeImage(index)}
-                              className="absolute -top-2 -left-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <FiX size={16} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <label className="mb-1 block text-sm font-medium text-text-primary">الحالة</label>
+                  <select
+                    value={form.status}
+                    onChange={(event) => handleFormChange('status', event)}
+                    className="w-full rounded-lg border border-border bg-bg-base px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                  >
+                    <option value="active">نشط</option>
+                    <option value="pending">بانتظار التفعيل</option>
+                    <option value="suspended">معلق</option>
+                  </select>
                 </div>
               </div>
-
-              {/* Modal Footer */}
-              <div className="flex items-center gap-3 p-4 border-t border-border bg-bg-surface-alt">
-                <button
-                  type="submit"
-                  className="flex-1 bg-primary text-white px-4 py-2.5 text-sm rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                >
-                  إنشاء
-                </button>
+              <div className="mt-6 flex items-center justify-end gap-3 border-t border-border pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 bg-bg-base text-text-primary px-4 py-2.5 text-sm rounded-lg hover:bg-bg-surface-hover transition-colors font-medium border border-border"
+                  onClick={closeModal}
+                  className="rounded-lg px-4 py-2 text-sm text-text-secondary hover:bg-bg-surface-hover"
                 >
                   إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm text-white transition hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {saving ? 'جارٍ الحفظ...' : editingTenant ? 'تحديث' : 'إنشاء'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+type StatCardProps = {
+  title: string;
+  value: number;
+  icon: ReactNode;
+  accent?: string;
+};
+
+function StatCard({ title, value, icon, accent }: StatCardProps) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-border bg-bg-surface p-4">
+      <div>
+        <p className="text-sm text-text-secondary">{title}</p>
+        <p className={`text-3xl font-bold text-text-primary ${accent ?? ''}`}>{value}</p>
+      </div>
+      <div className="rounded-full bg-primary/10 p-3 text-primary">{icon}</div>
+    </div>
+  );
+}
+
+type FormFieldProps = {
+  label: string;
+  value: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  required?: boolean;
+  type?: string;
+  placeholder?: string;
+  helpText?: string;
+};
+
+function FormField({ label, value, onChange, required, type = 'text', placeholder, helpText }: FormFieldProps) {
+  return (
+    <div>
+      <label className="mb-1 block text-sm font-medium text-text-primary">
+        {label}
+        {required && <span className="mr-1 text-red-500">*</span>}
+      </label>
+      <input
+        type={type}
+        value={value}
+        required={required}
+        placeholder={placeholder}
+        onChange={onChange}
+        className="w-full rounded-lg border border-border bg-bg-base px-3 py-2 text-sm focus:border-primary focus:outline-none"
+      />
+      {helpText && <p className="mt-1 text-xs text-text-secondary">{helpText}</p>}
     </div>
   );
 }

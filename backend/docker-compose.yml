@@ -1,0 +1,102 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ${BACKEND_ENV_FILE:-.env.compose}
+    environment:
+      AHLA_APP_ADDR: :8080
+      AHLA_DATABASE_HOST: db
+      AHLA_DATABASE_PORT: 5432
+      AHLA_DATABASE_USER: ahla
+      AHLA_DATABASE_PASSWORD: Khalaf999! 
+      AHLA_DATABASE_NAME: ahla
+      AHLA_DATABASE_SSLMODE: disable
+      AHLA_REDIS_ADDR: redis:6379
+      AHLA_REDIS_DB: 0
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  agents:
+    build:
+      context: ../frontend/agents-app
+      dockerfile: Dockerfile
+    env_file:
+      - ${AGENTS_ENV_FILE:-../frontend/agents-app/.env.compose}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  superadmin:
+    build:
+      context: ../frontend/superadmin
+      dockerfile: Dockerfile
+    env_file:
+      - ${SUPERADMIN_ENV_FILE:-../frontend/superadmin/.env.compose}
+    ports:
+      - "3003:3003"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8-alpine
+    profiles: ["prod"]
+    depends_on:
+      api:
+        condition: service_started
+      agents:
+        condition: service_started
+      superadmin:
+        condition: service_started
+    environment:
+      APP_DOMAIN: ${AHLA_APP_DOMAIN:-ahlacard.com}
+      CADDY_EMAIL: ${CADDY_EMAIL:-admin@ahlacard.com}
+      CADDY_ACME_CA: ${CADDY_ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ahla
+      POSTGRES_PASSWORD: Khalaf999!
+      POSTGRES_DB: ahla
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ahla"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redis-data:/data
+
+volumes:
+  db-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

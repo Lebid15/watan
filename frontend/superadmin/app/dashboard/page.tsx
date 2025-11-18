@@ -60,7 +60,7 @@ export default function DashboardPage() {
   ]);
 
   const [recentActivity, setRecentActivity] = useState([
-    { id: 1, type: 'tenant', message: 'تم إنشاء مستأجر جديد: shop.watan.com', time: 'منذ 5 دقائق', icon: <FiGlobe />, color: 'text-blue-500' },
+    { id: 1, type: 'tenant', message: 'تم إنشاء مستأجر جديد: shop.ahla.com', time: 'منذ 5 دقائق', icon: <FiGlobe />, color: 'text-blue-500' },
     { id: 2, type: 'payment', message: 'دفعة جديدة من: المتجر الأول - $200', time: 'منذ 15 دقيقة', icon: <FiDollarSign />, color: 'text-green-500' },
     { id: 3, type: 'product', message: 'تم إضافة منتج عالمي: PUBG UC', time: 'منذ ساعة', icon: <FiPackage />, color: 'text-purple-500' },
     { id: 4, type: 'error', message: 'خطأ في النظام: Database connection timeout', time: 'منذ ساعتين', icon: <FiAlertCircle />, color: 'text-red-500' },

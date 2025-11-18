@@ -9,6 +9,16 @@ export function ThreeBackground() {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    type ShapeUserData = {
+      velocityX: number;
+      velocityY: number;
+      velocityZ: number;
+      rotationSpeedX: number;
+      rotationSpeedY: number;
+      rotationSpeedZ: number;
+      baseScale: number;
+    };
+
     // Scene Setup
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
@@ -24,7 +34,8 @@ export function ThreeBackground() {
 
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    containerRef.current.appendChild(renderer.domElement);
+    const container = containerRef.current;
+    container.appendChild(renderer.domElement);
 
     camera.position.z = 50;
 
@@ -108,14 +119,16 @@ export function ThreeBackground() {
       const scale = Math.random() * 0.8 + 0.4;
       mesh.scale.set(scale, scale, scale);
 
-      (mesh as any).userData = {
+      const userData: ShapeUserData = {
         velocityX: (Math.random() - 0.5) * 0.02,
         velocityY: (Math.random() - 0.5) * 0.02,
         velocityZ: (Math.random() - 0.5) * 0.01,
         rotationSpeedX: (Math.random() - 0.5) * 0.02,
         rotationSpeedY: (Math.random() - 0.5) * 0.02,
         rotationSpeedZ: (Math.random() - 0.5) * 0.02,
+        baseScale: scale,
       };
+      mesh.userData = userData;
 
       shapes.push(mesh);
       scene.add(mesh);
@@ -162,24 +175,24 @@ export function ThreeBackground() {
       requestAnimationFrame(animate);
 
       shapes.forEach((shape, index) => {
-        shape.rotation.x += shape.userData.rotationSpeedX;
-        shape.rotation.y += shape.userData.rotationSpeedY;
-        shape.rotation.z += shape.userData.rotationSpeedZ;
+        const data = shape.userData as ShapeUserData | undefined;
+        if (!data) {
+          return;
+        }
+        shape.rotation.x += data.rotationSpeedX;
+        shape.rotation.y += data.rotationSpeedY;
+        shape.rotation.z += data.rotationSpeedZ;
 
-        shape.position.x += shape.userData.velocityX;
-        shape.position.y += shape.userData.velocityY;
-        shape.position.z += shape.userData.velocityZ;
+        shape.position.x += data.velocityX;
+        shape.position.y += data.velocityY;
+        shape.position.z += data.velocityZ;
 
-        if (Math.abs(shape.position.x) > 50) shape.userData.velocityX *= -1;
-        if (Math.abs(shape.position.y) > 50) shape.userData.velocityY *= -1;
-        if (Math.abs(shape.position.z) > 30) shape.userData.velocityZ *= -1;
+        if (Math.abs(shape.position.x) > 50) data.velocityX *= -1;
+        if (Math.abs(shape.position.y) > 50) data.velocityY *= -1;
+        if (Math.abs(shape.position.z) > 30) data.velocityZ *= -1;
 
-        const pulse = Math.sin(Date.now() * 0.001 + index) * 0.1 + 1;
-        shape.scale.set(
-          (shape.scale.x * pulse) / (pulse - 0.1 + 1),
-          (shape.scale.y * pulse) / (pulse - 0.1 + 1),
-          (shape.scale.z * pulse) / (pulse - 0.1 + 1)
-        );
+        const pulse = 1 + Math.sin(Date.now() * 0.001 + index) * 0.08;
+        shape.scale.setScalar(data.baseScale * pulse);
       });
 
       particles.rotation.y += 0.0005;
@@ -207,8 +220,8 @@ export function ThreeBackground() {
     return () => {
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('mousemove', handleMouseMove);
-      if (containerRef.current) {
-        containerRef.current.removeChild(renderer.domElement);
+      if (container) {
+        container.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };

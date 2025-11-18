@@ -350,7 +350,7 @@ export default function SuperAdminSidebar({ isMobileMenuOpen, onCloseMobileMenu 
       {!isCollapsed && (
         <div className="p-4 border-t border-border shrink-0">
           <div className="text-xs text-text-secondary text-center">
-            <p className="font-semibold">Watan Store</p>
+            <p className="font-semibold">Ahla Store</p>
             <p className="text-[10px] mt-1 opacity-75">v1.0.0 SuperAdmin</p>
           </div>
         </div>

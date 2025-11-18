@@ -9,7 +9,10 @@
     "api": "API",
     "about": "من نحن",
     "toggleTheme": "تغيير الثيم",
-    "settings": "الإعدادات"
+    "settings": "الإعدادات",
+    "guest": "زائر",
+    "connectAccount": "ربط الحساب",
+    "connecting": "جاري الاتصال..."
   },
   "header": {
     "username": "أحمد علي",

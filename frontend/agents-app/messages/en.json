@@ -9,7 +9,10 @@
     "api": "API",
     "about": "About Us",
     "toggleTheme": "Toggle Theme",
-    "settings": "Settings"
+    "settings": "Settings",
+    "guest": "Guest",
+    "connectAccount": "Connect account",
+    "connecting": "Connecting…"
   },
   "header": {
     "username": "Ahmed Ali",
